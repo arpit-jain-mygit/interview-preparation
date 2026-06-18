@@ -78,6 +78,68 @@ Kafka helps DCP with:
 
 Kafka does not make the business logic simpler automatically. DCP must still design idempotency, retries, schemas, monitoring and failure handling.
 
+### Fan-out, ordering and durability in simple terms
+
+#### Fan-out
+
+Fan-out means one event can be used by several independent business jobs.
+
+```text
+DocumentExtracted
+      ├── Quality group   → Validate the data
+      ├── Audit group     → Record the history
+      └── Analytics group → Calculate metrics
+```
+
+DCP publishes `DocumentExtracted` once. Kafka allows every interested consumer group to read it independently.
+
+This is Kafka's pub/sub behavior:
+
+```text
+Across different consumer groups → fan-out
+Within the same consumer group   → work sharing
+```
+
+It is broadcast-like across groups, but Kafka does not send the event to every consumer instance inside one group. The consumers in that group divide the work.
+
+#### Ordering
+
+Ordering means events inside one partition are read in the sequence in which Kafka stored them.
+
+```text
+DOC-123:
+DocumentSourced
+→ DocumentExtracted
+→ QualityChecked
+→ DocumentApproved
+```
+
+DCP uses `documentId` as the key so events for the same document go to the same partition.
+
+Kafka does not guarantee a single order across all partitions. DCP normally needs per-document order, not an order between unrelated documents.
+
+#### Durability
+
+Durability means Kafka keeps an accepted event safely while consumers are unavailable or one broker fails.
+
+```text
+Sourcing publishes DocumentSourced
+        ↓
+Extraction Service is unavailable
+        ↓
+Kafka retains the event
+        ↓
+Extraction restarts and continues
+```
+
+Replication stores partition copies on multiple brokers. For important DCP events, durable producer acknowledgements and healthy in-sync replicas are also required.
+
+```text
+Fan-out   → One event, many independent business jobs
+Ordering  → Events for one key remain in sequence
+Durability → Events survive temporary failures
+```
+
 ---
 
 ## 2. What are brokers, topics, partitions and records?
@@ -203,6 +265,120 @@ Consumers should be:
 
 A consumer group is a team of consumers sharing work from a topic.
 
+### Simple pizza-shop example
+
+Think of a topic containing pizza orders:
+
+```text
+Topic: pizza-orders
+```
+
+The kitchen has several chefs doing the same job:
+
+```text
+Consumer group: kitchen-team
+├── Chef A
+├── Chef B
+└── Chef C
+```
+
+Kafka divides the order partitions among the chefs. One order should be prepared by one chef, not by every chef.
+
+Other departments perform different jobs:
+
+```text
+pizza-orders topic
+├── kitchen-team  → Prepare pizza
+├── billing-team  → Record revenue
+└── delivery-team → Assign a driver
+```
+
+Every group receives all pizza-order events independently. Consumers inside one group divide those events.
+
+### Relationship between partition, consumer group and consumer
+
+Use this mental model:
+
+```text
+Partition      = Work lane
+Consumer       = Worker
+Consumer group = Team of workers doing the same job
+```
+
+Suppose the topic has four partitions and the kitchen group has two consumers:
+
+```text
+Kitchen Consumer A → Partition 0, Partition 1
+Kitchen Consumer B → Partition 2, Partition 3
+```
+
+The main rule is:
+
+> Within one consumer group, one partition is assigned to only one consumer at a time. One consumer may own several partitions.
+
+Kafka enforces this because consumers in the same group represent the same business job. If two kitchen consumers processed the same partition simultaneously, they could prepare the same order twice and make ordered offset tracking unclear.
+
+The same partition can be read by another consumer group:
+
+```text
+Partition 0
+├── One consumer from kitchen-team
+├── One consumer from billing-team
+└── One consumer from delivery-team
+```
+
+This works because each group performs a different business job and stores its own offset.
+
+### A partition is not a separate business job
+
+All partitions in a topic contain the same kind of event:
+
+```text
+Topic: pizza-orders
+
+Partition 0 → Order A, Order D
+Partition 1 → Order B, Order E
+Partition 2 → Order C, Order F
+```
+
+The partitions do not mean:
+
+```text
+Partition 0 = Cooking
+Partition 1 = Billing
+Partition 2 = Delivery
+```
+
+Business jobs are represented by consumer groups. Partitions are parallel lanes for those jobs.
+
+### Relationship to Kubernetes pods
+
+A common deployment is:
+
+```text
+Pod 1 → Consumer A
+Pod 2 → Consumer B
+Pod 3 → Consumer C
+```
+
+All application instances use the same Kafka `group.id`, so their consumers join the same group.
+
+```text
+Kubernetes Deployment: extraction-service
+
+Pod 1 ─┐
+Pod 2 ─┼→ Consumer group: extraction-workers
+Pod 3 ─┘
+```
+
+A pod and a consumer are not the same concept. A pod is a Kubernetes runtime unit; a consumer is a Kafka client. One pod can technically run multiple consumer threads or listeners.
+
+The simplest common design is one application instance per pod, contributing one consumer per listener to the group.
+
+If a pod crashes, Kafka reassigns its partitions to healthy consumers. Kubernetes then starts a replacement pod, which joins the group and causes another assignment.
+
+### DCP example
+
 ```text
 Consumer group: extraction-workers
 
@@ -231,6 +407,45 @@ document-extracted topic
 ```
 
 Each group has its own offsets.
+
+### Complete picture in one block
+
+```text
+PRODUCER
+Order Application
+      │ publishes
+      ▼
+TOPIC: pizza-orders
+      │
+      ├── PARTITION 0
+      │     Offset 0 → Order A
+      │     Offset 1 → Order C
+      │
+      └── PARTITION 1
+            Offset 0 → Order B
+            Offset 1 → Order D
+
+      ┌─────────────────────────┐
+      │ KITCHEN CONSUMER GROUP  │
+      │ Chef A → Partition 0    │
+      │ Chef B → Partition 1    │
+      └─────────────────────────┘
+
+      ┌─────────────────────────┐
+      │ BILLING CONSUMER GROUP  │
+      │ Bill A → Partition 0    │
+      │ Bill B → Partition 1    │
+      └─────────────────────────┘
+```
+
+```text
+Producer       = Creates events
+Topic          = Stores one kind of event stream
+Partition      = Parallel ordered lane
+Offset         = Record's position in that lane
+Consumer       = Worker reading one or more lanes
+Consumer group = Team performing the same business job
+```
 
 ---
 
@@ -372,6 +587,233 @@ Important cautions:
 
 Choose with growth headroom, then validate using load tests.
 
+### Relationship between partition and consumer counts
+
+Partitions set the maximum active parallelism of one consumer group:
+
+```text
+Maximum active consumers in one group
+= Number of partitions
+```
+
+#### More partitions than consumers
+
+```text
+12 partitions
+4 consumers
+```
+
+Kafka assigns several partitions to each consumer:
+
+```text
+Consumer 1 → P0, P1, P2
+Consumer 2 → P3, P4, P5
+Consumer 3 → P6, P7, P8
+Consumer 4 → P9, P10, P11
+```
+
+This is normal and leaves room to add consumers later.
+
+#### Equal partitions and consumers
+
+```text
+12 partitions
+12 consumers
+```
+
+Each consumer can own one partition. This is the maximum consumer parallelism for the group.
+
+#### More consumers than partitions
+
+```text
+12 partitions
+15 consumers
+```
+
+Only 12 consumers can actively consume:
+
+```text
+12 active consumers
+3 idle consumers
+```
+
+Adding more consumers does not improve Kafka parallelism until the topic has more partitions.
+
+### Practical sizing strategy
+
+#### Step 1: Measure peak incoming rate
+
+```text
+Peak = 1,000 events/second
+```
+
+#### Step 2: Measure one real consumer
+
+```text
+One consumer = 100 events/second
+```
+
+Use load-test measurements rather than guesses.
+
+#### Step 3: Calculate required consumers
+
+```text
+Required consumers
+= Incoming rate ÷ Processing rate per consumer
+
+= 1,000 ÷ 100
+= 10 consumers
+```
+
+#### Step 4: Add growth and failure headroom
+
+```text
+10 required today
++ 20–30% headroom
+= approximately 12–13 consumers
+```
+
+#### Step 5: Choose enough partitions
+
+If the expected maximum is 20 active consumers:
+
+```text
+Partitions must be at least 20
+```
+
+It can be reasonable to start with 20–24 partitions while initially running fewer consumers.
+
+#### Step 6: Check the real bottlenecks
+
+More Kafka consumers do not help if another dependency is the limit:
+
+```text
+Kafka supports 100 consumers
+SparkAir permits 50 concurrent calls
+Database pool permits 40 writes
+```
+
+Useful concurrency may be capped at 40–50, not 100.
+
+Check:
+
+- External API concurrency and rate limits
+- Database connections and write throughput
+- CPU and memory
+- Network bandwidth
+- Object-storage limits
+- Cost
+
+#### Step 7: Check the business SLA
+
+Suppose 10,000 documents arrive together and must finish within one hour:
+
+```text
+Required processing rate
+= 10,000 ÷ 3,600
+≈ 2.8 documents/second
+```
+
+If one extraction consumer handles one document every 10 seconds:
+
+```text
+One consumer = 0.1 documents/second
+```
+
+Required consumers:
+
+```text
+2.8 ÷ 0.1 = 28 consumers
+```
+
+The topic needs at least 28 partitions to keep all 28 consumers active.
+
+#### Step 8: Validate key distribution
+
+A poor key can create a hot partition:
+
+```text
+Key = documentType
+80% of documents = PDF
+→ One partition receives most traffic
+```
+
+For DCP, `documentId` usually distributes documents more evenly while preserving per-document ordering.
+
+#### Step 9: Load-test and adjust
+
+Measure:
+
+- Per-partition lag
+- Event processing rate
+- Oldest-message age
+- Rebalance frequency
+- External-provider errors
+- Database saturation
+
+Do not create thousands of partitions “just in case.” Too many partitions increase broker metadata, open files, replication work, rebalance work and recovery time.
+
+### DCP sizing example
+
+```text
+Peak incoming rate        = 100 documents/second
+One extraction consumer   = 5 documents/second
+Expected future growth    = 2×
+```
+
+Current requirement:
+
+```text
+100 ÷ 5 = 20 consumers
+```
+
+Future requirement:
+
+```text
+200 ÷ 5 = 40 consumers
+```
+
+Possible design:
+
+```text
+Partitions       = 48
+Initial consumers = 20
+Maximum useful active consumers = 48
+```
+
+Scale consumers based on lag and oldest-message age, but cap them according to SparkAir and database capacity.
+
+### Autoscaling strategy
+
+Do not scale only on CPU. A consumer may spend most of its time waiting for SparkAir while CPU remains low.
+
+For DCP, evaluate:
+
+```text
+Consumer lag
+Age of oldest pending document
+Incoming event rate
+Processing rate
+CPU and memory
+SparkAir concurrency
+Database connection usage
+```
+
+A practical policy:
+
+```text
+Lag or oldest-message age rises
+        ↓
+Add extraction pods
+        ↓
+Stop scaling when reaching:
+- Topic partition count
+- SparkAir concurrency limit
+- Database connection limit
+```
+
+Scale down only after lag remains low for a sustained period. Rapidly adding and removing pods causes repeated consumer-group rebalances and unstable throughput.
+
 ---
 
 ## 10. What is an offset?
@@ -395,6 +837,149 @@ Committed offset = 102
 This means the group has acknowledged processing through the previous position and will continue from its committed progress.
 
 Offsets belong to a consumer group, not to an individual consumer instance.
+
+### Every partition has its own offsets
+
+```text
+Partition 0:
+Offset 0 → Order A
+Offset 1 → Order B
+
+Partition 1:
+Offset 0 → Order C
+Offset 1 → Order D
+```
+
+Therefore, an offset alone is not a complete address. A record is identified by:
+
+```text
+Topic + Partition + Offset
+```
+
+### Every consumer group has its own progress
+
+Suppose three groups read Partition 0:
+
+```text
+Kitchen group  → next offset 4
+Billing group  → next offset 2
+Delivery group → next offset 3
+```
+
+Kitchen moving forward does not change Billing's or Delivery's position.
+
+Kafka tracks progress per:
+
+```text
+Consumer group + Topic + Partition
+→ Committed offset
+```
+
+### One group with multiple partitions and consumers
+
+```text
+Kitchen Consumer A → P0, P1
+Kitchen Consumer B → P2, P3
+```
+
+The group still has a separate committed offset for every partition:
+
+```text
+Kitchen group:
+P0 → 120
+P1 → 87
+P2 → 203
+P3 → 51
+```
+
+There is no single offset for the whole topic or consumer group.
+
+### What happens when a consumer fails?
+
+Initially:
+
+```text
+Consumer A → P0
+Consumer B → P1
+```
+
+If Consumer A fails, Kafka assigns P0 to Consumer B or another healthy consumer.
+
+The new owner resumes P0 from the group's committed offset for P0. The offset follows the group and partition, not the old consumer instance.
+
+### What happens when a new consumer group starts?
+
+A new group has no committed offsets.
+
+Its reset policy decides where to start:
+
+```text
+earliest → Read the oldest retained events
+latest   → Read only new events from now onward
+```
+
+This setting is used when no valid committed offset exists.
+
+### Offset and replay
+
+An administrator can move a group's offset backward:
+
+```text
+Current offset = 1,000
+Reset to       = 500
+```
+
+The group then processes offsets 500 onward again.
+
+This is useful for:
+
+- Rebuilding a CQRS read model
+- Reprocessing after fixing a consumer bug
+- Recalculating analytics
+
+Consumers must be idempotent because replay intentionally repeats processing.
+
+### Offset and retention
+
+Suppose:
+
+```text
+Group wants offset       = 100
+Oldest retained offset   = 500
+```
+
+Offsets 100–499 have already been deleted by topic retention. The group cannot read them from Kafka and needs a reset or an external archive.
+
+### Complete simple example
+
+```text
+Topic: pizza-orders
+
+Partition 0:
+Offset 0 → Order A
+Offset 1 → Order B
+Offset 2 → Order C
+
+Partition 1:
+Offset 0 → Order D
+Offset 1 → Order E
+
+Kitchen group:
+P0 next offset → 3
+P1 next offset → 2
+
+Billing group:
+P0 next offset → 1
+P1 next offset → 1
+```
+
+Interpretation:
+
+- Kitchen has processed all listed orders.
+- Billing has processed only offset 0 in each partition.
+- Billing continues independently from its own offsets.
+
+> An offset is a record's position in one partition. A committed offset records where one consumer group should continue reading that partition.
 
 ---
 
