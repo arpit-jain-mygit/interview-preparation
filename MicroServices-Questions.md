@@ -263,49 +263,84 @@ Irreversible operations should generally be placed near the end of the Saga.
 
 ## 8. What is event sourcing?
 
-Event sourcing stores every state change as an immutable event instead of storing only the latest state.
-
-State-only storage:
+Normally, a system stores only the current state:
 
 ```text
-Document 123 → APPROVED
+Order status = DELIVERED
 ```
 
-Event-sourced storage:
+This tells us where the order is now, but it does not show how the order reached that state.
+
+With event sourcing, the system stores every change as an event:
 
 ```text
-1. DocumentSourced
-2. DocumentExtracted
-3. QualityCheckPassed
-4. DocumentSubmittedForReview
-5. DocumentApproved
+1. OrderCreated
+2. PaymentCompleted
+3. OrderShipped
+4. OrderDelivered
 ```
 
-The current state is rebuilt by replaying the events in order.
+The event history becomes the source of truth. The current state is calculated by replaying the events in order:
 
-### Benefits
+```text
+Start with an empty order
+→ Apply OrderCreated
+→ Apply PaymentCompleted
+→ Apply OrderShipped
+→ Apply OrderDelivered
 
-- Complete audit history
-- Ability to reconstruct an earlier state
-- Ability to rebuild read models
-- Useful for regulatory and compliance requirements
-- Events can be replayed after fixing processing logic
+Current status = DELIVERED
+```
 
-### Challenges
+### Simple analogy: A bank account
 
-- More implementation complexity
-- Event schema evolution
-- Eventual consistency
-- Replaying a large event history can be expensive
-- External side effects must not be repeated accidentally during replay
+A bank does not only store the current balance:
+
+```text
+Balance = ₹10,000
+```
+
+It also stores every transaction:
+
+```text
++ ₹15,000 salary
+- ₹3,000 rent
+- ₹2,000 shopping
+```
+
+The bank can calculate the current balance from this transaction history. Event sourcing works in a similar way: store everything that happened, then derive the current state from that history.
+
+### Why use event sourcing?
+
+- It provides a complete history of what happened.
+- We can see who changed something and when.
+- We can reconstruct the state at an earlier point in time.
+- We can rebuild the current state if a read database is lost or corrupted.
+- We can replay events after fixing a bug in processing logic.
+- It is useful for auditing and regulatory requirements.
+
+### What are the downsides?
+
+- It is more complex than storing only the latest state.
+- Old event formats must continue to work as the application evolves.
+- Replaying a large number of events can be slow.
+- Read models may update later, causing eventual consistency.
+- Event replay must not accidentally repeat external actions such as charging a payment or sending an email.
 
 ### Does event sourcing solve distributed transactions?
 
-Not by itself.
+No.
 
-Event sourcing records what happened. Saga coordinates the multi-service workflow and handles failures. They solve different problems but can be used together.
+- **Event sourcing** records what happened.
+- **Saga** coordinates work across services and handles failures.
+
+They solve different problems, although they can be used together.
 
 Also, Kafka does not have to be the authoritative event store. A durable append-only database can be the event store while Kafka distributes events to consumers.
+
+### Interview-ready answer
+
+> Event sourcing stores every state change as an immutable event instead of storing only the latest state. The current state is reconstructed by replaying those events. It provides a complete audit history and replay capability, but it adds complexity and does not by itself solve distributed transactions.
 
 ---
 
