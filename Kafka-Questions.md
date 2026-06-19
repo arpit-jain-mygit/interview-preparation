@@ -2475,48 +2475,96 @@ Each partition tracks its own progress independently, even if owned by the same 
 | **Partition rebalance** | If Consumer A dies, P0 and P1 both reassigned to other consumers |
 | **Maximum parallelism** | Consumer's threads/thread pool (default is single-threaded poll) |
 
+#### Why parallel fetch for a single-threaded consumer?
+
+**Critical insight: Parallel fetch minimizes network latency, even though processing is single-threaded.**
+
+**Sequential fetch (hypothetically, if done one partition at a time):**
+```
+Fetch P0 from broker → wait 10ms for round-trip → get reply
+Process P0 messages (while P1 sits idle on broker)
+Fetch P1 from broker → wait 10ms for round-trip → get reply
+Process P1 messages
+
+Network time: 10ms + 10ms = 20ms
+Problem: P1 messages are blocked waiting for P0 fetch to complete
+```
+
+**Parallel fetch (what Kafka actually does):**
+```
+Fetch P0 from broker AND P1 from broker simultaneously → wait 10ms for both round-trips
+Consumer gets batch: [P0-msg, P1-msg, P0-msg, P1-msg, ...]
+Process messages one-by-one in single thread
+
+Network time: 10ms
+Benefit: 2x faster network, all partitions make progress
+```
+
+**Real-world impact:**
+
+Scenario: P0 (slow, 5 seconds each), P1 (fast, 1 second each)
+
+Sequential approach:
+```
+Fetch P0 (10ms)
+Process all P0 messages (100 seconds) ← P1 waits on broker
+Fetch P1 (10ms)
+Process all P1 messages (10 seconds)
+Total: 130+ seconds
+```
+
+Parallel approach:
+```
+Fetch P0 AND P1 (10ms)
+Process interleaved: [P0-slow(5s), P1-fast(1s), P0-slow(5s), P1-fast(1s), ...]
+Total: ~30 seconds
+```
+
+Parallel fetch is **4x faster** even though processing is single-threaded!
+
 #### Single-threaded vs multi-threaded consumer
 
 **Single-threaded consumer (DEFAULT, most common):**
 ```
-poll() → Brokers fetch from P0 and P1 in parallel
+poll() → Brokers FETCH from P0 and P1 in parallel (10ms network time)
          ↓
          Consumer receives batch: [P0-msg, P1-msg, P0-msg, P1-msg, ...]
          ↓
-         ONE application thread processes messages one-by-one
+         ONE application thread PROCESSES messages one-by-one:
+           t=0ms: process P0-1 (5 seconds)
+           t=5s: process P1-1 (1 second)
+           t=6s: process P0-2 (5 seconds)
+           t=11s: process P1-2 (1 second)
          ↓
-         Commit offsets for both P0 and P1
-
-Example timeline:
-  t=0ms: process P0-1
-  t=10ms: process P1-1  (P0-1 is done; P1-1 was waiting)
-  t=20ms: process P0-2
-  t=30ms: process P1-2
+         Commit offsets for both P0 and P1 together
 ```
 
-**Multi-threaded consumer (less common, needs careful offset management):**
+**Multi-threaded consumer (less common, adds complexity):**
 ```
-poll() → Brokers fetch from P0 and P1 in parallel
+poll() → Brokers FETCH from P0 and P1 in parallel
          ↓
          Consumer receives batch: [P0-msg, P1-msg, P0-msg, P1-msg, ...]
          ↓
-         Spawn threads to process P0 and P1 messages truly in parallel
+         Spawn worker threads to PROCESS in true parallel:
+           t=0ms: Thread-A starts P0-1 (5s) AND Thread-B starts P1-1 (1s)
+           t=1s: Thread-B starts P1-2 while Thread-A still on P0-1
          ↓
-         Wait for all to complete (or handle out-of-order completion)
-         ↓
-         Commit offsets for both P0 and P1
-
-Example timeline:
-  t=0ms: Thread 1 starts P0-1 AND Thread 2 starts P1-1 (true parallelism)
-  t=10ms: Both threads done; next batch
+         Wait for all threads to complete before committing
 ```
+
+**Which is better for what?**
+
+| Scenario | Single-Threaded | Multi-Threaded |
+|----------|-----------------|----------------|
+| **CPU-bound processing** (heavy extraction) | ❌ Slow (only uses 1 CPU) | ✅ Fast (uses multiple CPUs) |
+| **I/O-bound processing** (network calls) | ✅ Good (OS handles async I/O) | ⚠️ Risky (thread pool exhaustion) |
+| **Simplicity** | ✅ Easy offset management | ❌ Complex (out-of-order completion) |
+| **DCP extraction** | ⚠️ Limited (SparkAI extraction is CPU-heavy) | ✅ Better (parallelize extractions) |
 
 **Bottom line:**
-- Most Kafka consumers are single-threaded (default behavior)
-- The fetch is parallel (brokers send simultaneously)
-- The processing is sequential (one message at a time)
-- Messages are interleaved (not one partition then the other)
-- For true parallelism, you need multi-threading (adds complexity)
+- Parallel **fetch** is always beneficial (reduces network latency)
+- Single-threaded **processing** is the default (simpler, works well for I/O-bound work)
+- Multi-threaded **processing** only helps for CPU-bound work (like AI extraction)
 
 ### What happens when a consumer fails?
 
