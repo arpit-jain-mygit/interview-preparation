@@ -414,74 +414,143 @@ Each group has its own offsets.
 CUSTOMER
    │ places order
    ▼
-ORDER APPLICATION — Producer
-   │ publishes OrderPlaced
+┌──────────────────────────────────────────────┐
+│ ORDER SERVICE                               │
+│ Kafka role: PRODUCER                        │
+│ Produces: OrderPlaced                       │
+│ Write permission: pizza-orders              │
+└──────────────────────────────────────────────┘
+   │ publishes OrderPlaced(orderId)
    ▼
-┌───────────────────────────────────────────────┐
-│ TOPIC: pizza-orders                          │
-│ Meaning: A customer placed an order          │
-│ Retention: 7 days                            │
-│ Write: Order Application                     │
-│ Read: Kitchen and Payment services           │
-│                                               │
-│ PO-P0: Offset 0 → Order A, Offset 1 → Order C│
-│ PO-P1: Offset 0 → Order B, Offset 1 → Order D│
-└───────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│ TOPIC: pizza-orders                            │
+│ Meaning: A customer placed an order            │
+│ Retention: 7 days                              │
+│ WRITE permission: Order Service only           │
+│ READ permission: Kitchen + Payment groups      │
+│                                                │
+│ PO-P0: Offset 0 → Order A, Offset 1 → Order C │
+│ PO-P1: Offset 0 → Order B, Offset 1 → Order D │
+└────────────────────────────────────────────────┘
              │
              ├──────────────────────────────┐
              ▼                              ▼
-┌────────────────────────┐     ┌────────────────────────┐
-│ KITCHEN GROUP          │     │ PAYMENT GROUP          │
-│ Chef A → PO-P0         │     │ Payment Pod A → PO-P0  │
-│ Chef B → PO-P1         │     │ Payment Pod B → PO-P1  │
-│ Job: Prepare pizzas    │     │ Job: Collect payment   │
-└────────────────────────┘     └────────────────────────┘
+┌────────────────────────────┐   ┌────────────────────────────┐
+│ KITCHEN SERVICE            │   │ PAYMENT SERVICE            │
+│ Kafka role:                │   │ Kafka role:                │
+│ CONSUMER + PRODUCER        │   │ CONSUMER + PRODUCER        │
+│                            │   │                            │
+│ Consumer group:            │   │ Consumer group:            │
+│ kitchen-group              │   │ payment-group              │
+│                            │   │                            │
+│ Consumer/Pod A → PO-P0     │   │ Consumer/Pod A → PO-P0     │
+│ Consumer/Pod B → PO-P1     │   │ Consumer/Pod B → PO-P1     │
+│                            │   │                            │
+│ Consumes: OrderPlaced      │   │ Consumes: OrderPlaced      │
+│ Business job: Prepare      │   │ Business job: Collect pay  │
+│ Produces: PizzaPrepared    │   │ Produces: PaymentCompleted │
+└────────────────────────────┘   └────────────────────────────┘
              │                              │
-             │ Kitchen Service publishes    │ Payment Service publishes
-             │ PizzaPrepared                │ PaymentCompleted
+             │ publishes PizzaPrepared      │ publishes PaymentCompleted
              ▼                              ▼
-┌─────────────────────────────┐ ┌─────────────────────────────┐
-│ TOPIC: pizza-prepared       │ │ TOPIC: payment-completed    │
-│ Meaning: Kitchen completed  │ │ Meaning: Payment succeeded  │
-│ Retention: 3 days           │ │ Retention: 7-year audit     │
-│ Write: Kitchen Service      │ │ Write: Payment Service      │
-│ Read: Delivery Coordinator  │ │ Read: Billing + Delivery    │
-│                             │ │ Access: Restricted          │
-│ PP-P0: Prepared A, C        │ │ PC-P0: Paid A, Paid C      │
-│ PP-P1: Prepared B, D        │ │ PC-P1: Paid B, Paid D      │
-└─────────────────────────────┘ └─────────────────────────────┘
+┌────────────────────────────┐   ┌────────────────────────────┐
+│ TOPIC: pizza-prepared      │   │ TOPIC: payment-completed   │
+│ Meaning: Kitchen finished  │   │ Meaning: Payment succeeded │
+│ Retention: 3 days          │   │ Retention: 7-year audit    │
+│ WRITE: Kitchen Service     │   │ WRITE: Payment Service     │
+│ READ: Delivery group       │   │ READ: Billing + Delivery   │
+│ Permission: Operational    │   │ Permission: Restricted     │
+│                            │   │ financial data             │
+│ PP-P0: Prepared A, C       │   │ PC-P0: Paid A, C           │
+│ PP-P1: Prepared B, D       │   │ PC-P1: Paid B, D           │
+└────────────────────────────┘   └────────────────────────────┘
              │                              │
-             │                              ├───────────────► BILLING GROUP
-             │                              │                 Bill A → PC-P0
-             │                              │                 Bill B → PC-P1
+             │                              ├───────────────────────┐
+             │                              │                       ▼
+             │                              │    ┌────────────────────────────┐
+             │                              │    │ BILLING SERVICE            │
+             │                              │    │ Kafka role: CONSUMER       │
+             │                              │    │ Group: billing-group       │
+             │                              │    │ Consumer A → PC-P0         │
+             │                              │    │ Consumer B → PC-P1         │
+             │                              │    │ Job: Record revenue        │
+             │                              │    └────────────────────────────┘
              │                              │
              └──────────────┬───────────────┘
                             ▼
-                 DELIVERY COORDINATOR GROUP
-                 Consumes both topics
-                 Matches events by orderId
-                 Waits for prepared + paid
-                 Coordinator pods share their partitions
-                 State store tracks prepared/paid by orderId
+              ┌────────────────────────────────┐
+              │ DELIVERY COORDINATOR SERVICE   │
+              │ Kafka role:                    │
+              │ CONSUMER + PRODUCER            │
+              │                                │
+              │ Consumer group:                │
+              │ delivery-coordinator-group     │
+              │                                │
+              │ Consumer/Pod A                 │
+              │ Consumer/Pod B                 │
+              │ Kafka assigns partitions       │
+              │ from both subscribed topics    │
+              │                                │
+              │ Consumes:                      │
+              │ - pizza-prepared partitions    │
+              │ - payment-completed partitions │
+              │                                │
+              │ Job: Match by orderId and wait │
+              │ until PREPARED + PAID          │
+              │ State store tracks both events │
+              │ Produces: DeliveryRequested    │
+              └────────────────────────────────┘
                             │
                             │ publishes DeliveryRequested
                             ▼
-┌───────────────────────────────────────────────┐
-│ TOPIC: delivery-requested                    │
-│ Meaning: An order is ready for delivery      │
-│ Retention: 3 days                            │
-│ Write: Delivery Coordinator                  │
-│ Read: Driver Assignment Service              │
-│ Processing: Assign a driver and track pickup │
-│                                               │
-│ DR-P0: Offset 0 → Deliver A, Offset 1 → C   │
-│ DR-P1: Offset 0 → Deliver B, Offset 1 → D   │
-└───────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│ TOPIC: delivery-requested                      │
+│ Meaning: An order is ready for delivery        │
+│ Retention: 3 days                              │
+│ WRITE permission: Delivery Coordinator only    │
+│ READ permission: Driver Assignment group       │
+│ Permission: Delivery operations                │
+│                                                │
+│ DR-P0: Offset 0 → Deliver A, Offset 1 → C     │
+│ DR-P1: Offset 0 → Deliver B, Offset 1 → D     │
+└────────────────────────────────────────────────┘
                          │
                          ▼
-              DRIVER ASSIGNMENT GROUP
-              Driver Pod A → DR-P0
-              Driver Pod B → DR-P1
+              ┌──────────────────────────────┐
+              │ DRIVER ASSIGNMENT SERVICE    │
+              │ Kafka role: CONSUMER         │
+              │ Consumer group: driver-group │
+              │ Consumer/Pod A → DR-P0       │
+              │ Consumer/Pod B → DR-P1       │
+              │ Job: Assign driver/pickup    │
+              └──────────────────────────────┘
+```
+
+Yes, a service can act as both a consumer and a producer:
+
+```text
+Kitchen Service:
+Consumes OrderPlaced
+→ Performs the kitchen business operation
+→ Produces PizzaPrepared
+
+Payment Service:
+Consumes OrderPlaced
+→ Performs the payment business operation
+→ Produces PaymentCompleted
+
+Delivery Coordinator:
+Consumes PizzaPrepared and PaymentCompleted
+→ Correlates them by orderId
+→ Produces DeliveryRequested
+```
+
+The terms describe the service's role for a particular interaction:
+
+```text
+Reads from a Kafka topic  → Consumer
+Writes to a Kafka topic   → Producer
+Does both                 → Consumer + Producer
 ```
 
 The partition does not represent cooking, payment or delivery. Each topic still has partitions only for ordering and parallelism.
