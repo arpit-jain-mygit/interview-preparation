@@ -117,91 +117,140 @@ flowchart TB
 
 ### The same Kafka concepts applied to DCP
 
+The original single DCP diagram was too large to read comfortably on GitHub. It is split below into one compact overview and three detailed diagrams.
+
+#### DCP end-to-end overview
+
 ```mermaid
-flowchart TB
-    ADMIN["🧑‍💼 Platform Administrator<br/>Manages users, templates, taxonomies,<br/>rules and dissemination configuration"]:::actor
-    L1["👤 L1 Data User<br/>Manual entry, correction and review"]:::actor
-    L2["👤 L2 Data User<br/>Approval, rejection and oversight"]:::actor
-    SOURCES["🌐 External Data Sources<br/>S3, Email, APIs, Databases,<br/>Delta Sharing, CSV, Excel, PDF"]:::actor
-    AI["🤖 External AI Providers<br/>SparkAir, Cognaize, Deepmine"]:::actor
-    DOWNSTREAM["🏢 Downstream Consumers<br/>Internal products, APIs, Kafka clients,<br/>S3 feeds, reports and email recipients"]:::actor
+flowchart LR
+    SOURCES["🌐 Sources"]:::actor
+    SOURCE["Sourcing<br/><b>PRODUCER</b>"]:::producer
+    T1["document-sourced"]:::topic
+    EXTRACT["Extraction<br/><b>CONSUMER + PRODUCER</b>"]:::both
+    T2["document-extracted"]:::topic
+    QUALITY["Quality<br/><b>CONSUMER + PRODUCER</b>"]:::both
+    T3["quality-checked"]:::topic
+    REVIEW["Workflow / Approval<br/><b>CONSUMER + PRODUCER</b>"]:::both
+    T4["document-approved"]:::topic
+    DISSEM["Dissemination<br/><b>CONSUMER + PRODUCER</b>"]:::both
+    T5["document-published"]:::topic
+    TARGETS["🏢 Downstream"]:::actor
 
-    CONFIG["Configuration and Admin Service<br/><b>PRODUCER</b><br/>Manages platform metadata<br/>Produces: ConfigurationChanged"]:::producer
-    SOURCING["Sourcing Service<br/><b>PRODUCER</b><br/>Validates, scans and deduplicates input<br/>Produces: DocumentSourced"]:::producer
+    SOURCES --> SOURCE --> T1 --> EXTRACT --> T2 --> QUALITY --> T3 --> REVIEW --> T4 --> DISSEM --> T5
+    DISSEM --> TARGETS
 
-    CFG["TOPIC: configuration-changed<br/>Meaning: platform configuration changed<br/>Retention: compacted latest state + audit archive<br/>WRITE: Configuration Service<br/>READ: affected services, audit-group<br/>Permission: platform administration<br/><br/>CFG-P0: offsets 0,1...<br/>CFG-P1: offsets 0,1..."]:::topic
+    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
+    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
+```
 
-    DS["TOPIC: document-sourced<br/>Meaning: document accepted for processing<br/>Retention: 30 days<br/>WRITE: Sourcing Service<br/>READ: extraction-group, audit-group<br/>Permission: document-processing<br/><br/>DS-P0: offsets 0,1...<br/>DS-P1: offsets 0,1..."]:::topic
+#### DCP diagram 1: Configuration and platform metadata
 
-    EXTRACTION["Extraction Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: extraction-group<br/>Pods A..N share DS partitions<br/>Consumes: DocumentSourced<br/>Calls AI or supports manual extraction<br/>Writes captured financial data to MongoDB<br/>Produces: DocumentExtracted"]:::both
+```mermaid
+flowchart LR
+    ADMIN["🧑‍💼 Platform Administrator"]:::actor
+    CONFIG["Configuration Service<br/><b>PRODUCER</b><br/>Produces ConfigurationChanged"]:::producer
+    PG[("PostgreSQL<br/>Users, roles, audits, rules,<br/>validations, templates, taxonomies,<br/>workflow and dissemination config")]:::store
+    CFG["TOPIC: configuration-changed<br/>Retention: compacted + audit archive<br/>WRITE: Configuration Service<br/>READ: affected services + audit-group<br/>CFG-P0, CFG-P1"]:::topic
+    QUALITY["Quality Service<br/><b>CONSUMER + PRODUCER</b>"]:::both
+    DISSEM["Dissemination Service<br/><b>CONSUMER + PRODUCER</b>"]:::both
+    AUDIT["Audit Projection<br/><b>CONSUMER</b><br/>Group: audit-group"]:::consumer
 
-    DE["TOPIC: document-extracted<br/>Meaning: financial data was captured<br/>Retention: 30 days<br/>WRITE: Extraction Service<br/>READ: quality-group, audit-group<br/>Permission: restricted financial processing<br/><br/>DE-P0: offsets 0,1...<br/>DE-P1: offsets 0,1..."]:::topic
+    ADMIN -->|"manages platform"| CONFIG
+    CONFIG -->|"stores metadata/config"| PG
+    CONFIG -->|"publishes ConfigurationChanged"| CFG
+    CFG -->|"refresh rules, templates, taxonomies"| QUALITY
+    CFG -->|"refresh destinations and formats"| DISSEM
+    CFG -->|"records config audit"| AUDIT
+    AUDIT -->|"writes queryable audit metadata"| PG
 
-    QUALITY["Quality and Rules Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: quality-group<br/>Consumes: DocumentExtracted<br/>Loads rules, templates and taxonomies<br/>Validates fields and confidence scores<br/>Produces: QualityChecked"]:::both
+    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
+    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
+```
 
-    QC["TOPIC: quality-checked<br/>Meaning: validation completed<br/>Retention: 30 days<br/>WRITE: Quality Service<br/>READ: workflow-group, audit-group<br/>Permission: quality and workflow<br/><br/>QC-P0: offsets 0,1...<br/>QC-P1: offsets 0,1..."]:::topic
+#### DCP diagram 2: Sourcing, extraction and quality
 
-    REVIEW["Workflow and Approval Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: workflow-group<br/>Consumes: QualityChecked<br/>Assigns L1/L2 tasks, timers and rework<br/>Records decisions and audit metadata<br/>Produces: DocumentApproved or Rejected"]:::both
+```mermaid
+flowchart LR
+    SOURCES["🌐 External Sources<br/>S3, email, APIs, DBs,<br/>CSV, Excel, PDF"]:::actor
+    L1["👤 L1 User<br/>Manual capture / correction"]:::actor
+    AI["🤖 AI Providers<br/>SparkAir, Cognaize, Deepmine"]:::actor
 
-    APPROVED["TOPIC: document-approved<br/>Meaning: L2 approved captured financial data<br/>Retention: 7-year audit/archive policy<br/>WRITE: Workflow and Approval Service<br/>READ: dissemination-group, audit-group<br/>Permission: approval and dissemination<br/><br/>DA-P0: offsets 0,1...<br/>DA-P1: offsets 0,1..."]:::topic
+    SOURCE["Sourcing Service<br/><b>PRODUCER</b><br/>Validates, scans, deduplicates"]:::producer
+    DS["TOPIC: document-sourced<br/>Retention: 30 days<br/>WRITE: Sourcing<br/>READ: extraction-group, audit-group<br/>DS-P0, DS-P1"]:::topic
+    EXTRACT["Extraction Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: extraction-group<br/>Pods share DS partitions<br/>Produces DocumentExtracted"]:::both
+    MONGO[("MongoDB<br/><b>Captured financial data</b><br/>Manual + AI-extracted fields<br/>Confidence and document content<br/>Validated financial values")]:::store
+    DE["TOPIC: document-extracted<br/>Retention: 30 days<br/>WRITE: Extraction<br/>READ: quality-group, audit-group<br/>DE-P0, DE-P1"]:::topic
+    QUALITY["Quality / Rules Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: quality-group<br/>Validates fields and confidence<br/>Produces QualityChecked"]:::both
+    PG[("PostgreSQL<br/>Rules, validations,<br/>templates and taxonomies")]:::store
+    QC["TOPIC: quality-checked<br/>Retention: 30 days<br/>WRITE: Quality<br/>READ: workflow-group, audit-group<br/>QC-P0, QC-P1"]:::topic
+    AUDIT["Audit Projection<br/><b>CONSUMER</b><br/>Group: audit-group"]:::consumer
 
-    DISSEMINATION["Dissemination Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: dissemination-group<br/>Consumes: DocumentApproved<br/>Loads destination and format configuration<br/>Publishes approved financial data<br/>Produces: DocumentPublished or DeliveryFailed"]:::both
+    SOURCES --> SOURCE
+    SOURCE -->|"DocumentSourced"| DS
+    DS -->|"extraction-group"| EXTRACT
+    DS -->|"fan-out"| AUDIT
+    EXTRACT <-->|"extract fields"| AI
+    L1 -->|"manual capture/correction"| EXTRACT
+    EXTRACT -->|"store financial data"| MONGO
+    EXTRACT -->|"DocumentExtracted"| DE
+    DE -->|"quality-group"| QUALITY
+    DE -->|"fan-out"| AUDIT
+    PG -->|"rules/templates/taxonomies"| QUALITY
+    MONGO -->|"captured fields"| QUALITY
+    QUALITY -->|"store validated values"| MONGO
+    QUALITY -->|"QualityChecked"| QC
+    QC -->|"fan-out"| AUDIT
 
-    PUBLISHED["TOPIC: document-published<br/>Meaning: approved data was disseminated<br/>Retention: 7-year audit/archive policy<br/>WRITE: Dissemination Service<br/>READ: audit-group, monitoring consumers<br/>Permission: dissemination and audit<br/><br/>DP-P0: offsets 0,1...<br/>DP-P1: offsets 0,1..."]:::topic
+    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
+    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
+```
 
-    AUDIT["Audit Projection Service<br/><b>CONSUMER</b><br/>Group: audit-group<br/>Consumes lifecycle events independently<br/>Builds searchable audit and lineage records<br/>Does not control the business workflow"]:::consumer
+#### DCP diagram 3: Review, approval, dissemination and audit
 
-    MONGO[("MongoDB<br/><b>Captured financial data</b><br/>Manual entries and corrections<br/>AI-extracted fields and confidence<br/>Semi-structured document content<br/>Validated and approved financial values")]:::store
+```mermaid
+flowchart LR
+    L1["👤 L1 User<br/>Review and correction"]:::actor
+    L2["👤 L2 User<br/>Approve, reject, rework"]:::actor
+    TARGET["🏢 Downstream Consumers<br/>APIs, Kafka, S3, reports, email"]:::actor
 
-    POSTGRES[("PostgreSQL<br/><b>Platform and system metadata</b><br/>Users, roles and assignments<br/>Audit metadata and workflow state<br/>Rules and validations<br/>Templates and versions<br/>Taxonomies and mappings<br/>Downstream dissemination configuration")]:::store
+    QC["TOPIC: quality-checked<br/>QC-P0, QC-P1"]:::topic
+    REVIEW["Workflow / Approval Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: workflow-group<br/>Tasks, timers, escalation, rework<br/>Produces DocumentApproved"]:::both
+    PG[("PostgreSQL<br/>Users, roles, assignments,<br/>workflow state, decisions,<br/>audit metadata and delivery config")]:::store
+    MONGO[("MongoDB<br/>Captured, corrected,<br/>validated and approved<br/>financial data")]:::store
+    APPROVED["TOPIC: document-approved<br/>Retention: 7-year archive policy<br/>WRITE: Approval<br/>READ: dissemination-group, audit-group<br/>DA-P0, DA-P1"]:::topic
+    DISSEM["Dissemination Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: dissemination-group<br/>Produces DocumentPublished"]:::both
+    PUBLISHED["TOPIC: document-published<br/>Retention: 7-year archive policy<br/>WRITE: Dissemination<br/>READ: audit-group, monitoring<br/>DP-P0, DP-P1"]:::topic
+    AUDIT["Audit Projection Service<br/><b>CONSUMER</b><br/>Group: audit-group<br/>Consumes lifecycle events"]:::consumer
+    SEARCH[("Search / Reporting Projection<br/>Fast audit and document queries")]:::store
 
-    SEARCH[("Search / Reporting Projection<br/>Optional Elasticsearch or read model<br/>Fast document and audit queries")]:::store
-
-    ADMIN -->|"configures platform"| CONFIG
-    CONFIG -->|"stores metadata and configuration"| POSTGRES
-    CONFIG -->|"publishes EVENT: ConfigurationChanged"| CFG
-    CFG -->|"refresh rules/templates/taxonomies"| QUALITY
-    CFG -->|"refresh destination configuration"| DISSEMINATION
-    CFG -->|"audit-group consumes"| AUDIT
-
-    SOURCES -->|"documents and source payloads"| SOURCING
-    SOURCING -->|"publishes EVENT: DocumentSourced(documentId)"| DS
-
-    DS -->|"extraction-group consumes"| EXTRACTION
-    DS -->|"audit-group also consumes"| AUDIT
-
-    EXTRACTION -->|"calls primary/fallback AI"| AI
-    AI -->|"extracted fields + confidence"| EXTRACTION
-    L1 -->|"manual capture / correction when required"| EXTRACTION
-    EXTRACTION -->|"stores captured financial data"| MONGO
-    EXTRACTION -->|"publishes EVENT: DocumentExtracted(documentId)"| DE
-
-    DE -->|"quality-group consumes"| QUALITY
-    DE -->|"audit-group also consumes"| AUDIT
-    POSTGRES -->|"rules, templates and taxonomies"| QUALITY
-    MONGO -->|"captured financial fields"| QUALITY
-    QUALITY -->|"stores validated financial values"| MONGO
-    QUALITY -->|"publishes EVENT: QualityChecked(documentId)"| QC
-
-    QC -->|"workflow-group consumes"| REVIEW
-    QC -->|"audit-group also consumes"| AUDIT
-    POSTGRES -->|"users, roles, assignments and workflow config"| REVIEW
-    L1 -->|"review, correct, submit or request help"| REVIEW
-    L2 -->|"approve, reject or request rework"| REVIEW
-    REVIEW -->|"stores workflow state, decisions and audit metadata"| POSTGRES
-    REVIEW -->|"stores approved/corrected financial values"| MONGO
-    REVIEW -->|"publishes EVENT: DocumentApproved(documentId)"| APPROVED
-
-    APPROVED -->|"dissemination-group consumes"| DISSEMINATION
-    APPROVED -->|"audit-group also consumes"| AUDIT
-    POSTGRES -->|"destination, schedule and format configuration"| DISSEMINATION
-    MONGO -->|"approved financial data"| DISSEMINATION
-    DISSEMINATION -->|"API, Kafka, S3, report or email delivery"| DOWNSTREAM
-    DISSEMINATION -->|"publishes EVENT: DocumentPublished(documentId)"| PUBLISHED
-
-    PUBLISHED -->|"audit-group consumes"| AUDIT
-    AUDIT -->|"writes audit metadata and lineage"| POSTGRES
-    AUDIT -->|"updates fast query projection"| SEARCH
+    QC -->|"workflow-group"| REVIEW
+    L1 -->|"review/correct/submit"| REVIEW
+    L2 -->|"approve/reject/rework"| REVIEW
+    PG -->|"users, roles, workflow config"| REVIEW
+    REVIEW -->|"workflow state + decision metadata"| PG
+    REVIEW -->|"approved/corrected financial values"| MONGO
+    REVIEW -->|"DocumentApproved"| APPROVED
+    APPROVED -->|"dissemination-group"| DISSEM
+    APPROVED -->|"fan-out"| AUDIT
+    PG -->|"destination/schedule/format config"| DISSEM
+    MONGO -->|"approved financial data"| DISSEM
+    DISSEM -->|"deliver data"| TARGET
+    DISSEM -->|"DocumentPublished"| PUBLISHED
+    PUBLISHED -->|"audit-group"| AUDIT
+    AUDIT -->|"audit metadata + lineage"| PG
+    AUDIT -->|"fast query projection"| SEARCH
 
     classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
     classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
