@@ -417,10 +417,10 @@ CUSTOMER
 ┌──────────────────────────────────────────────┐
 │ ORDER SERVICE                               │
 │ Kafka role: PRODUCER                        │
-│ Produces: OrderPlaced                       │
+│ Produces EVENT: OrderPlaced                 │
 │ Write permission: pizza-orders              │
 └──────────────────────────────────────────────┘
-   │ publishes OrderPlaced(orderId)
+   │ publishes EVENT: OrderPlaced(orderId)
    ▼
 ┌────────────────────────────────────────────────┐
 │ TOPIC: pizza-orders                            │
@@ -446,12 +446,15 @@ CUSTOMER
 │ Consumer/Pod A → PO-P0     │   │ Consumer/Pod A → PO-P0     │
 │ Consumer/Pod B → PO-P1     │   │ Consumer/Pod B → PO-P1     │
 │                            │   │                            │
-│ Consumes: OrderPlaced      │   │ Consumes: OrderPlaced      │
+│ Consumes EVENT:            │   │ Consumes EVENT:            │
+│ OrderPlaced                │   │ OrderPlaced                │
 │ Business job: Prepare      │   │ Business job: Collect pay  │
-│ Produces: PizzaPrepared    │   │ Produces: PaymentCompleted │
+│ Produces EVENT:            │   │ Produces EVENT:            │
+│ PizzaPrepared              │   │ PaymentCompleted           │
 └────────────────────────────┘   └────────────────────────────┘
              │                              │
-             │ publishes PizzaPrepared      │ publishes PaymentCompleted
+             │ publishes EVENT:             │ publishes EVENT:
+             │ PizzaPrepared                │ PaymentCompleted
              ▼                              ▼
 ┌────────────────────────────┐   ┌────────────────────────────┐
 │ TOPIC: pizza-prepared      │   │ TOPIC: payment-completed   │
@@ -474,7 +477,15 @@ CUSTOMER
              │                              │    │ Consumer A → PC-P0         │
              │                              │    │ Consumer B → PC-P1         │
              │                              │    │ Job: Record revenue        │
+             │                              │    │ Output: Write billing      │
+             │                              │    │ ledger database            │
              │                              │    └────────────────────────────┘
+             │                              │                 │
+             │                              │                 ▼
+             │                              │       ┌──────────────────────┐
+             │                              │       │ BILLING LEDGER DB    │
+             │                              │       │ Payment/order record │
+             │                              │       └──────────────────────┘
              │                              │
              └──────────────┬───────────────┘
                             ▼
@@ -492,16 +503,26 @@ CUSTOMER
               │ from both subscribed topics    │
               │                                │
               │ Consumes:                      │
-              │ - pizza-prepared partitions    │
-              │ - payment-completed partitions │
+              │ - EVENT PizzaPrepared          │
+              │   from pizza-prepared          │
+              │ - EVENT PaymentCompleted       │
+              │   from payment-completed       │
               │                                │
-              │ Job: Match by orderId and wait │
-              │ until PREPARED + PAID          │
-              │ State store tracks both events │
-              │ Produces: DeliveryRequested    │
+              │ Stateful JOIN by orderId:       │
+              │ 1. Store first event received  │
+              │ 2. Wait for matching event     │
+              │ 3. When both exist, join       │
+              │                                │
+              │ State store:                   │
+              │ A → PREPARED=true, PAID=false  │
+              │ B → PREPARED=true, PAID=true   │
+              │                                │
+              │ Produces EVENT:                │
+              │ DeliveryRequested              │
               └────────────────────────────────┘
                             │
-                            │ publishes DeliveryRequested
+                            │ publishes EVENT:
+                            │ DeliveryRequested
                             ▼
 ┌────────────────────────────────────────────────┐
 │ TOPIC: delivery-requested                      │
@@ -530,19 +551,19 @@ Yes, a service can act as both a consumer and a producer:
 
 ```text
 Kitchen Service:
-Consumes OrderPlaced
+Consumes OrderPlaced event
 → Performs the kitchen business operation
-→ Produces PizzaPrepared
+→ Produces PizzaPrepared event
 
 Payment Service:
-Consumes OrderPlaced
+Consumes OrderPlaced event
 → Performs the payment business operation
-→ Produces PaymentCompleted
+→ Produces PaymentCompleted event
 
 Delivery Coordinator:
-Consumes PizzaPrepared and PaymentCompleted
+Consumes PizzaPrepared and PaymentCompleted events
 → Correlates them by orderId
-→ Produces DeliveryRequested
+→ Produces DeliveryRequested event
 ```
 
 The terms describe the service's role for a particular interaction:
@@ -552,6 +573,99 @@ Reads from a Kafka topic  → Consumer
 Writes to a Kafka topic   → Producer
 Does both                 → Consumer + Producer
 ```
+
+### How does the Delivery Coordinator wait for two events?
+
+`PizzaPrepared` and `PaymentCompleted` usually arrive at different times. The coordinator does not block a thread while waiting. It stores partial state by `orderId`.
+
+#### Payment arrives first
+
+```text
+PaymentCompleted(orderId=A)
+        ↓
+Store:
+A → PAID=true, PREPARED=false
+        ↓
+No output yet
+```
+
+Later:
+
+```text
+PizzaPrepared(orderId=A)
+        ↓
+Update:
+A → PAID=true, PREPARED=true
+        ↓
+Both conditions satisfied
+        ↓
+Publish DeliveryRequested(orderId=A)
+```
+
+#### Pizza preparation arrives first
+
+```text
+PizzaPrepared(orderId=B)
+        ↓
+Store:
+B → PAID=false, PREPARED=true
+        ↓
+No output yet
+
+PaymentCompleted(orderId=B) arrives later
+        ↓
+B → PAID=true, PREPARED=true
+        ↓
+Publish DeliveryRequested(orderId=B)
+```
+
+This is a stateful event join, similar to a fork/join:
+
+```text
+OrderPlaced
+   ├── Kitchen path → PizzaPrepared ───┐
+   └── Payment path → PaymentCompleted ├── JOIN → DeliveryRequested
+                                      ┘
+```
+
+It can be implemented with:
+
+- Kafka Streams state stores and a stream/table join
+- A coordinator service with PostgreSQL, Redis or another durable state store
+- A workflow engine when the process also requires timers, cancellation and compensation
+
+Production handling should also include:
+
+- A unique `orderId` correlation key
+- Idempotency so duplicate events do not trigger duplicate delivery
+- A timeout, such as “payment completed but pizza not prepared within 30 minutes”
+- Recovery or compensation, such as refunding a payment after permanent kitchen failure
+- Cleanup of completed or expired join state
+
+### Why does Billing Service have no outgoing Kafka event?
+
+Billing's required business outcome in this example is to record revenue:
+
+```text
+PaymentCompleted event
+        ↓
+Billing Service
+        ↓
+Billing Ledger database
+```
+
+That can be a terminal consumer, so an outgoing Kafka event is not mandatory.
+
+If another business process needs confirmation that the ledger was updated, Billing can also act as a producer:
+
+```text
+Billing Service
+→ Write ledger database
+→ Publish RevenueRecorded event
+→ revenue-recorded topic
+```
+
+Do not publish an event merely to make every box symmetrical. Publish `RevenueRecorded` only when it is a meaningful fact required by another consumer, audit process or workflow.
 
 The partition does not represent cooking, payment or delivery. Each topic still has partitions only for ordering and parallelism.
 
