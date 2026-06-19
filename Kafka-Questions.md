@@ -44,7 +44,8 @@ DCP receives financial documents from S3, email, APIs and other sources. It extr
 32. [Kafka or RabbitMQ: how do you choose?](#32-kafka-or-rabbitmq-how-do-you-choose)
 33. [Common Kafka failure scenarios in DCP](#33-common-kafka-failure-scenarios-in-dcp)
 34. [Architect-level DCP Kafka design](#34-architect-level-dcp-kafka-design)
-35. [Architect interview summary](#35-architect-interview-summary)
+35. [Why are ordering and durability crucial in DCP?](#35-why-are-ordering-and-durability-crucial-in-dcp)
+36. [Architect interview summary](#36-architect-interview-summary)
 
 ---
 
@@ -98,7 +99,7 @@ flowchart TB
 
         PO["TOPIC: pizza-orders<br/>Retention: 7 days<br/>WRITE: Order Service<br/>READ: kitchen-group, payment-group<br/>PO-P0, PO-P1"]:::topic
         PP["TOPIC: pizza-prepared<br/>Retention: 3 days<br/>WRITE: Kitchen Service<br/>READ: delivery-coordinator-group<br/>PP-P0, PP-P1"]:::topic
-        PC["TOPIC: payment-completed<br/>Retention: 7-year audit<br/>WRITE: Payment Service<br/>READ: billing-group, delivery-coordinator-group<br/>PC-P0, PC-P1"]:::topic
+        PC["TOPIC: payment-completed<br/>Retention: operational replay window<br/>WRITE: Payment Service<br/>READ: billing-group, delivery-coordinator-group<br/>PC-P0, PC-P1"]:::topic
         DR["TOPIC: delivery-requested<br/>Retention: 3 days<br/>WRITE: Delivery Coordinator<br/>READ: driver-group<br/>DR-P0, DR-P1"]:::topic
 
         B1 -.->|"hosts leaders / replicas"| PO
@@ -307,11 +308,12 @@ flowchart LR
     REVIEW["Workflow / Approval Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: workflow-group<br/>Tasks, timers, escalation, rework<br/>Produces DocumentApproved"]:::both
     PG[("PostgreSQL<br/>Users, roles, assignments,<br/>workflow state, decisions,<br/>audit metadata and delivery config")]:::store
     MONGO[("MongoDB<br/>Captured, corrected,<br/>validated and approved<br/>financial data")]:::store
-    APPROVED["TOPIC: document-approved<br/>Retention: 7-year archive policy<br/>WRITE: Approval<br/>READ: dissemination-group, audit-group<br/>DA-P0, DA-P1"]:::topic
+    APPROVED["TOPIC: document-approved<br/>Retention: operational replay window, e.g. 30–90 days<br/>WRITE: Approval<br/>READ: dissemination-group, audit-group<br/>DA-P0, DA-P1"]:::topic
     DISSEM["Dissemination Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: dissemination-group<br/>Produces DocumentPublished"]:::both
-    PUBLISHED["TOPIC: document-published<br/>Retention: 7-year archive policy<br/>WRITE: Dissemination<br/>READ: audit-group, monitoring<br/>DP-P0, DP-P1"]:::topic
+    PUBLISHED["TOPIC: document-published<br/>Retention: operational replay window, e.g. 30–90 days<br/>WRITE: Dissemination<br/>READ: audit-group, monitoring<br/>DP-P0, DP-P1"]:::topic
     AUDIT["Audit Projection Service<br/><b>CONSUMER</b><br/>Group: audit-group<br/>Consumes lifecycle events"]:::consumer
     SEARCH[("Search / Reporting Projection<br/>Fast audit and document queries")]:::store
+    ARCHIVE[("Immutable Compliance Archive<br/>Optional WORM / Object Lock storage<br/>Long-term tamper-resistant evidence")]:::store
 
     QC -->|"workflow-group"| REVIEW
     L1 -->|"review/correct/submit"| REVIEW
@@ -329,6 +331,7 @@ flowchart LR
     PUBLISHED -->|"audit-group"| AUDIT
     AUDIT -->|"audit metadata + lineage"| PG
     AUDIT -->|"fast query projection"| SEARCH
+    AUDIT -->|"archive-outbox → immutable copy"| ARCHIVE
 
     classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
     classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
@@ -2660,7 +2663,392 @@ document-published
 
 ---
 
-## 35. Architect interview summary
+## 35. Why are ordering and durability crucial in DCP?
+
+### Ordering: keep one document's lifecycle valid
+
+A financial document should move through a valid sequence:
+
+```text
+DocumentSourced
+→ DocumentExtracted
+→ QualityChecked
+→ DocumentApproved
+→ DocumentPublished
+```
+
+If events are applied in the wrong logical order, DCP could:
+
+- Approve data before validation completes.
+- Disseminate data before approval.
+- Let an old extraction overwrite a reviewer correction.
+- Show an older status after a newer status.
+- Produce a confusing or incorrect audit history.
+
+#### How DCP preserves order
+
+DCP uses `documentId` as the Kafka record key:
+
+```text
+Key = DOC-123
+```
+
+Events with that key are routed to the same partition for a given topic:
+
+```text
+Partition:
+Offset 100 → DOC-123 event
+Offset 101 → DOC-123 next event
+Offset 102 → DOC-123 next event
+```
+
+Kafka guarantees order inside one partition, not across the entire cluster.
+
+DCP does not need global ordering between unrelated documents:
+
+```text
+DOC-123 may finish before or after DOC-456.
+```
+
+It needs valid ordering for each document.
+
+#### Partition ordering is not enough
+
+DCP lifecycle stages use multiple topics, and Kafka does not guarantee ordering across topics. Events should also contain:
+
+```json
+{
+  "documentId": "DOC-123",
+  "version": 7,
+  "eventType": "DocumentApproved"
+}
+```
+
+Consumers should combine:
+
+```text
+documentId partition key
++ event version
++ valid state-transition checks
++ idempotency
+```
+
+Example:
+
+```text
+Current document version = 7
+Incoming event version   = 6
+→ Ignore or reject the stale event
+```
+
+### Durability: accepted documents and decisions must not disappear
+
+Suppose Sourcing publishes:
+
+```text
+DocumentSourced(DOC-123)
+```
+
+Extraction Service is temporarily unavailable:
+
+```text
+Sourcing → Kafka ✅
+Extraction unavailable ❌
+```
+
+Kafka retains the event. When Extraction restarts, it continues processing.
+
+Without durability, DCP could lose:
+
+- An uploaded document
+- An approval decision
+- A reviewer correction
+- A publication request
+- Audit evidence
+- Financial data expected by downstream products
+
+#### Broker replication
+
+A critical partition is copied across brokers:
+
+```text
+DS-P0
+├── Broker 1: Leader
+├── Broker 2: Follower replica
+└── Broker 3: Follower replica
+```
+
+If Broker 1 fails, an in-sync follower can become leader.
+
+A common DCP baseline is:
+
+```text
+Replication factor = 3
+min.insync.replicas = 2
+acks = all
+```
+
+Replication protects against broker failure. It does not solve every possible loss scenario.
+
+#### Transactional outbox protects the database-to-Kafka boundary
+
+This can still happen:
+
+```text
+Save document metadata in PostgreSQL ✅
+Crash before publishing DocumentSourced ❌
+```
+
+Kafka cannot retain an event it never received.
+
+Use one local database transaction:
+
+```text
+BEGIN
+
+Save document metadata
+Save DocumentSourced in outbox
+
+COMMIT
+```
+
+An outbox publisher later sends the event to Kafka. Consumers remain idempotent because the publisher may retry.
+
+### Is a broker the Kafka control plane?
+
+No. A broker is primarily a data-plane server:
+
+```text
+Producer → Broker → Consumer
+```
+
+A broker:
+
+- Stores partition records on disk.
+- Accepts writes for partitions it leads.
+- Serves consumer reads.
+- Replicates records to other brokers.
+
+Kafka's KRaft controllers provide the control plane:
+
+- Track cluster metadata and broker membership.
+- Decide partition leaders.
+- Manage replica assignments.
+- Elect a new leader after failure.
+
+```text
+Controllers decide:
+“Broker 1 leads DS-P0.”
+
+Brokers perform:
+“Store and serve DS-P0 records.”
+```
+
+For local development, one process may perform both roles. Larger production deployments can use dedicated controller and broker processes.
+
+### How many brokers should a cluster have?
+
+There is no universal number.
+
+#### Production starting point
+
+A common baseline is three brokers across failure zones:
+
+```text
+Broker 1 → Zone A
+Broker 2 → Zone B
+Broker 3 → Zone C
+```
+
+This supports replication factor 3 and tolerance of one broker failure.
+
+#### Storage sizing
+
+Estimate:
+
+```text
+Incoming data per day
+× Kafka retention days
+× replication factor
++ free-space headroom
+```
+
+Example:
+
+```text
+100 GB/day × 7 days × replication factor 3
+= 2.1 TB before operational headroom
+```
+
+#### Throughput and recovery sizing
+
+Add brokers when measured capacity shows:
+
+- Disk or network saturation
+- High broker request latency
+- Too many partitions per broker
+- Insufficient retained storage
+- Slow broker recovery
+- Uneven partition-leader load
+
+More consumers do not automatically require more brokers. Consumer parallelism is mainly controlled by topic partitions. Brokers provide storage, network capacity and availability.
+
+For the stated DCP workload, start with three brokers and scale using measured storage, ingress, egress, partition density and recovery requirements.
+
+### Does an application have only one Kafka cluster?
+
+Not necessarily. A Kafka cluster is usually a platform resource, not one broker set per service.
+
+At minimum, isolate environments:
+
+```text
+Development cluster
+Test / UAT cluster
+Production cluster
+```
+
+DCP may also have:
+
+```text
+Primary production cluster
+→ replicated to a disaster-recovery cluster
+```
+
+A production cluster may be shared by applications or dedicated to DCP.
+
+Use a dedicated DCP cluster when financial-data isolation, traffic, availability, retention, ownership or failure-blast-radius requirements justify the cost.
+
+### Do Kitchen, Payment and Delivery need separate brokers?
+
+No. The same cluster's brokers normally serve all business jobs:
+
+```text
+Kafka cluster
+├── Broker 1
+├── Broker 2
+└── Broker 3
+
+Topics:
+├── pizza-orders
+├── pizza-prepared
+├── payment-completed
+└── delivery-requested
+```
+
+Business isolation is provided by:
+
+- Topics
+- Consumer groups
+- ACLs and service accounts
+- Quotas
+- Retention policies
+
+Kitchen Service may consume one partition from Broker 1 and produce to another partition led by Broker 2:
+
+```text
+Consume PO-P0:
+Broker 1 → Kitchen Pod A
+
+Produce PP-P0:
+Kitchen Pod A → Broker 2
+```
+
+Kafka clients discover the current leader broker automatically through cluster metadata.
+
+Separate clusters—not dedicated individual brokers—are considered when strong security, compliance, workload or regional isolation is required.
+
+### Kafka retention versus long-term audit storage
+
+Kafka does not need to be DCP's long-term audit database.
+
+The recommended responsibility split is:
+
+```text
+Lifecycle event
+      ↓
+Kafka
+      ↓
+Audit Service
+      ├── PostgreSQL audit tables
+      └── Optional immutable compliance archive
+```
+
+#### Kafka
+
+Kafka provides:
+
+- Event delivery
+- Temporary buffering
+- Operational replay
+- Recovery after consumer downtime
+- Rebuilding projections within the retained window
+
+Kafka retention might be 30–90 days, based on operational recovery requirements.
+
+#### PostgreSQL
+
+The Audit Service writes searchable audit metadata:
+
+```text
+Who approved DOC-123?
+When was it approved?
+Which values changed?
+Which event and correlation ID caused the change?
+```
+
+This matches DCP's data ownership:
+
+```text
+PostgreSQL
+→ users, roles, workflow state, audit metadata,
+  rules, validations, templates, taxonomies and configs
+```
+
+#### Optional immutable object storage
+
+If compliance policy requires tamper-resistant multi-year evidence, the Audit Service can archive an immutable copy using WORM/Object Lock storage:
+
+```text
+Write once
+→ Cannot be changed or deleted during the retention period
+```
+
+This proves that an audit record has not been altered after creation.
+
+Long-term retention exists because of business, legal or regulatory requirements—not because Kafka requires it.
+
+#### Reliable audit archive flow
+
+Avoid two unrelated writes:
+
+```text
+Write PostgreSQL audit ✅
+Crash before archive write ❌
+```
+
+A safer flow is:
+
+```text
+Audit Service consumes Kafka event
+          ↓
+One PostgreSQL transaction:
+1. Insert searchable audit record
+2. Insert archive-outbox record
+          ↓
+Archive Publisher retries until successful
+          ↓
+Immutable object storage
+```
+
+Kafka may delete the original lifecycle event after its operational replay period. PostgreSQL audit records and any required immutable archive remain according to business policy.
+
+### Interview-ready answer
+
+> Ordering is crucial in DCP because each document must move through sourcing, extraction, validation, approval and dissemination in a valid sequence. I combine a `documentId` partition key with versions, state-transition validation and idempotency. Durability is crucial because losing a document or approval event creates missing financial data and an incomplete audit trail. I use replicated brokers, durable acknowledgements and transactional outbox. Brokers are data-plane servers; KRaft controllers manage the control plane. I would start production with three brokers across failure zones and scale from measured storage and throughput. Business services share the broker cluster through separate topics and consumer groups. Kafka retains events for operational replay, while Audit Service writes searchable records to PostgreSQL and optionally archives immutable compliance copies when required.
+
+---
+
+## 36. Architect interview summary
 
 > For DCP, Kafka decouples high-volume sourcing from slower AI extraction and provides a durable buffer during traffic spikes. I partition document lifecycle topics by `documentId` to preserve per-document ordering and scale extraction through competing consumers. I prefer at-least-once delivery with idempotent consumers because losing a financial document is worse than safely detecting a duplicate. Critical producers use durable acknowledgements and idempotence, while transactional outbox prevents database updates from being committed without their events. Consumer lag and oldest-message age drive operational alerts and controlled autoscaling. Temporary failures use bounded retry with backoff; permanent failures move to manual handling or a dead-letter topic. Schema compatibility, replication, security, replay and disaster recovery are treated as business reliability concerns, not only Kafka configuration.
 
