@@ -4,7 +4,85 @@ This guide explains Kafka concepts in simple language and relates each concept t
 
 DCP receives financial documents from S3, email, APIs and other sources. It extracts data using AI providers, validates the result, routes uncertain documents for L1/L2 review and disseminates approved data to downstream systems.
 
+## Start here: How do Kafka producers, topics, partitions and consumers work together?
+
+### Diagram legend
+
+```mermaid
+flowchart LR
+    L1["Human / external actor"]:::actor
+    L2["Producer-only service"]:::producer
+    L3["Consumer-only service"]:::consumer
+    L4["Consumer + producer service"]:::both
+    L5["Kafka topic"]:::topic
+    L6[("Database / state store")]:::store
+
+    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
+    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
+```
+
+```mermaid
+flowchart TB
+    CUSTOMER["👤 Customer<br/>Places pizza order"]:::actor
+    ORDER["Order Service<br/><b>PRODUCER</b><br/>Produces event: OrderPlaced"]:::producer
+    PO["TOPIC: pizza-orders<br/>Meaning: order was placed<br/>Retention: 7 days<br/>WRITE: Order Service<br/>READ: kitchen-group, payment-group<br/><br/>PO-P0: offsets 0,1...<br/>PO-P1: offsets 0,1..."]:::topic
+    KITCHEN["Kitchen Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: kitchen-group<br/>Pod A → PO-P0<br/>Pod B → PO-P1<br/>Consumes: OrderPlaced<br/>Produces: PizzaPrepared"]:::both
+    PAYMENT["Payment Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: payment-group<br/>Pod A → PO-P0<br/>Pod B → PO-P1<br/>Consumes: OrderPlaced<br/>Produces: PaymentCompleted"]:::both
+    STAFF["👩‍🍳 Kitchen Staff<br/>Prepare and mark pizza ready"]:::actor
+    PP["TOPIC: pizza-prepared<br/>Meaning: kitchen completed order<br/>Retention: 3 days<br/>WRITE: Kitchen Service<br/>READ: delivery-coordinator-group<br/>Permission: operational<br/><br/>PP-P0: offsets 0,1...<br/>PP-P1: offsets 0,1..."]:::topic
+    PC["TOPIC: payment-completed<br/>Meaning: payment succeeded<br/>Retention: 7-year financial audit<br/>WRITE: Payment Service<br/>READ: billing-group, delivery-coordinator-group<br/>Permission: restricted financial<br/><br/>PC-P0: offsets 0,1...<br/>PC-P1: offsets 0,1..."]:::topic
+    BILLING["Billing Service<br/><b>CONSUMER</b><br/>Group: billing-group<br/>Consumer A → PC-P0<br/>Consumer B → PC-P1<br/>Consumes: PaymentCompleted<br/>Job: record revenue"]:::consumer
+    ACCOUNTANT["🧑‍💼 Accountant<br/>Reviews ledger and reconciles revenue"]:::actor
+    LEDGER[("Billing Ledger DB<br/>Payment and order records")]:::store
+    JOIN["Delivery Coordinator Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: delivery-coordinator-group<br/>Consumer Pods A and B<br/><br/>Consumes PizzaPrepared + PaymentCompleted<br/>Joins by orderId<br/>Stores first-arriving event<br/>Waits asynchronously for matching event<br/>Produces DeliveryRequested when both exist"]:::both
+    JOINSTORE[("Join State Store<br/>orderId → prepared?, paid?<br/>Example A: true / false<br/>Example B: true / true")]:::store
+    DR["TOPIC: delivery-requested<br/>Meaning: order is ready for delivery<br/>Retention: 3 days<br/>WRITE: Delivery Coordinator<br/>READ: driver-group<br/>Permission: delivery operations<br/><br/>DR-P0: offsets 0,1...<br/>DR-P1: offsets 0,1..."]:::topic
+    DRIVER["Driver Assignment Service<br/><b>CONSUMER</b><br/>Group: driver-group<br/>Pod A → DR-P0<br/>Pod B → DR-P1<br/>Consumes: DeliveryRequested<br/>Job: assign delivery partner"]:::consumer
+    PARTNER["🛵 Delivery Partner<br/>Accepts assignment, picks up and delivers"]:::actor
+
+    CUSTOMER -->|"places order"| ORDER
+    ORDER -->|"publishes EVENT: OrderPlaced(orderId)"| PO
+    PO -->|"fan-out to kitchen-group"| KITCHEN
+    PO -->|"fan-out to payment-group"| PAYMENT
+    STAFF -->|"prepares pizza through kitchen workflow"| KITCHEN
+    KITCHEN -->|"publishes EVENT: PizzaPrepared(orderId)"| PP
+    PAYMENT -->|"publishes EVENT: PaymentCompleted(orderId)"| PC
+    PC -->|"billing-group consumes"| BILLING
+    BILLING -->|"writes revenue record"| LEDGER
+    ACCOUNTANT -->|"reviews / reconciles"| LEDGER
+    PP -->|"delivery group receives PizzaPrepared"| JOIN
+    PC -->|"delivery group receives PaymentCompleted"| JOIN
+    JOIN -->|"save partial state; no blocked thread"| JOINSTORE
+    JOINSTORE -->|"both prepared=true and paid=true"| JOIN
+    JOIN -->|"publishes EVENT: DeliveryRequested(orderId)"| DR
+    DR -->|"driver-group consumes"| DRIVER
+    DRIVER -->|"assigns order"| PARTNER
+    PARTNER -->|"delivers order"| CUSTOMER
+
+    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
+    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
+```
+
+The diagram demonstrates:
+
+- A service may be a producer, consumer, or both.
+- A topic represents a business event stream and owns its retention and permissions.
+- Every topic has independent partitions and offsets.
+- Different consumer groups receive the same event independently.
+- Consumers inside one group divide the topic partitions.
+- The Delivery Coordinator performs a stateful asynchronous join instead of blocking a thread.
+
 ## Table of Contents
+
+- [Start here: Kafka components working together](#start-here-how-do-kafka-producers-topics-partitions-and-consumers-work-together)
 
 1. [Why does DCP use Kafka?](#1-why-does-dcp-use-kafka)
 2. [What are brokers, topics, partitions and records?](#2-what-are-brokers-topics-partitions-and-records)
@@ -408,101 +486,7 @@ document-extracted topic
 
 Each group has its own offsets.
 
-### Complete picture in one block
-
-### Diagram legend
-
-```mermaid
-flowchart LR
-    L1["Human / external actor"]:::actor
-    L2["Producer-only service"]:::producer
-    L3["Consumer-only service"]:::consumer
-    L4["Consumer + producer service"]:::both
-    L5["Kafka topic"]:::topic
-    L6[("Database / state store")]:::store
-
-    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
-    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
-    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
-    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
-    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
-    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
-```
-
-```mermaid
-flowchart TB
-    CUSTOMER["👤 Customer<br/>Places pizza order"]:::actor
-
-    ORDER["Order Service<br/><b>PRODUCER</b><br/>Produces event: OrderPlaced"]:::producer
-
-    PO["TOPIC: pizza-orders<br/>Meaning: order was placed<br/>Retention: 7 days<br/>WRITE: Order Service<br/>READ: kitchen-group, payment-group<br/><br/>PO-P0: offsets 0,1...<br/>PO-P1: offsets 0,1..."]:::topic
-
-    KITCHEN["Kitchen Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: kitchen-group<br/>Pod A → PO-P0<br/>Pod B → PO-P1<br/>Consumes: OrderPlaced<br/>Produces: PizzaPrepared"]:::both
-
-    PAYMENT["Payment Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: payment-group<br/>Pod A → PO-P0<br/>Pod B → PO-P1<br/>Consumes: OrderPlaced<br/>Produces: PaymentCompleted"]:::both
-
-    STAFF["👩‍🍳 Kitchen Staff<br/>Prepare and mark pizza ready"]:::actor
-
-    PP["TOPIC: pizza-prepared<br/>Meaning: kitchen completed order<br/>Retention: 3 days<br/>WRITE: Kitchen Service<br/>READ: delivery-coordinator-group<br/>Permission: operational<br/><br/>PP-P0: offsets 0,1...<br/>PP-P1: offsets 0,1..."]:::topic
-
-    PC["TOPIC: payment-completed<br/>Meaning: payment succeeded<br/>Retention: 7-year financial audit<br/>WRITE: Payment Service<br/>READ: billing-group, delivery-coordinator-group<br/>Permission: restricted financial<br/><br/>PC-P0: offsets 0,1...<br/>PC-P1: offsets 0,1..."]:::topic
-
-    BILLING["Billing Service<br/><b>CONSUMER</b><br/>Group: billing-group<br/>Consumer A → PC-P0<br/>Consumer B → PC-P1<br/>Consumes: PaymentCompleted<br/>Job: record revenue"]:::consumer
-
-    ACCOUNTANT["🧑‍💼 Accountant<br/>Reviews ledger and reconciles revenue"]:::actor
-    LEDGER[("Billing Ledger DB<br/>Payment and order records")]:::store
-
-    JOIN["Delivery Coordinator Service<br/><b>CONSUMER + PRODUCER</b><br/>Group: delivery-coordinator-group<br/>Consumer Pods A and B<br/><br/>Consumes PizzaPrepared + PaymentCompleted<br/>Joins by orderId<br/>Stores first-arriving event<br/>Waits asynchronously for matching event<br/>Produces DeliveryRequested when both exist"]:::both
-
-    JOINSTORE[("Join State Store<br/>orderId → prepared?, paid?<br/>Example A: true / false<br/>Example B: true / true")]:::store
-
-    DR["TOPIC: delivery-requested<br/>Meaning: order is ready for delivery<br/>Retention: 3 days<br/>WRITE: Delivery Coordinator<br/>READ: driver-group<br/>Permission: delivery operations<br/><br/>DR-P0: offsets 0,1...<br/>DR-P1: offsets 0,1..."]:::topic
-
-    DRIVER["Driver Assignment Service<br/><b>CONSUMER</b><br/>Group: driver-group<br/>Pod A → DR-P0<br/>Pod B → DR-P1<br/>Consumes: DeliveryRequested<br/>Job: assign delivery partner"]:::consumer
-
-    PARTNER["🛵 Delivery Partner<br/>Accepts assignment, picks up and delivers"]:::actor
-
-    CUSTOMER -->|"places order"| ORDER
-    ORDER -->|"publishes EVENT: OrderPlaced(orderId)"| PO
-
-    PO -->|"fan-out to kitchen-group"| KITCHEN
-    PO -->|"fan-out to payment-group"| PAYMENT
-
-    STAFF -->|"prepares pizza through kitchen workflow"| KITCHEN
-    KITCHEN -->|"publishes EVENT: PizzaPrepared(orderId)"| PP
-    PAYMENT -->|"publishes EVENT: PaymentCompleted(orderId)"| PC
-
-    PC -->|"billing-group consumes"| BILLING
-    BILLING -->|"writes revenue record"| LEDGER
-    ACCOUNTANT -->|"reviews / reconciles"| LEDGER
-
-    PP -->|"delivery group receives PizzaPrepared"| JOIN
-    PC -->|"delivery group receives PaymentCompleted"| JOIN
-
-    JOIN -->|"save partial state; no blocked thread"| JOINSTORE
-    JOINSTORE -->|"both prepared=true and paid=true"| JOIN
-
-    JOIN -->|"publishes EVENT: DeliveryRequested(orderId)"| DR
-    DR -->|"driver-group consumes"| DRIVER
-    DRIVER -->|"assigns order"| PARTNER
-    PARTNER -->|"delivers order"| CUSTOMER
-
-    classDef actor fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:2px;
-    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
-    classDef consumer fill:#DCFCE7,stroke:#16A34A,color:#14532D,stroke-width:2px;
-    classDef both fill:#F3E8FF,stroke:#9333EA,color:#581C87,stroke-width:2px;
-    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
-    classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
-```
-
-Color summary:
-
-- **Blue:** Produces Kafka events but does not consume one in this flow.
-- **Green:** Consumes Kafka events but does not produce another event in this flow.
-- **Purple:** Consumes one or more events and produces a new event.
-- **Yellow:** Kafka topic, including retention, permissions and independent partitions.
-- **Pink:** Database or durable state store.
-- **Gray:** Human or external business actor.
+The complete color-coded component diagram is intentionally placed at the [top of this guide](#start-here-how-do-kafka-producers-topics-partitions-and-consumers-work-together) so it can be understood before the individual concepts below.
 
 Yes, a service can act as both a consumer and a producer:
 
