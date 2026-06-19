@@ -411,31 +411,89 @@ Each group has its own offsets.
 ### Complete picture in one block
 
 ```text
-PRODUCER
-Order Application
-      │ publishes
-      ▼
-TOPIC: pizza-orders
-      │
-      ├── PARTITION 0
-      │     Offset 0 → Order A
-      │     Offset 1 → Order C
-      │
-      └── PARTITION 1
-            Offset 0 → Order B
-            Offset 1 → Order D
+CUSTOMER
+   │ places order
+   ▼
+ORDER APPLICATION — Producer
+   │ publishes OrderPlaced
+   ▼
+┌───────────────────────────────────────────────┐
+│ TOPIC: pizza-orders                          │
+│ Meaning: A customer placed an order          │
+│ Retention: 7 days                            │
+│ Write: Order Application                     │
+│ Read: Kitchen and Payment services           │
+│                                               │
+│ P0: Offset 0 → Order A, Offset 1 → Order C   │
+│ P1: Offset 0 → Order B, Offset 1 → Order D   │
+└───────────────────────────────────────────────┘
+             │                         │
+             ▼                         ▼
+┌────────────────────────┐  ┌────────────────────────┐
+│ KITCHEN GROUP          │  │ PAYMENT GROUP          │
+│ Chef A → P0            │  │ Payment Pod A → P0     │
+│ Chef B → P1            │  │ Payment Pod B → P1     │
+│ Job: Prepare pizzas    │  │ Job: Collect payment   │
+└────────────────────────┘  └────────────────────────┘
+             │                         │
+             │ publishes              │ publishes
+             ▼ PizzaPrepared           ▼ PaymentCompleted
 
-      ┌─────────────────────────┐
-      │ KITCHEN CONSUMER GROUP  │
-      │ Chef A → Partition 0    │
-      │ Chef B → Partition 1    │
-      └─────────────────────────┘
+┌───────────────────────────────────────────────┐
+│ TOPIC: pizza-prepared                        │
+│ Meaning: The kitchen completed an order      │
+│ Retention: 3 days                            │
+│ Write: Kitchen Service                       │
+│ Read: Delivery Coordinator                   │
+└───────────────────────────────────────────────┘
 
-      ┌─────────────────────────┐
-      │ BILLING CONSUMER GROUP  │
-      │ Bill A → Partition 0    │
-      │ Bill B → Partition 1    │
-      └─────────────────────────┘
+┌───────────────────────────────────────────────┐
+│ TOPIC: payment-completed                     │
+│ Meaning: Customer payment was successful     │
+│ Retention: 7 years for financial audit       │
+│ Write: Payment Service                       │
+│ Read: Billing Ledger and Delivery Coordinator│
+│ Access: Restricted financial permissions     │
+└───────────────────────────────────────────────┘
+             │                         │
+             └───────────┬─────────────┘
+                         ▼
+              DELIVERY COORDINATOR
+              Waits for prepared + paid
+                         │
+                         │ publishes DeliveryRequested
+                         ▼
+┌───────────────────────────────────────────────┐
+│ TOPIC: delivery-requested                    │
+│ Meaning: An order is ready for delivery      │
+│ Retention: 3 days                            │
+│ Write: Delivery Coordinator                  │
+│ Read: Driver Assignment Service              │
+│ Processing: Assign a driver and track pickup │
+└───────────────────────────────────────────────┘
+```
+
+The partition does not represent cooking, payment or delivery. Each topic still has partitions only for ordering and parallelism.
+
+```text
+Topic          → Business event meaning and policy boundary
+Partition      → Parallel ordered lane inside that topic
+Consumer group → Business job that processes the topic
+```
+
+Create separate topics when events have different:
+
+- **Business meanings:** `OrderPlaced`, `PaymentCompleted` and `DeliveryRequested`
+- **Retention rules:** Temporary operational events versus seven-year financial records
+- **Permissions:** Kitchen must not read restricted payment details
+- **Processing flows:** Kitchen preparation, financial recording and driver assignment
+
+Use multiple consumer groups on the same topic when several jobs need the same business event:
+
+```text
+payment-completed
+├── billing-ledger group      → Record financial transaction
+└── delivery-coordinator group → Confirm payment before delivery
 ```
 
 ```text
