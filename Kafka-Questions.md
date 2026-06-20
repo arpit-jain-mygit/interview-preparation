@@ -1085,234 +1085,31 @@ Broker 2 becomes the new leader
 
 ---
 
-### Broker Responsibilities: A Deeper Look
+### Broker Responsibilities Beyond the 4 Basic Jobs
 
-A broker does much more than just the 4 jobs above. Here's what a real broker manages:
+**Leader & Follower Roles**
+- Every partition has a leader (accepts writes) and followers (copy data)
+- If leader fails, one follower becomes the new leader
 
-#### **Storage & Log Management**
+**Track Consumer Progress**
+- Broker stores the offset each consumer group has read up to
+- When consumer restarts, it reads from last saved offset
 
-```text
-Each broker stores many partitions (not just one):
+**Delete Old Messages**
+- Deletes messages older than retention time (e.g., 7 days)
+- Runs cleanup automatically
 
-Broker 1
-├── document-sourced P0 (leader)
-├── document-sourced P2 (leader)
-├── document-sourced P4 (follower replica)
-├── document-extracted P0 (follower replica)
-├── document-extracted P3 (leader)
-└── ... (hundreds of partitions)
+**Handle Many Partitions**
+- A broker stores hundreds of partitions (not just one)
+- Manages many producer/consumer connections at once
 
-Each partition = one ordered log file on disk
-Broker manages:
-  • Disk space allocation
-  • Log rotation (old logs archived/deleted per TTL)
-  • Index files for fast offset lookups
-  • Retention policy enforcement (delete old messages)
-```
+**Sync Replicas**
+- Copies data to follower brokers
+- Waits for followers to sync before acking producer (if needed)
 
-#### **Handling Producer Writes**
-
-```text
-When producer sends event:
-
-1. Producer connects to leader broker (via metadata)
-2. Producer sends: "Store this in DS-P0"
-3. Broker:
-   ├─ Writes to disk (append to log)
-   ├─ Waits for replicas to copy (if acks=all)
-   ├─ Handles backpressure (queue is full?)
-   ├─ Tracks producer flow (rate limiting?)
-   └─ Sends ack back to producer
-   
-4. Producer can retry or fail based on ack
-```
-
-#### **Serving Consumer Reads**
-
-```text
-When consumer requests data:
-
-1. Consumer connects to partition leader
-2. Consumer sends: "Give me offset 100-200 from DS-P0"
-3. Broker:
-   ├─ Validates offset exists (not deleted due to TTL)
-   ├─ Reads from disk/memory cache
-   ├─ Handles multiple consumers (A, B, C all reading P0)
-   ├─ Tracks per-consumer position (who's at what offset)
-   ├─ Handles consumer lag monitoring
-   └─ Sends records batch back to consumer
-   
-4. Consumer commits offset (broker stores this)
-```
-
-#### **Leader Election & Rebalancing**
-
-```text
-When a broker fails:
-
-1. Broker 1 goes down
-2. KRaft/Zookeeper detects failure
-3. Broker 2 elected as new leader for partitions
-4. Broker 2:
-   ├─ Assumes leadership role
-   ├─ Becomes source of truth for those partitions
-   ├─ Starts accepting producer writes
-   └─ Triggers consumer rebalancing
-```
-
-#### **Replication Management**
-
-```text
-For each partition where broker is leader:
-
-Broker must:
-  1. Accept writes from producers
-  2. Replicate to all follower brokers
-  3. Track which followers are in-sync (ISR)
-  4. Handle slow replicas (remove from ISR)
-  5. Handle replica failures (add new replica)
-  6. Ensure minimum in-sync replicas before acking
-  
-For each partition where broker is follower:
-
-Broker must:
-  1. Fetch updates from leader (continuous sync)
-  2. Apply changes to local log
-  3. Stay in-sync or remove myself from ISR
-  4. Be ready to become leader if current leader fails
-```
-
-#### **Retention & Cleanup**
-
-```text
-For each partition:
-
-Broker periodically:
-  1. Check TTL: Are messages older than retention.days?
-  2. Delete old messages from disk
-  3. Compact log (if log compaction enabled)
-  4. Update indexes
-  5. Cleanup temp files
-  
-Example:
-  topic: documents, retention: 7 days
-  
-  Broker deletes messages older than 7 days
-  from each partition of this topic
-```
-
-#### **Network & Connection Management**
-
-```text
-Broker manages:
-  1. Accepting TCP connections from producers/consumers
-  2. Tracking active connections
-  3. Handling slow clients (timeouts, buffer limits)
-  4. Handling connection drops/retries
-  5. Inter-broker replication network (broker-to-broker)
-  6. Network flow control (backpressure)
-  
-A busy broker might have:
-  • 1000s of producer connections
-  • 1000s of consumer connections
-  • Replication from 50+ other brokers
-```
-
-#### **Metadata Management**
-
-```text
-Broker tracks:
-  1. Which partitions it hosts (leader and followers)
-  2. ISR (in-sync replicas) for each partition
-  3. Consumer group state (who's consuming what)
-  4. Consumer offsets (where each group is at)
-  5. Broker membership (who's in the cluster)
-  6. Partition assignment (which broker owns which)
-  
-This metadata is:
-  • Stored on disk (durable)
-  • Replicated across brokers
-  • Served to clients on request
-```
-
-#### **Failure Handling & Recovery**
-
-```text
-When broker restarts:
-
-1. Read local log files from disk
-2. Reconstruct partition state
-3. Contact Zookeeper/KRaft for cluster state
-4. Determine: Am I a leader? Follower?
-5. If leader: Start accepting writes
-6. If follower: Start syncing from leaders
-7. Publish metadata: "I'm back, here's what I have"
-8. Wait for consumers/producers to reconnect
-```
-
-#### **Monitoring & Health**
-
-```text
-Broker continuously tracks:
-  1. Disk space usage (running out?)
-  2. Memory usage (GC pauses?)
-  3. Network bandwidth (saturated?)
-  4. CPU usage (processing slow?)
-  5. Replication lag (followers falling behind?)
-  6. Consumer lag (consumers falling behind?)
-  7. Request processing time (slow requests?)
-  8. Error rates (connection failures, timeouts?)
-```
-
----
-
-### Pizza Store Analogy: Broker Responsibilities
-
-```
-Broker = Central Distribution Hub
-
-Responsibilities:
-  📦 Store orders (shelf inventory)
-  ➡️ Accept orders from franchises (producers)
-  ⬅️ Serve orders to restaurants (consumers)
-  🔄 Replicate to backup hubs (failure recovery)
-  🗑️ Delete old orders (retention)
-  👥 Track who's consuming what (offsets)
-  🚑 Elect new hub if one fails (leader election)
-  📊 Monitor queue lengths, traffic, delays
-  
-A busy hub might handle:
-  • 100 franchises sending orders
-  • 500 restaurants picking up orders
-  • Replication to 2 backup hubs
-  • Processing 10,000 orders/minute
-  • Managing 1TB of data
-```
-
----
-
-### DCP Analogy: Broker Responsibilities
-
-```
-Broker = Central Document Processing Hub
-
-Responsibilities:
-  📄 Store documents (document-sourced topic)
-  ➡️ Accept from Sourcing Service (producer)
-  ⬅️ Serve to Extraction/Quality/Audit (consumers)
-  🔄 Replicate to 2 other brokers (3x replication)
-  🗑️ Delete 7+ day old docs (retention)
-  👥 Track extraction/quality/audit progress (offsets)
-  ⚡ Handle leader failover if broker dies
-  📊 Monitor lag, disk usage, replication status
-  
-A busy broker might handle:
-  • Sourcing Service sending 100 docs/sec
-  • Extraction, Quality, Audit all consuming same topic
-  • 1000s of documents in flight
-  • 500GB+ of data
-  • Replication across 3 brokers
-```
+**Manage Metadata**
+- Tracks which broker is leader for each partition
+- Tells clients which broker to connect to
 
 ### Kafka cluster: brokers working together
 
