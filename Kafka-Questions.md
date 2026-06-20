@@ -1085,31 +1085,95 @@ Broker 2 becomes the new leader
 
 ---
 
-### Broker Responsibilities Beyond the 4 Basic Jobs
+### Broker Responsibilities: Beyond the 4 Basic Jobs
 
-**Leader & Follower Roles**
-- Every partition has a leader (accepts writes) and followers (copy data)
-- If leader fails, one follower becomes the new leader
+A broker does much more than just the 4 jobs above. Here are the key responsibilities:
 
-**Track Consumer Progress**
-- Broker stores the offset each consumer group has read up to
-- When consumer restarts, it reads from last saved offset
+#### **Replication & Sync**
 
-**Delete Old Messages**
-- Deletes messages older than retention time (e.g., 7 days)
-- Runs cleanup automatically
+Every partition has a leader and followers. The broker:
+- If leader: accepts writes and sends copies to followers
+- If follower: copies data from leader continuously
+- Tracks which followers are in-sync (ISR)
+- If leader fails, one follower becomes new leader
 
-**Handle Many Partitions**
-- A broker stores hundreds of partitions (not just one)
-- Manages many producer/consumer connections at once
+#### **Offset Tracking (Consumer Progress)**
 
-**Sync Replicas**
-- Copies data to follower brokers
-- Waits for followers to sync before acking producer (if needed)
+The broker remembers where each consumer group is reading from:
+- When consumer commits offset → broker stores it
+- When consumer restarts → it reads from last committed offset
+- Different consumer groups can read same partition at different speeds
 
-**Manage Metadata**
-- Tracks which broker is leader for each partition
-- Tells clients which broker to connect to
+#### **Retention & Cleanup**
+
+The broker automatically manages old messages:
+- Checks: are messages older than retention time (e.g., 7 days)?
+- Deletes old messages from disk
+- Can compact logs instead of deleting (for state topics)
+
+#### **Handle Many Partitions**
+
+A broker stores hundreds of partitions simultaneously:
+```text
+Broker 1
+├── document-sourced P0 (leader)
+├── document-sourced P2 (leader)
+├── document-sourced P4 (follower)
+├── document-extracted P0 (follower)
+├── document-extracted P3 (leader)
+└── ... (many more partitions)
+```
+- Each partition is one separate log file
+- Manages thousands of producer/consumer connections
+
+#### **Metadata Management**
+
+The broker tracks and tells clients:
+- Which broker is leader for each partition
+- Which followers are in-sync
+- Consumer group state and offsets
+- So producers/consumers know who to connect to
+
+#### **Failure Detection & Recovery**
+
+When broker restarts:
+- Reads its local log files from disk
+- Asks cluster: what's my state? (leader or follower?)
+- If leader: starts accepting writes
+- If follower: starts syncing from leader
+- Tells clients: "I'm back online"
+
+---
+
+### Pizza Store Analogy: All Broker Responsibilities
+
+```text
+Hub = Broker
+
+Hub stores orders from many franchises
+Hub serves orders to many restaurants
+Hub tracks where each restaurant is reading from
+Hub deletes old orders after 7 days
+Hub replicates orders to backup hubs
+If hub crashes, backup hub takes over
+Hub has many connections at once
+```
+
+---
+
+### DCP Analogy: All Broker Responsibilities
+
+```text
+Processing Hub = Broker
+
+Hub stores documents from Sourcing Service
+Hub serves docs to Extraction/Quality/Audit consumers
+Hub tracks where each service is reading from
+Hub deletes documents older than 7 days
+Hub replicates documents to 2 backup brokers
+If hub crashes, a backup becomes new leader
+Hub handles all requests from all services simultaneously
+```
 
 ### Kafka cluster: brokers working together
 
