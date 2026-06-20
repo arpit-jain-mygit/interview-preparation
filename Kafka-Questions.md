@@ -2478,16 +2478,169 @@ Key = documentType
 
 If most documents are PDFs, one partition may receive nearly all traffic. This is called a hot partition.
 
+### How Partition Keys Work in Practice
+
+#### Are Partition Key and Document ID the Same?
+
+**YES, in DCP they are the same.**
+
+```python
+# Producer sends:
+producer.send(
+    topic="document-sourced",
+    key="doc-789",  # This is the PARTITION KEY
+    value={...}     # The actual document event
+)
+
+# Kafka does:
+hash("doc-789") % num_partitions = partition_number
+# Result: Message goes to the determined partition
+```
+
+The key serves **two purposes:**
+1. **Partition key** (determines which partition the message goes to)
+2. **Business entity ID** (the document we care about)
+
+#### Can One Partition Hold Multiple Documents?
+
+**YES! One partition holds many documents.**
+
+```
+Example: 10,000 documents, 10 partitions
+
+Using hash(documentId) % 10:
+  Partition 0: ~1000 documents (doc-123, doc-456, doc-789, ...)
+  Partition 1: ~1000 documents (doc-234, doc-567, doc-890, ...)
+  Partition 2: ~1000 documents (...)
+  ...
+  Partition 9: ~1000 documents (...)
+
+Each partition is a LOG of events from MANY different documents
+```
+
+#### If Multiple Documents Are in Same Partition, How Is Interleaving Avoided?
+
+**Answer: It's NOT avoided. Interleaving DOES happen. But it's HANDLED correctly.**
+
+**Partition 5 log (actual sequence):**
+
+```
+Offset 0: DocumentSourced(doc-789) ← doc-789's 1st event
+Offset 1: DocumentSourced(doc-456) ← doc-456's 1st event (INTERLEAVED!)
+Offset 2: DataExtracted(doc-789)   ← doc-789's 2nd event
+Offset 3: DataExtracted(doc-456)   ← doc-456's 2nd event (INTERLEAVED!)
+Offset 4: ValidationPassed(doc-789) ← doc-789's 3rd event
+Offset 5: ValidationPassed(doc-456) ← doc-456's 3rd event
+
+Result: INTERLEAVED at partition level
+        But each document's events are in correct order!
+```
+
+**How consumer handles interleaving:**
+
+**Approach 1: Group by Document ID (Simple)**
+```python
+def process_partition(partition):
+    messages = kafka.fetch_all(partition)
+    
+    # Group by document ID
+    documents = {}
+    for offset, message in messages:
+        doc_id = message.key
+        if doc_id not in documents:
+            documents[doc_id] = []
+        documents[doc_id].append(message)
+    
+    # Process each document in sequence
+    for doc_id in documents:
+        events = documents[doc_id]
+        for event in events:  # Guaranteed in correct order!
+            process_event(event)
+```
+
+**Result:**
+```
+doc-789 events: [Offset 0, Offset 2, Offset 4] ← In correct order!
+doc-456 events: [Offset 1, Offset 3, Offset 5] ← In correct order!
+
+Even though partition has them mixed up,
+each document's events are still sequential!
+```
+
+**Approach 2: State Store per Document (Better)**
+```python
+def process_partition(partition):
+    state = {}  # doc_id → state
+    
+    for offset, message in kafka.fetch(partition):
+        doc_id = message.key
+        event_type = message.type
+        
+        # Initialize state for this document
+        if doc_id not in state:
+            state[doc_id] = {
+                "sourced": False,
+                "extracted": False,
+                "validated": False,
+                "published": False
+            }
+        
+        # Update state based on event
+        if event_type == "DocumentSourced":
+            state[doc_id]["sourced"] = True
+        elif event_type == "DataExtracted":
+            state[doc_id]["extracted"] = True
+            assert state[doc_id]["sourced"]  # Must be sourced first!
+        elif event_type == "ValidationPassed":
+            state[doc_id]["validated"] = True
+            assert state[doc_id]["extracted"]  # Must be extracted first!
+        elif event_type == "DataPublished":
+            state[doc_id]["published"] = True
+            assert state[doc_id]["validated"]  # Must be validated first!
+```
+
+**Result:**
+```
+As messages arrive (interleaved), consumer updates state
+doc-789 state: {sourced: T} → {extracted: T} → {validated: T} → {published: T}
+doc-456 state: {sourced: T} → {extracted: T} → {validated: T} → {published: T}
+
+Each document's state machine works correctly!
+Even though they're interleaved in partition!
+```
+
+#### Key Insight: Ordering WITHIN Document, Not ACROSS Documents
+
+```
+Guarantee: All doc-789 events in same partition?        ✓ YES
+Guarantee: doc-789 events in correct order?              ✓ YES
+Guarantee: doc-789 and doc-456 separated?                ✗ NO
+Guarantee: Consumer sees interleaving?                   ✓ YES
+Guarantee: Consumer can handle interleaving?             ✓ YES (with grouping/state)
+```
+
+**The partition key (`documentId`) guarantees:**
+- All events for one document go to the same partition
+- Events within that document stay in order
+- BUT other documents can be in the same partition
+- Consumer must handle interleaving by grouping by document ID or using state store
+
+**This is why idempotent consumers matter!** If processing fails partway through doc-456, then resumes, it might see events out of sequence if re-reading doc-789's events. The consumer must be idempotent and not break on out-of-order global reads.
+
+---
+
 ### DCP choices
 
 | Event stream | Possible key | Reason |
 |---|---|---|
-| Document lifecycle | `documentId` | Preserve per-document order |
+| Document lifecycle | `documentId` | Preserve per-document order (not per-type!) |
 | Tenant usage events | `tenantId` | Preserve tenant sequence, but watch for large tenants |
 | Dissemination jobs | `destinationId` or `documentId` | Choose based on required ordering |
 | Audit events | `documentId` | Reconstruct one document's history |
 
-The architect must state what ordering is required before selecting the key.
+**The architect must state what ordering is required before selecting the key.**
+
+Key principle: **The partition key should be the entity that needs ordering, not a property of the event.**
 
 ---
 
