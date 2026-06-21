@@ -1895,6 +1895,233 @@ If Broker 1 fails, a follower copy of `DS-P0` on another broker becomes the lead
 
 ---
 
+### Multiple Consumer Groups Reading Same Partition (While Preserving Ordering)
+
+One of Kafka's powerful features: **multiple consumer groups can read the same partition independently, each preserving the event order.**
+
+---
+
+#### 🍕 Pizza Store: Multiple Consumer Groups on Same Partition
+
+Imagine Partition 0 contains events for different orders:
+
+```text
+Partition 0 (pizza-orders topic):
+┌────────────────────────────────────────────────────────┐
+│ Offset 0: OrderPlaced(order-123)                       │
+│ Offset 1: OrderPlaced(order-456)                       │
+│ Offset 2: PaymentReceived(order-123)                   │
+│ Offset 3: OrderPlaced(order-789)                       │
+│ Offset 4: PaymentReceived(order-456)                   │
+│ Offset 5: PizzaReady(order-123)                        │
+│ Offset 6: PaymentReceived(order-789)                   │
+│ Offset 7: PizzaReady(order-456)                        │
+│ Offset 8: Delivered(order-123)                         │
+└────────────────────────────────────────────────────────┘
+```
+
+**Three independent consumer groups reading this SAME partition:**
+
+```text
+┌─ Kitchen Consumer Group ─────────────────────────────────┐
+│ Offset: 0 (starts here)                                  │
+│ Reads: offset 0,1,2,3,4,5,6,7,8 sequentially            │
+│ Sees events in order:                                    │
+│   - order-123 placed → payment received → ready → delivered │
+│   - order-456 placed → payment received → ready          │
+│   - order-789 placed → payment received                  │
+│ Job: "Start cooking when payment confirmed"             │
+│ ✓ Each order's sequence is preserved!                   │
+└─────────────────────────────────────────────────────────┘
+
+┌─ Billing Consumer Group ─────────────────────────────────┐
+│ Offset: 0 (starts independently)                         │
+│ Reads: offset 0,1,2,3,4,5,6,7,8 sequentially            │
+│ Sees events in order:                                    │
+│   - order-123 placed → payment received → delivered     │
+│   - order-456 placed → payment received                 │
+│   - order-789 placed → payment received                 │
+│ Job: "Record revenue when payment received"             │
+│ ✓ Same order as Kitchen group!                          │
+└─────────────────────────────────────────────────────────┘
+
+┌─ Delivery Consumer Group ────────────────────────────────┐
+│ Offset: 0 (starts independently)                         │
+│ Reads: offset 0,1,2,3,4,5,6,7,8 sequentially            │
+│ Sees events in order:                                    │
+│   - order-123 placed → ready → delivered                │
+│   - order-456 placed → ready                            │
+│   - order-789 placed                                    │
+│ Job: "Schedule delivery when pizza is ready"            │
+│ ✓ Same order for all groups!                            │
+└─────────────────────────────────────────────────────────┘
+
+KEY INSIGHT:
+  All three groups read the same partition in the same order
+  BUT each group maintains its own offset independently
+  If Kitchen is at offset 5, Billing can be at offset 7
+  Each still sees events in the correct order
+```
+
+**Why this works:**
+
+```text
+Each consumer group has its own offset pointer:
+
+Time T=0:  Kitchen at offset 0, Billing at offset 0, Delivery at offset 0
+Time T=1:  Kitchen processes offset 0 → moves to offset 1
+           Billing still at offset 0
+           Delivery processes offset 0 → moves to offset 1
+           
+Time T=2:  Kitchen at offset 2, Billing at offset 1, Delivery at offset 2
+           Each group progresses independently
+           But all read the same underlying order!
+```
+
+---
+
+#### 💾 DCP: Multiple Services Reading Same Partition
+
+Document topic with multiple documents:
+
+```text
+Partition 3 (document-sourced topic):
+┌──────────────────────────────────────────────────────────┐
+│ Offset 0: DocumentSourced(doc-789)                       │
+│ Offset 1: DocumentSourced(doc-456)                       │
+│ Offset 2: DocumentSourced(doc-012)                       │
+│ Offset 3: DocumentSourced(doc-789) [duplicate upload]    │
+│ Offset 4: DocumentSourced(doc-456) [resubmitted]         │
+└──────────────────────────────────────────────────────────┘
+
+EACH SERVICE READS THIS SAME PARTITION:
+```
+
+**Extraction Consumer Group:**
+```text
+Offset: 0
+Reads sequentially: offset 0 → 1 → 2 → 3 → 4
+Sees:
+  [doc-789] Extract from doc-789
+  [doc-456] Extract from doc-456
+  [doc-012] Extract from doc-012
+  [doc-789] Re-extract duplicate
+  [doc-456] Re-extract resubmission
+  
+✓ Processing order preserved for each document!
+✓ If doc-789 extracted at offset 0, any state is current
+```
+
+**Quality Consumer Group:**
+```text
+Offset: 0 (starts independently)
+Reads sequentially: offset 0 → 1 → 2 → 3 → 4
+Sees SAME events in SAME order:
+  [doc-789] Validate doc-789
+  [doc-456] Validate doc-456
+  [doc-012] Validate doc-012
+  [doc-789] Validate re-submitted version
+  [doc-456] Validate resubmitted
+  
+✓ Quality checks happen in same sequence as Extraction!
+✓ Can compare "what was extracted" vs "what we're validating"
+```
+
+**Audit Consumer Group:**
+```text
+Offset: 0 (completely independent)
+Reads sequentially: offset 0 → 1 → 2 → 3 → 4
+Sees SAME events in SAME order:
+  All document sourcing events
+  Records audit trail: who uploaded, when, what version
+  
+✓ Audit trail matches extraction and quality timelines!
+```
+
+**Critical insight for DCP:**
+
+```text
+If events were in different partitions:
+
+  Extraction → doc-789 at offset 0 in P3
+  Quality → doc-789 at offset 5 in P7
+  Audit → doc-789 at offset 10 in P5
+  
+Then if Quality is slow and falls behind:
+  Extraction might extract a newer version of doc-789
+  Quality might validate an older version
+  They get out of sync!
+  
+But with same partition:
+  All three groups read from same log
+  Even if Quality is slower, it's just behind
+  When it catches up, it's validating the right version
+  Order is preserved across all groups ✓
+```
+
+---
+
+#### Sample Partition State: Snapshot in Time
+
+```text
+Partition 0 (pizza-orders):
+┌──────────────────────────────────────────────────────────┐
+│ Offset 0: OrderPlaced(order-123)                         │
+│ Offset 1: OrderPlaced(order-456)                         │
+│ Offset 2: PaymentReceived(order-123)        ← Kitchen    │
+│ Offset 3: OrderPlaced(order-789)            ← Billing    │
+│ Offset 4: PaymentReceived(order-456)        ← Delivery   │
+│ Offset 5: PizzaReady(order-123)              (not yet)   │
+│ Offset 6: PaymentReceived(order-789)                     │
+│ Offset 7: PizzaReady(order-456)                          │
+│ Offset 8: Delivered(order-123)                           │
+└──────────────────────────────────────────────────────────┘
+
+AT THIS MOMENT:
+  Kitchen group → committed offset 2 (read up to "payment received")
+  Billing group  → committed offset 3 (read up to "order 789 placed")
+  Delivery group → committed offset 4 (read up to "payment received")
+
+WHAT EACH GROUP SEES:
+  Kitchen: "OK, order-123 paid. Start cooking!"
+           Then it will see offset 5: "order-123 ready"
+           
+  Billing: "Got order-789 placed. Waiting for payment..."
+           Then it will see offset 6: "order-789 paid"
+           
+  Delivery: "order-456 is paid. I'll wait for it to be ready..."
+            Then it will see offset 7: "order-456 ready"
+
+All three groups see the same events in the same order,
+just progressing at different speeds!
+```
+
+---
+
+#### Key Takeaway: Multiple Groups, Same Ordering
+
+```text
+Kafka Partition Ordering Rule:
+
+ONE PARTITION = ONE ORDERED LOG
+
+When multiple consumer groups read the same partition:
+  ✓ All groups see the same events
+  ✓ All groups see them in the same order
+  ✓ Each group maintains independent offset
+  ✓ Each group can progress at own speed
+  
+Result: Perfect fan-out with ordering preserved!
+
+This is why DCP uses:
+  - documentId as partition key → same partition for document lifecycle
+  - Multiple consumer groups → Extraction, Quality, Audit all see same order
+  - Each group independently → can consume at different rates
+  - Ordering guaranteed → because they all read same partition
+```
+
+---
+
 ## 3. What does a Kafka producer do?
 
 A producer publishes events to Kafka:
