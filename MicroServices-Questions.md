@@ -2166,33 +2166,225 @@ Question: Who needs to DECIDE if this can happen?
 
 A compensating transaction reverses or neutralizes the business effect of an earlier completed transaction.
 
-Example:
+It is **not** a technical database rollback (the original transaction already committed). Instead, it is a new business operation that undoes the effect.
+
+### Basic Example
 
 ```text
-Reserve payment   ✅
-Reserve inventory ✅
-Arrange shipping  ❌
+Forward transactions:
+  Reserve payment   ✅
+  Reserve inventory ✅
+  Arrange shipping  ❌
+
+Compensating transactions (undo the committed ones):
+  Release inventory
+  Release or refund payment
 ```
 
-Compensation:
+### Compensating Transactions in Choreography
+
+Choreography handles compensation through **event publishing and idempotent consumers**.
+
+**Pizza Store Example: Order Cancellation**
 
 ```text
-Release inventory
-Release or refund payment
+FORWARD FLOW (Events):
+  OrderPlaced event
+      ↓
+  Kitchen consumes → starts preparing
+      ↓
+  PizzaPrepared event
+      ↓
+  Delivery consumes → schedules delivery
+      ↓
+  Billing consumes → reserves payment
+
+CANCELLATION (Compensation):
+  Manager cancels order (COMMAND to Order Service)
+      ↓
+  Order Service publishes OrderCancelled event
+      ↓
+  Kitchen consumes OrderCancelled
+      └─ Compensating action: stop preparing (if still cooking)
+      └─ Publish PizzaCancelled event
+      
+  Delivery consumes OrderCancelled
+      └─ Compensating action: remove from schedule
+      └─ Publish DeliveryCancelled event
+      
+  Billing consumes OrderCancelled
+      └─ Compensating action: release reserved payment
+      └─ Publish PaymentReleased event
 ```
 
-Common examples:
+**Key characteristic:** Each service listens for cancellation events and performs its own compensation independently. No central orchestrator.
 
-| Forward action | Compensation |
-|---|---|
-| Reserve inventory | Release inventory |
-| Charge payment | Refund payment |
-| Approve document | Revoke approval |
-| Create booking | Cancel booking |
+```python
+# Kitchen Service - handles its own compensation
+def on_order_placed(event):
+    order_id = event["order_id"]
+    start_preparing(order_id)
+    
+def on_order_cancelled(event):
+    order_id = event["order_id"]
+    # Compensating action: stop what we're doing
+    stop_preparing(order_id)
+    producer.send("pizza-events", {
+        "type": "PizzaCancelled",
+        "order_id": order_id
+    })
 
-Compensation is not always a perfect undo. An email cannot be unsent, so the compensation may be to send a correction email.
+# Delivery Service - handles its own compensation
+def on_order_placed(event):
+    order_id = event["order_id"]
+    schedule_delivery(order_id)
+    
+def on_order_cancelled(event):
+    order_id = event["order_id"]
+    # Compensating action: remove from schedule
+    cancel_delivery(order_id)
+    producer.send("pizza-events", {
+        "type": "DeliveryCancelled",
+        "order_id": order_id
+    })
+```
 
-Irreversible operations should generally be placed near the end of the Saga.
+**Problem with choreography compensation:**
+- If Delivery doesn't listen for OrderCancelled event, it won't compensate
+- If compensation events are lost, system is inconsistent
+- Hard to track if all compensation completed
+
+---
+
+### Compensating Transactions in Orchestration
+
+Orchestration handles compensation through **explicit saga management**.
+
+**DCP Example: Document Rejection**
+
+```text
+FORWARD FLOW (Orchestrator directs):
+  Orchestrator sends COMMAND: CreateL1ReviewTask
+      ↓
+  L1 reviews
+      ↓
+  L1 sends rejection decision
+      ↓
+  Orchestrator sends COMMAND: ReworkDocumentExtraction
+      ↓
+  Extraction Service reworks
+      ↓
+  Orchestrator publishes DocumentReworked event
+      ↓
+  Quality Service validates again
+      ↓
+  Quality fails again
+      ↓
+  Orchestrator sends COMMAND: QuarantineDocument
+      └─ Compensating action!
+
+SAGA STATE MACHINE (Orchestrator remembers):
+  State 1: AWAITING_L1_REVIEW
+      ↓ L1 rejects
+  State 2: REWORK_IN_PROGRESS
+      ↓ Extraction completes
+  State 3: AWAITING_QUALITY_CHECK_2
+      ↓ Quality fails again
+  State 4: QUARANTINE (compensation branch)
+      └─ Orchestrator decides next step (manual review, reject, etc.)
+```
+
+**Key characteristic:** Orchestrator explicitly decides compensation. It remembers the saga state and makes intentional compensation decisions.
+
+```python
+# Workflow Orchestrator - manages compensation explicitly
+class DocumentApprovalSaga:
+    def __init__(self, doc_id):
+        self.doc_id = doc_id
+        self.state = "AWAITING_L1_REVIEW"
+        self.compensation_stack = []  # Track what we did
+        
+    def on_l1_rejection(self, rejection_reason):
+        # Forward action was: Create L1 Review Task
+        # Now compensate: Send for rework
+        
+        compensation = {
+            "type": "ReworkDocumentExtraction",
+            "doc_id": self.doc_id,
+            "reason": rejection_reason
+        }
+        self.compensation_stack.append(compensation)
+        
+        result = extraction_service.handle_command(compensation)
+        
+        if result["status"] == "success":
+            self.state = "REWORK_IN_PROGRESS"
+        else:
+            # Rework failed, need to compensate the compensation!
+            self.escalate_to_manual_review()
+            
+    def escalate_to_manual_review(self):
+        # This is compensation for the failed compensation
+        # Orchestrator explicitly handles this
+        
+        notification.send(f"Document {self.doc_id} needs manual review")
+        self.state = "ESCALATED_TO_MANUAL"
+```
+
+**Advantage:** Orchestrator knows exactly what needs to be undone, in what order.
+
+---
+
+### Compensation is Not Always a Perfect Undo
+
+Some operations cannot be truly undone:
+
+| Operation | Compensation |
+|-----------|---|
+| Send email | Send correction email |
+| Post to external API | Post "retraction" to same API |
+| Publish document | Publish "withdrawn" notification |
+| Delete from S3 | Cannot truly undo (deleted is deleted) |
+| Print invoice | Cannot un-print, must issue credit note |
+
+**Strategy:** Place **irreversible operations near the end** of the saga.
+
+```
+Forward flow (safer order):
+  1. Reserve payment
+  2. Reserve inventory
+  3. Create booking
+  4. Charge payment (hard to undo)
+  5. Print invoice (impossible to undo)
+  6. Send email notification (undo = send correction)
+```
+
+If step 4 fails, we compensate steps 1-3 (easy). Step 5 hasn't happened yet.
+
+---
+
+### Choreography vs Orchestration Compensation
+
+| Aspect | Choreography | Orchestration |
+|--------|---|---|
+| **Who compensates?** | Each service independently | Orchestrator directs |
+| **Triggering** | Consumption of compensation event | Orchestrator decision |
+| **Tracking** | Implicit (hoped services listen) | Explicit saga state |
+| **If compensation fails** | Hard to detect & recover | Orchestrator can escalate |
+| **Compensation order** | Undefined (parallel) | Defined by orchestrator |
+| **Example** | OrderCancelled → Kitchen stops | L1 rejects → Orchestrator sends Rework command |
+
+---
+
+### Interview-Ready Answer
+
+> **Compensating transaction** is a business operation that undoes a completed transaction. It's not a technical rollback—the original already committed.
+>
+> **In choreography:** Each service listens for compensation events (e.g., OrderCancelled) and performs its own undo independently. This is loose-coupled but harder to track.
+>
+> **In orchestration:** The orchestrator explicitly directs compensation (e.g., sends ReworkDocumentExtraction command after L1 rejects). The saga state machine remembers what was done and what needs undoing.
+>
+> **Key principle:** Place irreversible operations (payments, emails) near the end of the saga, not the beginning.
 
 ---
 
@@ -2666,24 +2858,222 @@ Document 3 → wait 30 seconds → fail
 
 Workers remain occupied waiting for a service that is already known to be unhealthy. The Kafka backlog grows and users see documents stuck in `EXTRACTION_IN_PROGRESS`.
 
-A circuit breaker watches the recent calls:
+A circuit breaker watches the recent calls and transitions through states:
 
 ```text
-SparkAir calls are healthy
-→ Circuit CLOSED
-→ Calls are allowed
+STATE 1: CLOSED (Normal)
+├─ SparkAir calls are healthy
+├─ Calls are allowed through
+├─ Every call tracked: success or failure
+└─ Circuit monitors failure rate
 
-Failure rate crosses the configured limit
-→ Circuit OPEN
-→ Stop calling SparkAir temporarily
+STATE 2: OPEN (System down)
+├─ Failure rate crosses threshold (e.g., 50% failures in last 10 calls)
+├─ Circuit OPENS immediately
+├─ Stops calling SparkAir
+├─ Fails fast (returns error immediately, no 30-second wait)
+├─ Error message: "Service unavailable - try Cognize fallback"
+└─ Waits for recovery timeout (e.g., 30 seconds)
 
-After a waiting period
-→ Circuit HALF-OPEN
-→ Allow a small test call
-
-Test succeeds
-→ Close circuit and resume normal traffic
+STATE 3: HALF-OPEN (Testing recovery)
+├─ Recovery timeout elapsed
+├─ Circuit tries HALF-OPEN state
+├─ Allows ONE test call through to SparkAir
+├─ Monitors this test call carefully
+└─ Decision based on test result:
+   ├─ Test succeeds → CLOSED (resume normal)
+   └─ Test fails → OPEN again (wait longer, e.g., 60 seconds)
 ```
+
+---
+
+### **When the Circuit Closes Again (Recovery Process)**
+
+**Scenario: SparkAir was down for 2 minutes, now it's back healthy**
+
+```text
+Timeline:
+
+t=0:00   SparkAir goes down
+         Multiple requests fail → failure rate > 50%
+         Circuit OPENS
+         
+t=0:05   Circuit is OPEN
+         All new requests fail immediately
+         DCP uses Cognize fallback
+         
+t=0:30   Recovery timeout (30 seconds) elapsed
+         Circuit tries HALF-OPEN
+         Sends ONE test request to SparkAir
+         ↓
+         SparkAir responds: 200 OK ✅
+         Test succeeds
+         
+t=0:31   Circuit transitions: HALF-OPEN → CLOSED
+         Resets failure counter to zero
+         Resumes normal traffic
+         Stops using Cognize fallback
+         
+t=1:00   All requests going to SparkAir normally
+         Monitoring continues for health
+```
+
+**What if SparkAir is STILL recovering?**
+
+```text
+t=0:30   Recovery timeout elapsed
+         Circuit tries HALF-OPEN
+         Sends ONE test request to SparkAir
+         ↓
+         Timeout or error ❌
+         
+t=0:31   Circuit transitions: HALF-OPEN → OPEN (again)
+         Sets new timeout: 60 seconds (exponential backoff)
+         DCP continues using Cognize fallback
+         
+t=1:31   Another recovery timeout (60 seconds) elapsed
+         Circuit tries HALF-OPEN again
+         Sends ONE test request
+         ↓
+         This time it succeeds ✅
+         
+t=1:32   Circuit transitions: HALF-OPEN → CLOSED
+         Back to normal traffic
+```
+
+---
+
+### **Circuit Breaker States: Complete State Machine**
+
+```
+┌──────────────────────────────────────────────────────┐
+│                     CLOSED                            │
+│                  (Normal operation)                   │
+│                                                      │
+│  ✓ All requests succeed                             │
+│  ✓ Failure counter: 0                              │
+│  ✓ Calls allowed through                           │
+│                                                      │
+│           ↓ (Failure rate > threshold)              │
+│    (5 failures in last 10 calls)                    │
+└──────────────────────────────────────────────────────┘
+              ↓
+┌──────────────────────────────────────────────────────┐
+│                      OPEN                             │
+│             (Service is unavailable)                 │
+│                                                      │
+│  ✗ All new requests fail immediately                │
+│  ✗ No wait for timeout (fail fast!)                │
+│  ✗ Error: "Circuit breaker OPEN"                   │
+│  ✗ Use fallback (Cognize instead of SparkAir)      │
+│  ⏱ Wait for timeout (e.g., 30 seconds)             │
+│                                                      │
+│           ↓ (Timeout elapsed)                       │
+└──────────────────────────────────────────────────────┘
+              ↓
+┌──────────────────────────────────────────────────────┐
+│                   HALF-OPEN                           │
+│          (Testing if service recovered)              │
+│                                                      │
+│  ? Send ONE test request to SparkAir                │
+│  ? All other requests still fail (or use fallback)  │
+│  ? Carefully monitor this single test call          │
+│                                                      │
+│    Test result:                                     │
+│    ├─ Success ✅ → Transition to CLOSED            │
+│    │  • Resume normal traffic                       │
+│    │  • Stop using Cognize fallback                │
+│    │  • Reset failure counter                       │
+│    │                                                │
+│    └─ Failure/Timeout ❌ → Back to OPEN            │
+│       • Increase timeout (e.g., 30s → 60s)        │
+│       • Continue using fallback                     │
+│       • Try again after new timeout                │
+└──────────────────────────────────────────────────────┘
+```
+
+---
+
+### **Configuration: When Does Circuit Open and Close?**
+
+```python
+circuit_breaker = CircuitBreaker(
+    # OPEN trigger
+    failure_rate_threshold=0.50,      # If 50% of calls fail in window
+    failure_count_threshold=5,         # Or if 5+ failures in window
+    window_size=10,                    # Look at last 10 calls
+    
+    # HALF-OPEN behavior
+    timeout=30,                        # Wait 30 seconds before trying
+    test_requests=1,                   # Send 1 test request
+    
+    # CLOSE (recovery) trigger
+    success_threshold=1,               # 1 success = close the circuit
+    
+    # Backoff strategy
+    exponential_backoff=True,          # 30s → 60s → 120s (if keeps failing)
+)
+```
+
+---
+
+### **Real DCP Example: SparkAir Recovery**
+
+```python
+class ExtractionService:
+    def __init__(self):
+        self.sparkair_breaker = CircuitBreaker(
+            failure_rate_threshold=0.5,
+            timeout=30,
+            exponential_backoff=True
+        )
+        self.cognize_fallback = CognizeAPI()
+        
+    def extract_document(self, doc_id):
+        # Try SparkAir first
+        if self.sparkair_breaker.is_closed():
+            # Normal path: SparkAir
+            try:
+                extracted = self.sparkair.extract(doc_id)
+                self.sparkair_breaker.record_success()
+                return extracted
+            except Exception as e:
+                self.sparkair_breaker.record_failure()
+                
+                if self.sparkair_breaker.is_open():
+                    # Circuit opened, use fallback
+                    logger.warning(f"SparkAir circuit OPEN, using Cognize")
+                    
+        elif self.sparkair_breaker.is_half_open():
+            # Testing: send ONE request to SparkAir
+            logger.info("Circuit HALF-OPEN, sending test request to SparkAir")
+            try:
+                extracted = self.sparkair.extract(doc_id)
+                self.sparkair_breaker.record_success()
+                # Next call will be CLOSED, resume normal
+                return extracted
+            except Exception as e:
+                self.sparkair_breaker.record_failure()
+                # Back to OPEN, wait longer
+                
+        # Fallback path (OPEN or HALF-OPEN failure)
+        logger.info(f"Using Cognize fallback for {doc_id}")
+        return self.cognize_fallback.extract(doc_id)
+```
+
+---
+
+### **Business Impact: Circuit Closes = Back to Normal**
+
+When circuit closes (after SparkAir recovers):
+
+✅ **Fast extraction resumes** — SparkAir is faster than Cognize
+✅ **Cost reduction** — SparkAir is cheaper than Cognize
+✅ **Better accuracy** — SparkAir has better ML models
+✅ **Documents process faster** — No more fallback delay
+✅ **System breathing room** — Cognize can handle spike for other requests
+
+---
 
 When the circuit opens, DCP can immediately take another business path:
 
