@@ -2282,6 +2282,333 @@ Use retries for small transient failures. Open the circuit when failures continu
 | Orchestration | A central workflow component decides the next step | L1 assignment → L2 review → reminder → escalation → rework → final approval | The process must remember stages, deadlines, branches and reviewer state |
 | Compensating transaction | Perform a business-level undo after partial failure | Publication fails after approval, so mark `APPROVED_NOT_PUBLISHED`, retry publication or revoke approval based on policy | The completed approval cannot be technically rolled back across services |
 
+---
+
+### Choreography vs Orchestration: DCP and Pizza Store Comparison
+
+**Which pattern does each system use? The answer is NOT simple: both systems use BOTH patterns, but for different parts of their workflows.**
+
+#### Pizza Store: Choreography-First (Simple)
+
+```text
+WORKFLOW:
+  Customer places order
+       ↓
+  OrderPlaced event
+       ↓ (Kafka)
+  Kitchen Service consumes
+       ├─ Prepares pizza
+       └─ Publishes PizzaPrepared event
+       ↓ (Kafka)
+  Delivery Service consumes
+       ├─ Assigns delivery partner
+       └─ Publishes DeliveryStarted event
+       ↓ (Kafka)
+  Billing Service consumes
+       ├─ Charges customer
+       └─ Publishes PaymentProcessed event
+```
+
+**Why Choreography?**
+- Simple linear flow: Order → Prepare → Deliver → Bill
+- No central decision maker
+- Each service reacts to events independently
+- High throughput (can process 1000s of orders/sec)
+- Easy to parallelize (multiple kitchen pods)
+- No complex state management
+
+**Orchestration?** Not needed for Pizza Store because:
+- No human workflows
+- No conditional branching
+- No long-running waits
+- No state that needs to be remembered across steps
+- Each order follows same path
+
+**Conclusion:** Pizza Store is **99% choreography**
+
+---
+
+#### DCP: Hybrid (Choreography + Orchestration)
+
+DCP uses **both patterns for different parts** of the workflow:
+
+##### Part 1: Automatic Pipeline (CHOREOGRAPHY)
+
+```text
+WORKFLOW:
+  Document uploaded (REST API)
+       ↓
+  Sourcing Service publishes DocumentSourced
+       ↓ (Kafka)
+  Extraction Service consumes
+       ├─ Calls ML (SparkAir, Cognize)
+       └─ Publishes DocumentExtracted
+       ↓ (Kafka)
+  Quality Service consumes
+       ├─ Validates rules
+       └─ Publishes QualityChecked (or QualityFailed)
+```
+
+**Why Choreography for this part?**
+- Fast, automatic processing
+- Simple event sequence
+- No human decision making
+- Can be parallelized across many workers
+- High throughput
+
+**No orchestrator needed here because:**
+- No branching decisions
+- No long waits (humans not involved)
+- Service B simply reacts to Service A's event
+- Error handling via Kafka DLQ (not compensation)
+
+##### Part 2: Human Workflow (ORCHESTRATION)
+
+```text
+WORKFLOW:
+  Document passes quality checks
+       ↓
+  Workflow Orchestrator receives QualityChecked event
+       ├─ Creates task for L1 reviewer
+       └─ Waits for L1 decision
+       ↓
+  L1 reviews (human)
+       ├─ Approves OR rejects OR requests rework
+       └─ Sends decision to Orchestrator
+       ↓
+  Orchestrator decides next step based on L1 decision
+       ├─ If approved: create L2 task
+       ├─ If rejected: send notification
+       ├─ If rework: notify Extraction service
+       └─ Waits for L2 decision
+       ↓
+  L2 reviews (human)
+       ├─ Final approval decision
+       └─ Sends to Orchestrator
+       ↓
+  Orchestrator publishes DocumentApproved
+       ↓ (Kafka event triggers Dissemination)
+  Dissemination Service consumes & publishes data
+```
+
+**Why Orchestration for this part?**
+- Decisions made by humans (unpredictable timing)
+- Process remembers state (L1 reviewed, waiting for L2)
+- Conditional branching (approve/reject/rework)
+- Deadlines and reminders ("5 days waiting for L2, send reminder")
+- Escalation logic ("No response in 10 days, escalate")
+- Compensation needed (revoke approval if publication fails)
+
+**Why NOT choreography?**
+- Can't publish event for "waiting for human"
+- Must remember: "We're in L1 review stage for doc-123"
+- Event-driven doesn't handle long-running waits well
+- No way to enforce deadlines or escalations
+
+---
+
+#### Comparison Table: When Each Pattern Shines
+
+| Aspect | Pizza Store (Choreography) | DCP (Both) |
+|--------|---|---|
+| **Automatic Processing** | ✅ Choreography | ✅ Choreography (Sourcing→Extraction→Quality) |
+| **Human Workflows** | ❌ N/A | ✅ Orchestration (L1→L2 review) |
+| **Decision Logic** | Simple (just events) | Complex (conditions, timeouts, escalation) |
+| **State Needed** | Minimal | High (which stage? who's reviewing? deadline?) |
+| **Branching** | None (all orders same path) | Multiple (approve/reject/rework) |
+| **Long Waits** | No (pizza cooks in minutes) | Yes (humans take hours/days) |
+| **Compensation** | Not needed (idempotent retries) | Needed (revoke approval) |
+| **Total Pattern Usage** | 95% Choreography, 5% Orchestration | 40% Choreography, 60% Orchestration |
+
+---
+
+#### Visual: Where Each Pattern is Used
+
+**Pizza Store:**
+```
+┌─────────────────────────────────────────────┐
+│ Order → Prepare → Deliver → Bill            │
+│ All CHOREOGRAPHY (events trigger events)    │
+│ No orchestrator needed                      │
+└─────────────────────────────────────────────┘
+```
+
+**DCP:**
+```
+┌─────────────────────────────────────────────┐
+│ CHOREOGRAPHY ZONE (Automatic)               │
+│                                             │
+│ Upload → Source → Extract → Quality         │
+│ (Events → Events → Events)                  │
+│                                             │
+├─────────────────────────────────────────────┤
+│ ORCHESTRATION ZONE (Human)                  │
+│                                             │
+│ Orchestrator                                │
+│  ├─ Create L1 task                         │
+│  ├─ Wait for L1 response                   │
+│  ├─ Create L2 task                         │
+│  ├─ Wait for L2 response                   │
+│  ├─ On timeout: send reminder              │
+│  ├─ On rework: send back to Extraction     │
+│  └─ On approval: publish document          │
+│                                             │
+├─────────────────────────────────────────────┤
+│ CHOREOGRAPHY ZONE (Publication)             │
+│                                             │
+│ Document → Disseminated                     │
+│ (Events trigger events)                     │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+#### Code Pattern: DCP's Hybrid Approach
+
+**Choreography Part (Extraction):**
+```python
+# Extraction Service consumes event
+def handle_document_sourced(event):
+    trace_id = event["trace_id"]
+    doc_id = event["doc_id"]
+    
+    # Do work (no central orchestrator)
+    extracted = extract_with_ml(event)
+    
+    # Publish event (choreography)
+    producer.send("document-extracted", {
+        "doc_id": doc_id,
+        "trace_id": trace_id,
+        "extracted_data": extracted
+    })
+```
+
+**Orchestration Part (Human Workflow):**
+```python
+# Workflow Orchestrator handles human decisions
+class DocumentApprovalOrchestrator:
+    def handle_quality_checked(self, event):
+        doc_id = event["doc_id"]
+        
+        # Create saga instance (remembers state)
+        saga = {
+            "doc_id": doc_id,
+            "status": "AWAITING_L1",
+            "l1_assigned_at": now()
+        }
+        db.insert("sagas", saga)
+        
+        # Create task for L1 reviewer
+        task = {"doc_id": doc_id, "reviewer_level": 1}
+        task_service.create_task(task)
+        
+        # Wait for L1 response (orchestrator remembers state)
+        # No event published yet (unlike choreography)
+    
+    def handle_l1_approval(self, decision):
+        saga_id = decision["saga_id"]
+        
+        # Orchestrator makes decision
+        saga = db.get("sagas", saga_id)
+        
+        if decision["approved"]:
+            # Move to L2
+            saga.status = "AWAITING_L2"
+            task = {"doc_id": saga["doc_id"], "reviewer_level": 2}
+            task_service.create_task(task)
+        else:
+            # Reject and publish event
+            producer.send("approval-rejected", {
+                "doc_id": saga["doc_id"]
+            })
+        
+        db.update("sagas", saga_id, saga)
+    
+    def handle_l2_approval(self, decision):
+        saga_id = decision["saga_id"]
+        
+        if decision["approved"]:
+            # Final approval - publish event to choreography zone
+            producer.send("document-approved", {
+                "doc_id": saga["doc_id"]
+            })
+            saga.status = "APPROVED"
+        else:
+            saga.status = "REJECTED"
+        
+        db.update("sagas", saga_id, saga)
+```
+
+---
+
+#### Key Insight: Why DCP Needs Both
+
+| Zone | Pattern | Reason |
+|---|---|---|
+| **Sourcing→Extraction→Quality** | Choreography | Fast, high-volume, auto-processing, no decisions |
+| **Quality→Review→Approval** | Orchestration | Humans involved, complex state, timeouts, escalations |
+| **Approval→Dissemination** | Choreography | Fast, event-driven, once approved just publish |
+
+**DCP uses orchestration as a "decision gate"** in the middle of an otherwise choreography-driven system.
+
+---
+
+#### Pizza Store: Why NOT Orchestration?
+
+If Pizza Store tried to use an orchestrator for every order:
+
+```python
+# BAD: Orchestrator for every order
+orchestrator.create_order_saga(order_id)
+orchestrator.send_command("Cook pizza", order_id)
+    ↓ Wait for response
+orchestrator.send_command("Deliver pizza", order_id)
+    ↓ Wait for response
+orchestrator.send_command("Bill customer", order_id)
+```
+
+**Problems:**
+- Orchestrator becomes bottleneck (1000s of orders/sec)
+- Orchestrator memory grows (storing every order's state)
+- Latency increases (waiting for each step response)
+- Higher complexity for no benefit
+- Harder to scale
+
+**Instead, simple choreography works:**
+```python
+# GOOD: Event-driven (choreography)
+producer.send("orders", event=order)
+    ↓ No wait
+Kitchen consumes and publishes PizzaPrepared
+    ↓ (no orchestrator)
+Delivery consumes and publishes DeliveryStarted
+    ↓ (no orchestrator)
+Billing consumes and publishes PaymentProcessed
+```
+
+**Benefits:**
+- Decoupled services
+- No bottleneck
+- Massive parallelism
+- Simple to understand
+- Scales linearly
+
+---
+
+## Final Answer
+
+| System | Pattern | Use Case |
+|--------|---------|----------|
+| **Pizza Store** | Choreography (95%) + minimal Orchestration | Fast food orders don't need central workflow logic |
+| **DCP** | Both: Choreography (40%) + Orchestration (60%) | Auto-processing is choreography, human-review workflow needs orchestration |
+
+The difference: Pizza Store's entire workflow is "just process events", while DCP has a human decision gate in the middle that requires orchestration.
+
+---
+
+
+
 #### Reliable messaging and data patterns
 
 | Pattern | Simple meaning | DCP business use case | Why it fits |
