@@ -1661,6 +1661,8 @@ This is still orchestration because the orchestrator receives the result and dec
 
 ## 6. What is the difference between a command and an event?
 
+### Basic Difference
+
 A **command** asks a specific receiver to perform an action.
 
 ```text
@@ -1669,7 +1671,7 @@ ReserveInventory
 ChargePayment
 ```
 
-Commands are usually written in the imperative form. A command can succeed or fail.
+Commands are written in imperative form (do this!). A command can **succeed or fail** — the receiver can reject it.
 
 An **event** announces a fact that has already happened.
 
@@ -1679,12 +1681,392 @@ InventoryReserved
 PaymentCharged
 ```
 
-Events are usually written in the past tense. An event should not be rejected because it describes something that already occurred.
+Events are written in past tense. An event **should not be rejected** because it describes something that already occurred.
 
 ```text
 Command: PublishDocument
 Result:  DocumentPublished or DocumentPublicationFailed
+
+Event: DocumentPublished
+(No rejection possible — it already happened)
 ```
+
+---
+
+### When to Use Commands vs Events: Pizza Store
+
+#### Scenario 1: Customer Places Order
+
+**Using Event (Choreography):**
+
+```python
+# Customer places order via API
+order = {"order_id": "order-123", "pizza": "Large Margherita"}
+
+# Sourcing Service publishes EVENT (not command)
+event = {
+    "type": "OrderPlaced",  # Past tense
+    "order_id": "order-123",
+    "pizza": "Large Margherita",
+    "timestamp": now()
+}
+producer.send("pizza-orders", event)
+
+# Kitchen Service consumes event independently
+def on_order_placed(event):
+    print(f"Received OrderPlaced: {event['order_id']}")
+    prepare_pizza(event)
+    
+# Delivery Service ALSO consumes same event
+def on_order_placed(event):
+    print(f"Received OrderPlaced: {event['order_id']}")
+    schedule_delivery(event)
+
+# Billing Service ALSO consumes same event
+def on_order_placed(event):
+    print(f"Received OrderPlaced: {event['order_id']}")
+    reserve_payment(event)
+```
+
+**Why Event?**
+- Multiple services need to react independently
+- No central decision maker
+- Services don't ask permission, they just react
+- Fast and decoupled
+
+---
+
+#### Scenario 2: L1 Manager Reviews and Rejects Order
+
+**Using Command (Orchestration):**
+
+```python
+# Manager says "Reject this order"
+# Orchestrator sends COMMAND to Order Cancellation Service
+
+command = {
+    "type": "CancelOrder",  # Imperative
+    "order_id": "order-123",
+    "reason": "Wrong phone number",
+    "sent_at": now()
+}
+
+# Send to specific service (not broadcast to many)
+order_service.handle_command(command)
+
+# Service receives command and decides
+def handle_cancel_order_command(command):
+    order_id = command["order_id"]
+    
+    try:
+        # Attempt to cancel
+        order = db.get(order_id)
+        
+        if order["status"] == "PREPARING":
+            # Can cancel
+            db.update(order_id, status="CANCELLED")
+            # Publish event (result of command)
+            producer.send("pizza-events", {
+                "type": "OrderCancelled",
+                "order_id": order_id,
+                "reason": command["reason"]
+            })
+            return {"status": "success"}
+        else:
+            # Cannot cancel (already delivered)
+            return {
+                "status": "failed",
+                "reason": "Order already delivered"
+            }
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+```
+
+**Why Command?**
+- Specific service needs to decide
+- Manager is asking permission (can fail)
+- Only one receiver (Order Service)
+- Result matters (success or failure)
+
+---
+
+#### Pizza Store Summary
+
+| Situation | Use Command | Use Event | Why |
+|-----------|---|---|---|
+| Customer places order | ❌ | ✅ | Multiple services react, no decision |
+| Kitchen confirms pizza ready | ❌ | ✅ | Delivery & Billing both react |
+| Manager cancels order | ✅ | ❌ | Specific request to Order Service, needs decision |
+| Manager re-assigns delivery driver | ✅ | ❌ | Specific request to Delivery Service |
+| Payment failed → notify customer | ❌ | ✅ | Notification Service reacts to event |
+
+---
+
+### When to Use Commands vs Events: DCP
+
+#### Scenario 1: Document Sourced → Auto Extraction (Choreography)
+
+**Using Event:**
+
+```python
+# Sourcing Service publishes EVENT
+event = {
+    "type": "DocumentSourced",  # Past tense: it happened
+    "doc_id": "doc-789",
+    "content": pdf_content,
+    "timestamp": now()
+}
+producer.send("document-sourced", event)
+
+# Extraction Service consumes (independently, no request)
+def on_document_sourced(event):
+    doc_id = event["doc_id"]
+    # Extract immediately, no decision needed
+    extracted = extract_with_ml(event["content"])
+    # Publish result
+    producer.send("document-extracted", {
+        "type": "DocumentExtracted",
+        "doc_id": doc_id,
+        "extracted_data": extracted
+    })
+
+# Quality Service ALSO consumes same event
+def on_document_sourced(event):
+    # Quality has its own interest in sourced documents
+    # Can audit, check file format, etc.
+    pass
+```
+
+**Why Event?**
+- Automatic processing (no permission needed)
+- Multiple services might consume (Quality, Audit)
+- Happens regardless of who's listening
+
+---
+
+#### Scenario 2: L1 Reviews Document → Approves/Rejects (Orchestration)
+
+**Using Command:**
+
+```python
+# L1 human says "REJECT this document and send for rework"
+# Workflow Orchestrator sends COMMAND to Extraction Service
+
+command = {
+    "type": "ReworkDocumentExtraction",  # Imperative
+    "doc_id": "doc-789",
+    "reason": "Extracted amount doesn't match invoice",
+    "feedback": "Please re-extract focusing on table in page 3"
+}
+
+# Send to specific service (Extraction Service)
+extraction_service.handle_command(command)
+
+# Extraction Service receives and DECIDES
+def handle_rework_extraction_command(command):
+    doc_id = command["doc_id"]
+    
+    try:
+        # Can we rework this?
+        doc = db.get(doc_id)
+        
+        if doc["status"] == "QUALITY_CHECK_FAILED":
+            # Yes, we can rework it
+            db.update(doc_id, status="REWORK_IN_PROGRESS")
+            
+            # Do the rework
+            extracted = extract_with_ml(
+                doc["content"],
+                feedback=command["feedback"]
+            )
+            
+            # Save new extraction
+            db.update(doc_id, {
+                "extracted_data": extracted,
+                "status": "REWORKED"
+            })
+            
+            # Publish event (result of command)
+            producer.send("document-events", {
+                "type": "DocumentReworked",
+                "doc_id": doc_id,
+                "feedback": command["feedback"]
+            })
+            
+            return {"status": "success"}
+        else:
+            # Cannot rework if not in right status
+            return {"status": "failed", "reason": f"Document in {doc['status']} status"}
+            
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+```
+
+**Why Command?**
+- L1 human is asking a specific service to do something
+- Service needs to DECIDE if it can do it
+- Only Extraction Service should handle this (not broadcast)
+- L1 needs to know if rework succeeded or failed
+
+---
+
+#### Scenario 3: Document Approved → Dissemination (Choreography)
+
+**Using Event:**
+
+```python
+# Orchestrator publishes EVENT after L2 approval
+event = {
+    "type": "DocumentApproved",  # Past tense: approval completed
+    "doc_id": "doc-789",
+    "approved_by": "l2-reviewer-42",
+    "timestamp": now()
+}
+producer.send("document-events", event)
+
+# Dissemination Service consumes (independently)
+def on_document_approved(event):
+    doc_id = event["doc_id"]
+    # Disseminate it (no asking permission)
+    publish_to_s3(doc_id)
+    publish_to_customer_api(doc_id)
+    send_email_to_customer(doc_id)
+    # Publish result
+    producer.send("document-events", {
+        "type": "DocumentPublished",
+        "doc_id": doc_id
+    })
+
+# Audit Service ALSO consumes same event
+def on_document_approved(event):
+    # Record approval in audit trail
+    audit.log(f"Document {event['doc_id']} approved")
+```
+
+**Why Event?**
+- Approval is a fact that happened
+- Multiple services react to it independently
+- No service can reject an approval that already happened
+- Each service does its own thing (Dissemination, Audit)
+
+---
+
+#### Scenario 4: Orchestrator Creates L1 Task (Command)
+
+**Using Command:**
+
+```python
+# Workflow Orchestrator sends COMMAND to Task Service
+command = {
+    "type": "CreateL1ReviewTask",  # Imperative
+    "doc_id": "doc-789",
+    "assigned_to": "l1-team",
+    "due_date": tomorrow(),
+    "priority": "high"
+}
+
+# Send to Task Service (specific receiver)
+task_service.handle_command(command)
+
+# Task Service receives and executes
+def handle_create_l1_review_task(command):
+    try:
+        task = {
+            "type": "REVIEW",
+            "doc_id": command["doc_id"],
+            "assigned_to": command["assigned_to"],
+            "due_date": command["due_date"],
+            "status": "ASSIGNED"
+        }
+        db.insert("tasks", task)
+        
+        # Notify L1 team
+        notification.send(f"New review task for {command['doc_id']}")
+        
+        return {"status": "success", "task_id": task["id"]}
+        
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+```
+
+**Why Command?**
+- Orchestrator is asking a specific service to do something
+- Task Service needs to DECIDE if it can create the task
+- Result matters (task created successfully or failed)
+- Not a fact that happened, but a request to do something
+
+---
+
+#### DCP Summary
+
+| Situation | Use Command | Use Event | Why |
+|-----------|---|---|---|
+| Document sourced | ❌ | ✅ | Automatic, multiple services react |
+| Extract → Quality check | ❌ | ✅ | Automatic pipeline, no decision |
+| L1 rejects → send for rework | ✅ | ❌ | Specific request to Extraction Service |
+| L1 approves document | ❌ | ✅ | Fact that happened, Dissemination reacts |
+| Create L1 review task | ✅ | ❌ | Orchestrator asks Task Service to create |
+| Document published successfully | ❌ | ✅ | Fact happened, Audit Service reacts |
+| Orchestrator sends to L2 | ✅ | ❌ | Specific request (could fail if doc removed) |
+
+---
+
+### Decision Tree: Command vs Event
+
+```text
+Question: Who needs to DECIDE if this can happen?
+
+├─ Multiple independent services
+│  └─ Use EVENT
+│     (DocumentSourced → Kitchen reacts AND Delivery reacts)
+│
+├─ One specific service
+│  └─ Who sent this?
+│     ├─ Orchestrator / Manager (asking to do something)
+│     │  └─ Use COMMAND
+│     │     (L1 says "Reject", Extraction Service decides)
+│     │
+│     └─ Another service (announcing a fact)
+│        └─ Use EVENT
+│           (DocumentExtracted → Quality consumes)
+│
+└─ Can this fail?
+   ├─ YES → Probably COMMAND
+   │        (Manager's request might be rejected)
+   │
+   └─ NO → Probably EVENT
+          (DocumentApproved is a fact, can't fail)
+```
+
+---
+
+### Pattern Summary
+
+| Aspect | Command | Event |
+|--------|---------|-------|
+| **Form** | Imperative ("Do this") | Past tense ("Did this") |
+| **Sender** | Orchestrator, Manager, Client | Any service (result of work) |
+| **Receiver** | Specific service (one) | Any interested service (many) |
+| **Can Fail?** | Yes (receiver decides) | No (already happened) |
+| **Response** | Success or failure | No response needed |
+| **Use in Choreography** | Rare | Common |
+| **Use in Orchestration** | Common | Common (as side effects) |
+| **Example: Pizza** | CancelOrder | OrderPlaced, PizzaPrepared |
+| **Example: DCP** | ReworkDocumentExtraction | DocumentSourced, DocumentApproved |
+
+---
+
+### Interview-Ready Answer
+
+> **Command** is a request to do something sent to a specific service. It asks the receiver to decide if it can be done, and the receiver can accept or reject it.
+>
+> **Event** is an announcement that something already happened. Multiple services can react to it independently, but they cannot reject it because it's a fact.
+>
+> **In choreography (Pizza Store):** Use events because services react independently without central control.
+>
+> **In orchestration (DCP human workflow):** Use commands when the orchestrator directs specific services, and events when announcing completed facts that other services should react to.
+>
+> **DCP pattern:** Automatic processing uses events (DocumentSourced → Extract → Quality), human decisions use commands (L1 says "Rework"), and results publish events (DocumentReworked).
 
 ---
 
