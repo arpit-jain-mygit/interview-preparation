@@ -2008,13 +2008,55 @@ Producer can retry if ack never comes
 Producer can build reliable systems
 ```
 
+#### Where is `acks` Configured?
+
+**Answer: In the Producer Code/Configuration**
+
+The `acks` setting is a **producer-side configuration**, not a broker or topic setting. Each producer independently decides how many acknowledgements to wait for.
+
+```python
+# Python: Using confluent-kafka
+producer = KafkaProducer(
+    bootstrap_servers=['localhost:9092'],
+    acks=1,  ← Producer sets this, not the broker
+)
+
+# Java: Using Kafka client
+Properties props = new Properties();
+props.put("acks", "1");  ← Producer sets this
+KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+
+# Go: Using confluent-kafka-go
+config := kafka.ConfigMap{
+    "acks": "1",  ← Producer sets this
+}
+```
+
+**Key point:** Different producers can use different `acks` values for the same topic!
+
+```text
+DCP System:
+  Sourcing Service (fast) → acks=1
+    "I don't need absolute safety for raw documents"
+  
+  Payment Service (careful) → acks=all
+    "Payments must be safe, use all replicas"
+  
+  Audit Service (paranoid) → acks=all + min_insync_replicas=3
+    "Compliance data must never be lost"
+
+All three produce to same Kafka cluster, but with different safety levels!
+```
+
+---
+
 #### Three Levels of Safety
 
-| Setting | Meaning | Wait For | Latency | Risk | Real-Life Use Cases |
-|---------|---------|----------|---------|------|-------------------|
-| `acks=0` | Fire and forget | Nothing | ⚡ Fastest | Broker crashes = data lost | Metrics, logs, analytics where loss is acceptable. Example: Sending app crashes/heartbeats to monitoring system |
-| `acks=1` | Leader acknowledged | Leader writes to disk | ⏱️ Medium | Leader dies before replicating = data lost | Pizza orders, user actions, API events. Speed matters more than absolute safety. Loss during broker failure is rare and tolerable |
-| `acks=all` | All replicas acknowledged | All in-sync replicas write | 🐢 Slowest | Safest — needs 2+ replicas to fail | Financial transactions (DCP: $10,000 invoices), inventory changes, payment records. Data loss = audit failure, legal liability, revenue loss |
+| Setting | Meaning | Who Sets It | Wait For | Latency | Risk | Real-Life Use Cases |
+|---------|---------|---|----------|---------|------|-------------------|
+| `acks=0` | Fire and forget | **Producer** | Nothing | ⚡ Fastest | Broker crashes = data lost | Metrics, logs, analytics where loss is acceptable. Example: Sending app crashes/heartbeats to monitoring system |
+| `acks=1` | Leader acknowledged | **Producer** | Leader writes to disk | ⏱️ Medium | Leader dies before replicating = data lost | Pizza orders, user actions, API events. Speed matters more than absolute safety. Loss during broker failure is rare and tolerable |
+| `acks=all` | All replicas acknowledged | **Producer** | All in-sync replicas write | 🐢 Slowest | Safest — needs 2+ replicas to fail | Financial transactions (DCP: $10,000 invoices), inventory changes, payment records. Data loss = audit failure, legal liability, revenue loss |
 
 #### When to Use Each acks Value
 
