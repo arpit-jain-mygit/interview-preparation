@@ -373,6 +373,63 @@ Kitchen Pod A → Broker 2 → PP-P0
 
 Kitchen Service is not permanently attached to Broker 1 or Broker 2. Kafka clients discover the current partition leaders and connect to the appropriate broker automatically.
 
+### Pizza Store with Disaster Recovery: Primary + Standby Clusters
+
+For high availability, Pizza Store runs two separate Kafka clusters in different regions:
+
+```mermaid
+flowchart TB
+    subgraph PRIMARY["🔴 PRIMARY CLUSTER (East Coast - Active)"]
+        direction TB
+        PBROKERS["Brokers: B1, B2, B3<br/>in New York"]:::cluster
+        PPO["TOPIC: pizza-orders<br/>PO-P0, PO-P1"]:::topic
+        PPC["TOPIC: payment-completed<br/>PC-P0, PC-P1"]:::topic
+        PPP["TOPIC: pizza-prepared<br/>PP-P0, PP-P1"]:::topic
+        PDR["TOPIC: delivery-requested<br/>DR-P0, DR-P1"]:::topic
+        PBROKERS -.-> PPO
+        PBROKERS -.-> PPC
+        PBROKERS -.-> PPP
+        PBROKERS -.-> PDR
+    end
+
+    subgraph STANDBY["🟡 STANDBY CLUSTER (West Coast - Ready)"]
+        direction TB
+        SBROKERS["Brokers: B4, B5, B6<br/>in San Francisco"]:::cluster
+        SPO["TOPIC: pizza-orders<br/>PO-P0, PO-P1<br/>(replicated from primary)"]:::topic
+        SPC["TOPIC: payment-completed<br/>PC-P0, PC-P1<br/>(replicated from primary)"]:::topic
+        SPP["TOPIC: pizza-prepared<br/>PP-P0, PP-P1<br/>(replicated from primary)"]:::topic
+        SDR["TOPIC: delivery-requested<br/>DR-P0, DR-P1<br/>(replicated from primary)"]:::topic
+        SBROKERS -.-> SPO
+        SBROKERS -.-> SPC
+        SBROKERS -.-> SPP
+        SBROKERS -.-> SDR
+    end
+
+    REPLICATION["<b>Replication</b><br/>Primary → Standby<br/>(continuous, async)"]
+
+    PRIMARY -->|"replicate all topics"| REPLICATION
+    REPLICATION -->|"copy to standby"| STANDBY
+
+    PRODUCERS["Order, Kitchen, Payment,<br/>Delivery Services<br/><b>NORMAL: Route to Primary</b><br/><b>IF PRIMARY DOWN: Route to Standby</b>"]:::producer
+
+    PRODUCERS -.->|"normal traffic"| PRIMARY
+    PRODUCERS -.->|"failover if needed"| STANDBY
+
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef cluster fill:#CCFBF1,stroke:#0F766E,color:#134E4A,stroke-width:3px;
+```
+
+**How it works:**
+- Services normally write to Primary Cluster (East Coast, low latency for East Coast users)
+- Standby Cluster continuously receives replicated data from Primary
+- If Primary goes down:
+  - Traffic automatically switches to Standby Cluster
+  - All recent data is already in Standby (because of replication)
+  - Services continue processing with zero data loss
+
+---
+
 ### The same Kafka concepts applied to DCP
 
 The original single DCP diagram was too large to read comfortably on GitHub. It is split below into one compact overview and three detailed diagrams.
@@ -551,6 +608,72 @@ flowchart LR
     classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
     classDef store fill:#FCE7F3,stroke:#DB2777,color:#831843,stroke-width:2px;
 ```
+
+#### DCP with Disaster Recovery: Primary + Standby Clusters
+
+For mission-critical financial data, DCP runs two separate Kafka clusters in different regions with replication:
+
+```mermaid
+flowchart TB
+    subgraph PRIMARY["🔴 PRIMARY CLUSTER (North America - Active)"]
+        direction TB
+        PBROKERS["Brokers: B1, B2, B3<br/>in AWS us-east-1"]:::cluster
+        PDS["TOPIC: document-sourced<br/>DS-P0, DS-P1<br/>Retention: 30 days"]:::topic
+        PDE["TOPIC: document-extracted<br/>DE-P0, DE-P1<br/>Retention: 30 days"]:::topic
+        PQC["TOPIC: quality-checked<br/>QC-P0, QC-P1<br/>Retention: 30 days"]:::topic
+        PDA["TOPIC: document-approved<br/>DA-P0, DA-P1<br/>Retention: 90 days"]:::topic
+        PDP["TOPIC: document-published<br/>DP-P0, DP-P1<br/>Retention: 90 days"]:::topic
+        PBROKERS -.-> PDS
+        PBROKERS -.-> PDE
+        PBROKERS -.-> PQC
+        PBROKERS -.-> PDA
+        PBROKERS -.-> PDP
+    end
+
+    subgraph STANDBY["🟡 STANDBY CLUSTER (Europe - Ready)"]
+        direction TB
+        SBROKERS["Brokers: B4, B5, B6<br/>in AWS eu-west-1"]:::cluster
+        SDS["TOPIC: document-sourced<br/>DS-P0, DS-P1<br/>(replicated)"]:::topic
+        SDE["TOPIC: document-extracted<br/>DE-P0, DE-P1<br/>(replicated)"]:::topic
+        SQC["TOPIC: quality-checked<br/>QC-P0, QC-P1<br/>(replicated)"]:::topic
+        SDA["TOPIC: document-approved<br/>DA-P0, DA-P1<br/>(replicated)"]:::topic
+        SDP["TOPIC: document-published<br/>DP-P0, DP-P1<br/>(replicated)"]:::topic
+        SBROKERS -.-> SDS
+        SBROKERS -.-> SDE
+        SBROKERS -.-> SQC
+        SBROKERS -.-> SDA
+        SBROKERS -.-> SDP
+    end
+
+    REPLICATION["<b>Continuous Replication</b><br/>Primary → Standby<br/>(all 5 topics)<br/>Zero data loss"]
+
+    PRIMARY -->|"replicate all topics"| REPLICATION
+    REPLICATION -->|"copy to standby"| STANDBY
+
+    SERVICES["Sourcing, Extraction,<br/>Quality, Workflow, Dissemination<br/><b>NORMAL: Route to Primary</b><br/><b>IF PRIMARY DOWN: Route to Standby</b>"]:::producer
+
+    SERVICES -.->|"normal traffic"| PRIMARY
+    SERVICES -.->|"failover if needed"| STANDBY
+
+    classDef producer fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef topic fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px;
+    classDef cluster fill:#CCFBF1,stroke:#0F766E,color:#134E4A,stroke-width:3px;
+```
+
+**Why DCP needs multi-cluster:**
+- Primary Cluster (North America) serves production traffic and low-latency US access
+- Standby Cluster (Europe) receives continuous replication of all 5 topics
+- If North America region fails:
+  - All financial documents already replicated to Europe
+  - Services switch to Europe Cluster
+  - Zero data loss (no document disappears)
+  - Processing resumes with full history
+
+**Key difference from Pizza Store:**
+- Pizza Store: Orders can be lost, customer re-orders → acceptable
+- DCP: Financial documents must never be lost → requires active replication
+
+---
 
 #### DCP storage responsibility
 
