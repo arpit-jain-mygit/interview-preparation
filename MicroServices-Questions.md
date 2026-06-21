@@ -530,6 +530,362 @@ logger.error(f"Failed to publish: {error}",
 
 ---
 
+### Should API Gateway Generate Trace ID Instead?
+
+**Short answer:** It depends on your architecture. API Gateway is better for REST/HTTP APIs, but insufficient for event-driven systems.
+
+---
+
+#### Approach 1: API Gateway Generates Trace ID (REST APIs)
+
+**How it works:**
+
+```text
+Client
+    ↓ (HTTP request)
+API Gateway
+    ├─ Generate trace_id = UUID() (if not provided)
+    ├─ Add to request header: X-Trace-ID: 550e...
+    └─ Route to backend service
+    
+Approval Service
+    ├─ Extract trace_id from header
+    ├─ Process request
+    ├─ Include trace_id in logs
+    ├─ Include trace_id in events published
+    └─ Return response with trace_id header
+```
+
+**Implementation:**
+
+```python
+# API Gateway
+from flask import Flask, request, Response
+import uuid
+
+app = Flask(__name__)
+
+@app.before_request
+def add_trace_id():
+    # If client provided trace_id, use it (useful for debugging)
+    trace_id = request.headers.get("X-Trace-ID")
+    
+    if not trace_id:
+        # Generate new one if not provided
+        trace_id = str(uuid.uuid4())
+    
+    # Store in Flask g object (request-local storage)
+    g.trace_id = trace_id
+    
+    # Inject into forwarded request
+    request.headers = dict(request.headers)
+    request.headers["X-Trace-ID"] = trace_id
+
+@app.route("/approve", methods=["POST"])
+def proxy_approve():
+    # Forward to backend
+    response = requests.post(
+        "http://approval-service/approve",
+        json=request.json,
+        headers={"X-Trace-ID": g.trace_id}  # Pass trace_id
+    )
+    
+    # Include in response
+    response.headers["X-Trace-ID"] = g.trace_id
+    return response
+```
+
+**Backend service (Approval Service):**
+
+```python
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route("/approve", methods=["POST"])
+def approve():
+    trace_id = request.headers.get("X-Trace-ID")  # Extract from header
+    doc_id = request.json["doc_id"]
+    
+    logger.info(f"Approving {doc_id}", extra={"trace_id": trace_id})
+    
+    # Approve document
+    db.update("documents", doc_id, status="APPROVED")
+    
+    # Publish event with trace_id
+    event = {
+        "type": "DocumentApproved",
+        "doc_id": doc_id,
+        "trace_id": trace_id  # Continue trace
+    }
+    producer.send("document-events", value=event)
+    
+    logger.info(f"Published DocumentApproved", extra={"trace_id": trace_id})
+    
+    return {"status": "approved", "trace_id": trace_id}
+```
+
+**Advantages:**
+- Single point of entry (API Gateway)
+- Centralized trace ID management
+- Client can provide their own trace ID for debugging
+- Clean HTTP header propagation
+- No need for services to know about trace ID generation
+
+**Disadvantages:**
+- Only works for REST/HTTP APIs
+- Doesn't cover async event flows (Kafka events not initiated by HTTP)
+- Doesn't help with internal service-to-service communication
+- Doesn't trace webhooks, scheduled tasks, or other entry points
+
+---
+
+#### Approach 2: Each Service/Event Generates Its Own Trace ID (Event-Driven)
+
+**How it works:**
+
+```text
+Kafka Event
+    ↓
+Approval Service consumes event
+    ├─ No API Gateway involved
+    ├─ Generate trace_id (if event doesn't have one)
+    └─ Include trace_id in logs and published events
+```
+
+**Advantages:**
+- Works for all event types (Kafka, internal, webhooks, etc.)
+- Each entry point has its own trace ID
+- No dependency on API Gateway
+- Better for microservices without HTTP entry points
+
+**Disadvantages:**
+- Distributed trace ID generation (hard to coordinate)
+- Multiple entry points mean multiple trace IDs for same business transaction
+- Harder to trace across REST APIs and events
+
+---
+
+#### Approach 3: Hybrid (BEST for Most Systems)
+
+**API Gateway generates for HTTP, Service continues through events**
+
+```text
+┌─ REST API Entry ─────────────────────────────┐
+│ Client → API Gateway                          │
+│          ├─ Generate trace_id = 550e...      │
+│          └─ Forward to service                │
+│                                               │
+│ Service receives with trace_id in header      │
+│ ├─ Extract from header                       │
+│ ├─ Process request                           │
+│ ├─ Publish event with trace_id               │
+│ └─ Return response                           │
+└───────────────────────────────────────────────┘
+
+┌─ Event-Driven Entry ──────────────────────────┐
+│ Kafka Event (no API Gateway)                  │
+│ ├─ If event has trace_id: extract & continue │
+│ ├─ If no trace_id: generate new one          │
+│ ├─ Process event                             │
+│ └─ Publish next event with same trace_id     │
+└───────────────────────────────────────────────┘
+
+┌─ Scheduled Task Entry ────────────────────────┐
+│ Cron Job (no API Gateway)                     │
+│ ├─ Generate trace_id = UUID()                │
+│ ├─ Trigger service with trace_id             │
+│ └─ Process task                              │
+└───────────────────────────────────────────────┘
+```
+
+**Implementation:**
+
+```python
+# API Gateway (handles REST entry)
+from flask import Flask, request
+import uuid
+
+app = Flask(__name__)
+
+@app.before_request
+def add_trace_id():
+    # Client might provide trace_id for debugging
+    trace_id = request.headers.get("X-Trace-ID") or str(uuid.uuid4())
+    g.trace_id = trace_id
+
+@app.route("/api/approve", methods=["POST"])
+def api_approve():
+    response = requests.post(
+        "http://approval-service/approve",
+        json=request.json,
+        headers={"X-Trace-ID": g.trace_id}
+    )
+    return response
+
+# Backend Service (handles both HTTP and events)
+from flask import Flask, request
+
+app = Flask(__name__)
+kafka_consumer = KafkaConsumer("document-events")
+
+# HTTP endpoint
+@app.route("/approve", methods=["POST"])
+def approve_http():
+    trace_id = request.headers.get("X-Trace-ID")  # From API Gateway
+    doc_id = request.json["doc_id"]
+    
+    # Process with trace_id
+    approve_internal(doc_id, trace_id)
+    return {"status": "approved"}
+
+# Kafka consumer (event entry point)
+def handle_kafka_events():
+    for message in kafka_consumer:
+        event = json.loads(message.value)
+        doc_id = event["doc_id"]
+        
+        # Extract trace_id if provided
+        trace_id = event.get("trace_id") or str(uuid.uuid4())
+        
+        # Same processing logic
+        approve_internal(doc_id, trace_id)
+
+# Shared logic
+def approve_internal(doc_id, trace_id):
+    logger.info(f"Approving {doc_id}", extra={"trace_id": trace_id})
+    
+    db.update("documents", doc_id, status="APPROVED")
+    
+    event = {
+        "type": "DocumentApproved",
+        "doc_id": doc_id,
+        "trace_id": trace_id  # Continue trace
+    }
+    producer.send("document-events", value=event)
+    
+    logger.info(f"Approved {doc_id}", extra={"trace_id": trace_id})
+```
+
+**Scheduled Task with Trace ID:**
+
+```python
+# Scheduled job (entry point with no API Gateway or Kafka)
+import schedule
+import uuid
+from datetime import datetime
+
+def daily_document_expiry_check():
+    trace_id = str(uuid.uuid4())  # Generate for this task
+    
+    logger.info(f"Starting daily expiry check", extra={"trace_id": trace_id})
+    
+    # Find expired documents
+    expired = db.query("SELECT * FROM documents WHERE expires_at < NOW()")
+    
+    for doc in expired:
+        # Process each with same trace_id
+        logger.info(f"Expiring {doc['id']}", extra={"trace_id": trace_id})
+        
+        # Publish event with trace_id
+        event = {
+            "type": "DocumentExpired",
+            "doc_id": doc["id"],
+            "trace_id": trace_id
+        }
+        producer.send("document-events", value=event)
+    
+    logger.info(f"Daily expiry check completed", extra={"trace_id": trace_id})
+
+# Schedule it
+schedule.every().day.at("03:00").do(daily_document_expiry_check)
+```
+
+---
+
+#### Comparison: All Three Approaches
+
+| Aspect | API Gateway Only | Service Only | Hybrid |
+|--------|---|---|---|
+| **REST API** | ✅ Works | ⚠️ Service generates | ✅ Gateway generates |
+| **Kafka Events** | ❌ No trace | ✅ Works | ✅ Works |
+| **Webhooks** | ❌ No trace | ✅ Service generates | ✅ Service generates |
+| **Scheduled Tasks** | ❌ No trace | ✅ Service generates | ✅ Service generates |
+| **Service-to-Service** | ⚠️ Only if via API Gateway | ✅ Direct events work | ✅ Works |
+| **Complexity** | Low | Medium | Medium |
+| **Centralization** | High (Gateway) | Low (Distributed) | Medium |
+| **Debugging** | Easy for REST | Mixed | Easy for all |
+
+---
+
+#### Decision: Which Approach to Use?
+
+**Use API Gateway only if:**
+- Most traffic is REST APIs
+- No event-driven workflows
+- Simple synchronous system
+- API Gateway is your only entry point
+
+**Use Service generation if:**
+- Mostly event-driven (Kafka, async)
+- Multiple entry points (webhooks, scheduled tasks)
+- No API Gateway in architecture
+- Services are autonomous
+
+**Use Hybrid (RECOMMENDED) if:**
+- Mix of REST APIs and events
+- Multiple entry points
+- Complex distributed systems
+- Want centralized tracing for REST + local for events
+
+---
+
+#### Real Example: DCP with Hybrid Tracing
+
+```text
+External Client
+    ↓ (REST API)
+API Gateway (generates trace_id)
+    ├─ Send to Sourcing Service with X-Trace-ID header
+    
+Sourcing Service receives
+    ├─ Extract trace_id from header
+    ├─ Store document
+    ├─ Publish DocumentSourced event with trace_id
+    
+Kafka: DocumentSourced event (has trace_id)
+    ↓
+Extraction Service consumes
+    ├─ Extract trace_id from event
+    ├─ Extract document fields
+    ├─ Publish DocumentExtracted event with trace_id
+    
+Kafka: DocumentExtracted event (has trace_id)
+    ↓
+Quality Service consumes
+    ├─ Extract trace_id from event
+    ├─ Validate extracted data
+    ├─ Publish QualityChecked event with trace_id
+    
+Scheduled Cleanup Task (entry point, no API Gateway)
+    ├─ Generate NEW trace_id (different transaction)
+    ├─ Clean old documents
+    ├─ Publish DocumentCleaned event with NEW trace_id
+
+Result: Two trace IDs in system
+  trace_id_1: Original API request → all resulting events
+  trace_id_2: Scheduled cleanup task → its events
+```
+
+**Why this is optimal:**
+- API Gateway handles REST entry (centralized)
+- Services continue trace through events
+- Scheduled tasks get their own trace (different business transaction)
+- Each "user action" has one trace ID
+- Each "automated task" has its own trace ID
+
+---
+
 ## 5. Are events used only in choreography?
 
 No. Events can be used in both choreography and orchestration.
