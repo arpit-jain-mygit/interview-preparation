@@ -1836,9 +1836,13 @@ def handle_cancel_order_command(command):
 
 ### When to Use Commands vs Events: DCP
 
-#### Scenario 1: Document Sourced → Auto Extraction (Choreography)
+**Important:** DCP uses BOTH commands AND events in BOTH choreography AND orchestration zones. The key is WHO DECIDES and WHO SENDS, not which pattern.
 
-**Using Event:**
+---
+
+#### Zone A: Automatic Pipeline (Mostly Events, Rarely Commands)
+
+**Scenario 1: Document Sourced (EVENT - Choreography)**
 
 ```python
 # Sourcing Service publishes EVENT
@@ -1850,196 +1854,252 @@ event = {
 }
 producer.send("document-sourced", event)
 
-# Extraction Service consumes (independently, no request)
+# Multiple services react independently
 def on_document_sourced(event):
-    doc_id = event["doc_id"]
-    # Extract immediately, no decision needed
+    # Extraction Service
     extracted = extract_with_ml(event["content"])
-    # Publish result
     producer.send("document-extracted", {
         "type": "DocumentExtracted",
-        "doc_id": doc_id,
+        "doc_id": event["doc_id"],
         "extracted_data": extracted
     })
 
-# Quality Service ALSO consumes same event
 def on_document_sourced(event):
-    # Quality has its own interest in sourced documents
-    # Can audit, check file format, etc.
-    pass
+    # Audit Service also consumes
+    audit.log(f"Document {event['doc_id']} sourced")
+    
+def on_document_sourced(event):
+    # Quality Service also interested
+    check_file_format(event["doc_id"])
 ```
 
 **Why Event?**
-- Automatic processing (no permission needed)
-- Multiple services might consume (Quality, Audit)
-- Happens regardless of who's listening
+- Announcement: "This document was sourced"
+- Multiple services react (Extraction, Audit, Quality)
+- No permission needed
+- Automatic processing
 
 ---
 
-#### Scenario 2: L1 Reviews Document → Approves/Rejects (Orchestration)
-
-**Using Command:**
+**Scenario 1b: Extraction Fails (COMMAND - Error Handling in Choreography)**
 
 ```python
-# L1 human says "REJECT this document and send for rework"
-# Workflow Orchestrator sends COMMAND to Extraction Service
-
-command = {
-    "type": "ReworkDocumentExtraction",  # Imperative
-    "doc_id": "doc-789",
-    "reason": "Extracted amount doesn't match invoice",
-    "feedback": "Please re-extract focusing on table in page 3"
-}
-
-# Send to specific service (Extraction Service)
-extraction_service.handle_command(command)
-
-# Extraction Service receives and DECIDES
-def handle_rework_extraction_command(command):
-    doc_id = command["doc_id"]
-    
+# In rare cases, services send commands to handle errors
+def on_document_sourced(event):
     try:
-        # Can we rework this?
-        doc = db.get(doc_id)
-        
-        if doc["status"] == "QUALITY_CHECK_FAILED":
-            # Yes, we can rework it
-            db.update(doc_id, status="REWORK_IN_PROGRESS")
-            
-            # Do the rework
-            extracted = extract_with_ml(
-                doc["content"],
-                feedback=command["feedback"]
-            )
-            
-            # Save new extraction
-            db.update(doc_id, {
-                "extracted_data": extracted,
-                "status": "REWORKED"
-            })
-            
-            # Publish event (result of command)
-            producer.send("document-events", {
-                "type": "DocumentReworked",
-                "doc_id": doc_id,
-                "feedback": command["feedback"]
-            })
-            
-            return {"status": "success"}
-        else:
-            # Cannot rework if not in right status
-            return {"status": "failed", "reason": f"Document in {doc['status']} status"}
-            
-    except Exception as e:
-        return {"status": "failed", "error": str(e)}
+        extracted = extract_with_ml(event["content"])
+        producer.send("document-extracted", {...})
+    except PermanentExtractionError as e:
+        # Emergency: send COMMAND to stop processing
+        orchestrator.handle_command({
+            "type": "QuarantineDocument",  # COMMAND
+            "doc_id": event["doc_id"],
+            "reason": f"Cannot extract: {e}",
+            "alert_level": "critical"
+        })
 ```
 
-**Why Command?**
-- L1 human is asking a specific service to do something
-- Service needs to DECIDE if it can do it
-- Only Extraction Service should handle this (not broadcast)
-- L1 needs to know if rework succeeded or failed
+**Why Command here?**
+- Error handling (not normal flow)
+- Needs specific decision from Orchestrator
+- Extraction Service needs response (did quarantine succeed?)
 
 ---
 
-#### Scenario 3: Document Approved → Dissemination (Choreography)
+#### Zone B: Human Workflow (Mostly Commands, Publishes Events)
 
-**Using Event:**
+**Scenario 2: Quality Check Passes → Create L1 Task (COMMAND - Orchestration)**
+
+```python
+# Quality Service publishes EVENT
+def on_document_extracted(event):
+    is_valid = validate(event)
+    if is_valid:
+        producer.send("document-events", {
+            "type": "DocumentQualityChecked",  # EVENT
+            "doc_id": event["doc_id"]
+        })
+
+# Orchestrator listens to event
+def on_document_quality_checked(event):
+    # Orchestrator sends COMMAND to Task Service
+    command = {
+        "type": "CreateL1ReviewTask",  # COMMAND
+        "doc_id": event["doc_id"],
+        "assigned_to": "l1-team",
+        "due_date": tomorrow()
+    }
+    task_service.handle_command(command)
+    
+    # Orchestrator REMEMBERS state
+    saga = {
+        "doc_id": event["doc_id"],
+        "status": "AWAITING_L1_REVIEW",
+        "l1_assigned_at": now()
+    }
+    db.insert("sagas", saga)
+```
+
+**Why Event → Command?**
+- Quality publishes EVENT (fact: passed validation)
+- Orchestrator reacts by sending COMMAND (asking Task Service to create task)
+- Task Service makes decision (can it create task?)
+
+---
+
+**Scenario 3: L1 Rejects → Rework (COMMAND - Orchestration)**
+
+```python
+# L1 human says "Reject and rework"
+def on_l1_rejection(decision):
+    # Orchestrator sends COMMAND to Extraction Service
+    command = {
+        "type": "ReworkDocumentExtraction",  # COMMAND
+        "doc_id": decision["doc_id"],
+        "feedback": decision["feedback"],
+        "reason": decision["reason"]
+    }
+    result = extraction_service.handle_command(command)
+    
+    if result["status"] == "success":
+        # Orchestrator publishes EVENT (result of command)
+        producer.send("document-events", {
+            "type": "DocumentReworked",  # EVENT
+            "doc_id": decision["doc_id"],
+            "feedback": decision["feedback"]
+        })
+        
+        # Orchestrator updates saga
+        db.update("sagas", decision["doc_id"], 
+                 {"status": "REWORK_IN_PROGRESS"})
+    else:
+        # Handle failure
+        producer.send("document-events", {
+            "type": "ReworkFailed",  # EVENT
+            "doc_id": decision["doc_id"],
+            "reason": result["error"]
+        })
+```
+
+**Why Command → Event?**
+- Orchestrator sends COMMAND: "Rework this" (needs decision)
+- Extraction Service accepts/rejects
+- If accepted, Orchestrator publishes EVENT: "DocumentReworked" (fact)
+- Other services can react to DocumentReworked event
+
+---
+
+#### Zone C: Publication (Mostly Events)
+
+**Scenario 4: Document Approved → Disseminate (EVENT - Choreography)**
 
 ```python
 # Orchestrator publishes EVENT after L2 approval
-event = {
-    "type": "DocumentApproved",  # Past tense: approval completed
-    "doc_id": "doc-789",
-    "approved_by": "l2-reviewer-42",
-    "timestamp": now()
-}
-producer.send("document-events", event)
-
-# Dissemination Service consumes (independently)
-def on_document_approved(event):
-    doc_id = event["doc_id"]
-    # Disseminate it (no asking permission)
-    publish_to_s3(doc_id)
-    publish_to_customer_api(doc_id)
-    send_email_to_customer(doc_id)
-    # Publish result
+def on_l2_approval(decision):
+    # Publish EVENT (fact: approved)
     producer.send("document-events", {
-        "type": "DocumentPublished",
-        "doc_id": doc_id
+        "type": "DocumentApproved",  # EVENT
+        "doc_id": decision["doc_id"],
+        "approved_by": decision["l2_reviewer"]
     })
 
-# Audit Service ALSO consumes same event
+# Multiple services react
 def on_document_approved(event):
-    # Record approval in audit trail
+    # Dissemination Service consumes independently
+    publish_to_s3(event["doc_id"])
+    publish_to_customer_api(event["doc_id"])
+    producer.send("document-events", {
+        "type": "DocumentPublished",  # EVENT
+        "doc_id": event["doc_id"]
+    })
+
+def on_document_approved(event):
+    # Audit Service consumes independently
     audit.log(f"Document {event['doc_id']} approved")
 ```
 
 **Why Event?**
-- Approval is a fact that happened
-- Multiple services react to it independently
-- No service can reject an approval that already happened
-- Each service does its own thing (Dissemination, Audit)
+- Approval is a fact (already happened)
+- Multiple services react (Dissemination, Audit)
+- No rejections possible
 
 ---
 
-#### Scenario 4: Orchestrator Creates L1 Task (Command)
+#### Complete DCP Flow: Commands AND Events Throughout
 
-**Using Command:**
-
-```python
-# Workflow Orchestrator sends COMMAND to Task Service
-command = {
-    "type": "CreateL1ReviewTask",  # Imperative
-    "doc_id": "doc-789",
-    "assigned_to": "l1-team",
-    "due_date": tomorrow(),
-    "priority": "high"
-}
-
-# Send to Task Service (specific receiver)
-task_service.handle_command(command)
-
-# Task Service receives and executes
-def handle_create_l1_review_task(command):
-    try:
-        task = {
-            "type": "REVIEW",
-            "doc_id": command["doc_id"],
-            "assigned_to": command["assigned_to"],
-            "due_date": command["due_date"],
-            "status": "ASSIGNED"
-        }
-        db.insert("tasks", task)
-        
-        # Notify L1 team
-        notification.send(f"New review task for {command['doc_id']}")
-        
-        return {"status": "success", "task_id": task["id"]}
-        
-    except Exception as e:
-        return {"status": "failed", "error": str(e)}
+```
+┌─ AUTOMATIC PIPELINE ────────────────────────────┐
+│ DocumentSourced EVENT                           │
+│     ↓ (multiple services react)                │
+│ Extraction Service extracts                    │
+│     ↓                                           │
+│ DocumentExtracted EVENT                        │
+│     ↓                                           │
+│ Quality Service validates                      │
+│     ↓                                           │
+│ DocumentQualityChecked EVENT                   │
+└──────────────────────────────────────────────────┘
+         ↓
+┌─ ORCHESTRATION ZONE ────────────────────────────┐
+│ Orchestrator receives DocumentQualityChecked   │
+│ Sends COMMAND: CreateL1ReviewTask              │
+│     ↓                                           │
+│ Task Service executes (can it create?)         │
+│     ↓                                           │
+│ L1 reviews (human decision)                    │
+│     ↓                                           │
+│ L1 response: "Reject"                          │
+│     ↓                                           │
+│ Orchestrator sends COMMAND: ReworkExtraction   │
+│     ↓                                           │
+│ Extraction Service executes                    │
+│     ↓                                           │
+│ Orchestrator publishes DocumentReworked EVENT  │
+│     ↓ (back to automatic pipeline)             │
+│ Quality Service validates again                │
+└──────────────────────────────────────────────────┘
+         ↓
+┌─ PUBLICATION ZONE ──────────────────────────────┐
+│ DocumentApproved EVENT                         │
+│     ↓ (multiple services react)                │
+│ Dissemination Service publishes                │
+│ Audit Service records                          │
+│     ↓                                           │
+│ DocumentPublished EVENT                        │
+└──────────────────────────────────────────────────┘
 ```
 
-**Why Command?**
-- Orchestrator is asking a specific service to do something
-- Task Service needs to DECIDE if it can create the task
-- Result matters (task created successfully or failed)
-- Not a fact that happened, but a request to do something
+---
+
+#### DCP: Command vs Event Decision Table
+
+| Situation | Use | Why |
+|-----------|---|---|
+| Document sourced | **EVENT** | Multiple services react, automatic |
+| Extraction fails in pipeline | **COMMAND** | Error handling, needs orchestrator decision |
+| Quality passed | **EVENT** | Fact happened, orchestrator reacts |
+| Create L1 task | **COMMAND** | Orchestrator requests, Task Service decides |
+| L1 rejects document | **COMMAND** | Specific request to Extraction, needs decision |
+| Extraction rework completes | **EVENT** | Fact happened, other services can react |
+| L2 approves | **COMMAND** (sent by L2 UI) | Or EVENT if system auto-approves |
+| Document approved (fact) | **EVENT** | Multiple services react (Dissemination, Audit) |
+| Document published | **EVENT** | Fact happened, Audit Service reacts |
 
 ---
 
-#### DCP Summary
+#### Key Insight: DCP's True Pattern
 
-| Situation | Use Command | Use Event | Why |
-|-----------|---|---|---|
-| Document sourced | ❌ | ✅ | Automatic, multiple services react |
-| Extract → Quality check | ❌ | ✅ | Automatic pipeline, no decision |
-| L1 rejects → send for rework | ✅ | ❌ | Specific request to Extraction Service |
-| L1 approves document | ❌ | ✅ | Fact that happened, Dissemination reacts |
-| Create L1 review task | ✅ | ❌ | Orchestrator asks Task Service to create |
-| Document published successfully | ❌ | ✅ | Fact happened, Audit Service reacts |
-| Orchestrator sends to L2 | ✅ | ❌ | Specific request (could fail if doc removed) |
+DCP is **NOT choreography OR orchestration**. It's **BOTH + proper use of commands vs events**:
+
+| Phase | Pattern | Primary Mechanism |
+|-------|---------|---|
+| **Auto Pipeline** | Choreography | EVENTS (services react) |
+| **Error Handling** | Choreography | COMMANDS (when auto-pipeline breaks) |
+| **Human Workflow** | Orchestration | COMMANDS (orchestrator directs) |
+| **Publishing Results** | Orchestration | EVENTS (orchestrator announces) |
+| **Publication** | Choreography | EVENTS (multiple services react) |
+
+Commands and events are **NOT synonymous with choreography and orchestration**. Both patterns use both message types!
 
 ---
 
