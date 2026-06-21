@@ -6,6 +6,7 @@
 2. [What is the Saga pattern?](#2-what-is-the-saga-pattern)
 3. [What is Saga choreography?](#3-what-is-saga-choreography)
 4. [What is Saga orchestration?](#4-what-is-saga-orchestration)
+4.5 [How to Enable Good Tracing in Choreography and Orchestration?](#45-how-to-enable-good-tracing-in-choreography-and-orchestration)
 5. [Are events used only in choreography?](#5-are-events-used-only-in-choreography)
 6. [What is the difference between a command and an event?](#6-what-is-the-difference-between-a-command-and-an-event)
 7. [What is a compensating transaction?](#7-what-is-a-compensating-transaction)
@@ -162,6 +163,369 @@ The orchestrator may be implemented using Camunda, Temporal, a state machine, or
 
 ```text
 L1 review → L2 review → Approval → Publication → Notification
+```
+
+---
+
+## 4.5 How to Enable Good Tracing in Choreography and Orchestration?
+
+### The Problem: Distributed Tracing Across Services
+
+When a single user action (e.g., "Approve document") spans multiple services and Kafka topics, how do you trace what happened?
+
+```text
+Approval Service approves doc-789
+       ↓ (publishes DocumentApproved event)
+Kafka topic
+       ↓ (Dissemination Service consumes)
+Dissemination Service publishes doc-789
+       ↓ (publishes DocumentPublished event)
+Kafka topic
+       ↓ (Notification Service consumes)
+Notification Service sends email
+```
+
+**Without tracing:** If something fails, which service caused it? How many events were created for this document? What's the exact sequence?
+
+**With tracing:** One unique ID follows the entire flow, connecting all services and messages.
+
+---
+
+### The Solution: Trace ID (Correlation ID)
+
+A **trace ID** (also called correlation ID) is a unique identifier that travels with every message through the entire workflow.
+
+```text
+trace_id = "550e8400-e29b-41d4-a716-446655440000"
+
+This trace_id appears in:
+  - Approval Service logs: "Approved doc-789 [trace_id]"
+  - DocumentApproved event: {"doc_id": "doc-789", "trace_id": "550e..."}
+  - Dissemination Service logs: "Publishing doc-789 [trace_id]"
+  - DocumentPublished event: {"doc_id": "doc-789", "trace_id": "550e..."}
+  - Notification Service logs: "Sending email [trace_id]"
+```
+
+---
+
+### Who Generates Trace ID and When?
+
+#### In Choreography (Event-Driven)
+
+**Answer: The initial service generates the trace ID in step 1**
+
+```text
+Step 1: User action triggers Approval Service
+        ├─ Generate trace_id = UUID()
+        ├─ Approve document in database
+        ├─ Log: "Approved doc-789 [trace_id]"
+        └─ Publish DocumentApproved event with trace_id
+        
+Step 2: DocumentApproved event reaches Kafka
+        ├─ Event contains: {"doc_id": "doc-789", "trace_id": "550e..."}
+        └─ Dissemination Service consumes
+        
+Step 3: Dissemination Service processes
+        ├─ Log: "Received approval for doc-789 [trace_id]"
+        ├─ Publish document
+        ├─ Log: "Published doc-789 [trace_id]"
+        └─ Publish DocumentPublished event with SAME trace_id
+        
+Step 4: DocumentPublished event reaches Kafka
+        ├─ Event contains: {"doc_id": "doc-789", "trace_id": "550e..."}
+        └─ Notification Service consumes
+        
+Step 5: Notification Service processes
+        ├─ Log: "Sending email for doc-789 [trace_id]"
+        ├─ Send email
+        └─ Log: "Email sent [trace_id]"
+```
+
+**Key point:** Trace ID is generated ONCE by the first service and PROPAGATED through all events and services.
+
+---
+
+#### In Orchestration (Centralized Control)
+
+**Answer: The orchestrator generates the trace ID in step 1**
+
+```text
+Step 1: User action triggers Orchestrator
+        ├─ Generate trace_id = UUID()
+        ├─ Create saga instance: {trace_id, doc_id, status: "STARTED"}
+        ├─ Log: "Starting saga for doc-789 [trace_id]"
+        └─ Send command: {trace_id, "Approve doc-789"}
+        
+Step 2: Approval Service receives command
+        ├─ Command contains: {trace_id, "Approve doc-789"}
+        ├─ Log: "Received approval command [trace_id]"
+        ├─ Approve document
+        ├─ Log: "Approved doc-789 [trace_id]"
+        └─ Return result with trace_id
+        
+Step 3: Orchestrator receives approval result
+        ├─ Result contains: {trace_id, status: "approved"}
+        ├─ Update saga: status = "APPROVED"
+        ├─ Log: "Approval completed [trace_id]"
+        └─ Send next command: {trace_id, "Publish doc-789"}
+        
+Step 4: Dissemination Service receives command
+        ├─ Command contains: {trace_id, "Publish doc-789"}
+        ├─ Log: "Received publish command [trace_id]"
+        ├─ Publish document
+        ├─ Log: "Published doc-789 [trace_id]"
+        └─ Return result with trace_id
+        
+Step 5: Orchestrator receives publish result
+        ├─ Result contains: {trace_id, status: "published"}
+        ├─ Update saga: status = "PUBLISHED"
+        ├─ Send final command: {trace_id, "Send notification"}
+        └─ ...continues...
+```
+
+**Key point:** Orchestrator generates trace ID ONCE and includes it in EVERY command sent to services.
+
+---
+
+### Comparison: Choreography vs Orchestration Tracing
+
+| Aspect | Choreography | Orchestration |
+|--------|---|---|
+| **Who generates trace ID** | Initial service (Approval) | Orchestrator |
+| **When** | When user action triggers service | When orchestrator starts saga |
+| **How it propagates** | Through event payload | Through command payload |
+| **Services know about each other** | Implicitly (via events) | Explicitly (orchestrator coordinates) |
+| **How to debug** | Search logs by trace_id across all services | Search logs by trace_id + check orchestrator state machine |
+| **If step fails** | Need to trace back through events | Orchestrator shows exact failed step |
+
+---
+
+### Implementation: Adding Trace ID to Events (Choreography)
+
+```python
+# Approval Service (generates trace ID)
+class ApprovalService:
+    def approve_document(self, doc_id):
+        trace_id = str(uuid.uuid4())  # Generate once
+        
+        logger.info(f"Approving {doc_id}", extra={"trace_id": trace_id})
+        
+        # Approve in database
+        db.update("documents", doc_id, status="APPROVED")
+        
+        # Publish event WITH trace_id
+        event = {
+            "type": "DocumentApproved",
+            "doc_id": doc_id,
+            "trace_id": trace_id,  # Include in event
+            "timestamp": now()
+        }
+        producer.send("document-events", value=event, key=doc_id)
+        
+        logger.info(f"Published DocumentApproved", extra={"trace_id": trace_id})
+
+# Dissemination Service (receives and continues trace ID)
+class DisseminationService:
+    def on_document_approved(self, event):
+        doc_id = event["doc_id"]
+        trace_id = event["trace_id"]  # Extract from event
+        
+        logger.info(f"Received approval for {doc_id}", extra={"trace_id": trace_id})
+        
+        # Publish document
+        s3.put_object(f"documents/{doc_id}.pdf", content)
+        
+        # Publish event with SAME trace_id
+        next_event = {
+            "type": "DocumentPublished",
+            "doc_id": doc_id,
+            "trace_id": trace_id,  # Same trace ID, continues the chain
+            "timestamp": now()
+        }
+        producer.send("document-events", value=next_event, key=doc_id)
+        
+        logger.info(f"Published DocumentPublished", extra={"trace_id": trace_id})
+```
+
+**Query all logs for a document workflow:**
+```bash
+# Search across all services for this trace
+logs.filter(trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+Results:
+  [ApprovalService] Approving doc-789 [550e...]
+  [ApprovalService] Published DocumentApproved [550e...]
+  [DisseminationService] Received approval for doc-789 [550e...]
+  [DisseminationService] Published DocumentPublished [550e...]
+  [NotificationService] Sending email for doc-789 [550e...]
+  [NotificationService] Email sent [550e...]
+```
+
+---
+
+### Implementation: Adding Trace ID to Commands (Orchestration)
+
+```python
+# Orchestrator (generates trace ID)
+class DocumentApprovalOrchestrator:
+    def start_approval_workflow(self, doc_id):
+        trace_id = str(uuid.uuid4())  # Generate once
+        
+        logger.info(f"Starting approval workflow for {doc_id}", 
+                   extra={"trace_id": trace_id})
+        
+        # Create saga instance
+        saga = {
+            "saga_id": str(uuid.uuid4()),
+            "trace_id": trace_id,
+            "doc_id": doc_id,
+            "status": "STARTED",
+            "steps": []
+        }
+        db.insert("sagas", saga)
+        
+        # Step 1: Send approval command with trace_id
+        command = {
+            "type": "ApproveDocumentCommand",
+            "doc_id": doc_id,
+            "trace_id": trace_id,  # Include in command
+            "saga_id": saga["saga_id"]
+        }
+        command_bus.send(command, routing_key="approval-service")
+        
+        logger.info(f"Sent ApproveDocumentCommand", 
+                   extra={"trace_id": trace_id})
+
+# Approval Service (receives command with trace ID)
+class ApprovalService:
+    def handle_approve_command(self, command):
+        doc_id = command["doc_id"]
+        trace_id = command["trace_id"]  # Extract from command
+        saga_id = command["saga_id"]
+        
+        logger.info(f"Received approval command for {doc_id}", 
+                   extra={"trace_id": trace_id})
+        
+        try:
+            # Approve document
+            db.update("documents", doc_id, status="APPROVED")
+            
+            logger.info(f"Approved {doc_id}", extra={"trace_id": trace_id})
+            
+            # Send result back to orchestrator with trace_id
+            result = {
+                "type": "DocumentApprovedResult",
+                "doc_id": doc_id,
+                "trace_id": trace_id,  # Same trace ID
+                "saga_id": saga_id,
+                "status": "success"
+            }
+            result_channel.send(result)
+            
+        except Exception as e:
+            logger.error(f"Failed to approve {doc_id}: {e}", 
+                        extra={"trace_id": trace_id})
+            
+            result = {
+                "type": "DocumentApprovedResult",
+                "doc_id": doc_id,
+                "trace_id": trace_id,  # Same trace ID even on error
+                "saga_id": saga_id,
+                "status": "failure",
+                "error": str(e)
+            }
+            result_channel.send(result)
+
+# Orchestrator (receives result with trace ID)
+class DocumentApprovalOrchestrator:
+    def handle_approval_result(self, result):
+        trace_id = result["trace_id"]  # Extract from result
+        saga_id = result["saga_id"]
+        
+        logger.info(f"Approval completed with status: {result['status']}", 
+                   extra={"trace_id": trace_id})
+        
+        if result["status"] == "success":
+            # Step 2: Send next command with same trace_id
+            command = {
+                "type": "PublishDocumentCommand",
+                "doc_id": result["doc_id"],
+                "trace_id": trace_id,  # Continue same trace ID
+                "saga_id": saga_id
+            }
+            command_bus.send(command, routing_key="dissemination-service")
+            logger.info(f"Sent PublishDocumentCommand", 
+                       extra={"trace_id": trace_id})
+        else:
+            # Handle failure and compensation
+            logger.error(f"Approval failed, starting compensation", 
+                        extra={"trace_id": trace_id})
+            # ... compensation logic with same trace_id ...
+```
+
+**Query orchestrator logs for saga workflow:**
+```bash
+# Search for this trace
+logs.filter(trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+Results:
+  [Orchestrator] Starting approval workflow for doc-789 [550e...]
+  [Orchestrator] Sent ApproveDocumentCommand [550e...]
+  [ApprovalService] Received approval command for doc-789 [550e...]
+  [ApprovalService] Approved doc-789 [550e...]
+  [Orchestrator] Approval completed with status: success [550e...]
+  [Orchestrator] Sent PublishDocumentCommand [550e...]
+  [DisseminationService] Received publish command for doc-789 [550e...]
+  [DisseminationService] Published doc-789 [550e...]
+  [Orchestrator] Publish completed with status: success [550e...]
+  [Orchestrator] Sent NotificationCommand [550e...]
+  [NotificationService] Sending email for doc-789 [550e...]
+  [Orchestrator] Notification completed with status: success [550e...]
+```
+
+---
+
+### Best Practices for Tracing
+
+**1. Generate trace ID early (first service or orchestrator)**
+```python
+# Good
+trace_id = str(uuid.uuid4())
+# Bad: Each service generates its own trace_id (breaks tracing)
+```
+
+**2. Include trace ID in every log**
+```python
+logger.info("Processing document", extra={"trace_id": trace_id})
+```
+
+**3. Pass trace ID in every message/event/command**
+```python
+event = {"doc_id": doc_id, "trace_id": trace_id}
+command = {"doc_id": doc_id, "trace_id": trace_id}
+```
+
+**4. Never regenerate trace ID**
+```python
+# Good: Extract from event/command
+trace_id = event["trace_id"]
+
+# Bad: Generate new one
+trace_id = str(uuid.uuid4())  # Wrong!
+```
+
+**5. Use consistent naming**
+```python
+# All services use same field name
+event["trace_id"]
+command["trace_id"]
+logs["trace_id"]
+```
+
+**6. Log failed steps with trace ID**
+```python
+logger.error(f"Failed to publish: {error}", 
+            extra={"trace_id": trace_id, "step": "publish"})
 ```
 
 ---
