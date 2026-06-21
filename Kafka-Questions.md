@@ -1011,9 +1011,53 @@ Partitions provide:
 
 The same topic's partitions may be stored on different brokers.
 
+### Kafka Cluster: Multiple Brokers
+
+Before understanding individual brokers, understand the cluster they work in.
+
+A **Kafka cluster** is a group of brokers working together:
+
+```text
+Kafka Cluster
+├── Broker 1
+├── Broker 2
+├── Broker 3
+└── Broker N
+
+Cardinality: Cluster ↔ Brokers = 1:M (one cluster to many brokers)
+```
+
+**Key Points:**
+- One cluster has 3+ brokers (minimum 3 for production, 1 for dev)
+- Each broker belongs to exactly one cluster
+- Brokers communicate with each other within the same cluster
+- Separate clusters do not share data
+
+**Real-Life Example:**
+
+```text
+Pizza Store Company Kafka Infrastructure
+
+Cluster 1 (East Coast)
+├── Broker 1 (Server A in New York)
+├── Broker 2 (Server B in Boston)
+└── Broker 3 (Server C in Philadelphia)
+    All brokers replicate same data to each other
+
+Cluster 2 (West Coast) ← Completely separate cluster
+├── Broker 4 (Server D in San Francisco)
+├── Broker 5 (Server E in Los Angeles)
+└── Broker 6 (Server F in Seattle)
+    Brokers here don't know about Cluster 1's data
+
+Messages in Cluster 1 are NOT visible in Cluster 2
+```
+
+---
+
 ### Broker: one Kafka server
 
-A broker is a running Kafka server.
+A broker is a running Kafka server that belongs to a cluster.
 
 Its main job is to store partition data and serve Kafka clients:
 
