@@ -1709,18 +1709,161 @@ This provides:
 
 ```text
 1. Sourcing Service produces DocumentSourced(DOC-123)
+   Producer decides:
+     Topic: document-sourced (explicit choice)
+     Key: DOC-123 (chosen by producer)
+     Value: {amount: $5000, vendor: "Acme Corp", ...}
 
-2. Kafka uses the key DOC-123 to select:
-   Topic: document-sourced
-   Partition: DS-P0
+2. Kafka uses the KEY to select PARTITION:
+   
+   hash(DOC-123) % 2 = 0
+   → Partition: DS-P0
+   
+   (If key was DOC-124: hash might send to DS-P1)
+   (If key was null: round-robin to any partition)
 
 3. Broker 1 is the leader for DS-P0
-   → Broker 1 stores the record
+   → Broker 1 stores the record at offset 0
 
-4. Broker 2 and Broker 3 copy the record
+4. Broker 1 replicates to Broker 2 and Broker 3
+   → All 3 brokers have the same record
 
-5. Extraction Consumer reads DS-P0 from Kafka
-   → It processes DOC-123
+5. Extraction Consumer reads DS-P0 from Broker 1
+   → It processes DOC-123 at offset 0
+```
+
+---
+
+#### How the Key Works: Topic vs Partition Selection
+
+**Key concept:**
+- **Topic** is chosen explicitly by producer
+- **Partition** is chosen by Kafka based on the key
+
+```text
+Producer code:
+  producer.send(
+    topic="document-sourced",           ← Topic: explicit
+    key="DOC-123",                      ← Key: explicit
+    value=document_json
+  )
+
+Kafka internally:
+  partition = hash(key) % num_partitions
+  partition = hash("DOC-123") % 2
+  partition = 12345 % 2 = 0
+  
+  → Send to document-sourced Partition 0
+```
+
+**Three cases:**
+
+```text
+Case 1: Key = "DOC-123"
+  hash("DOC-123") % 2 = 0
+  → Goes to Partition 0 (DS-P0)
+  
+Case 2: Key = "DOC-124"
+  hash("DOC-124") % 2 = 1
+  → Goes to Partition 1 (DS-P1)
+  
+Case 3: Key = null (no key provided)
+  Kafka round-robins across partitions
+  Record 1 → P0
+  Record 2 → P1
+  Record 3 → P0 (repeats)
+  
+  ⚠️ No ordering guarantee with null key!
+```
+
+---
+
+#### Why Key Matters: Ordering Guarantee
+
+```text
+DCP requirement: All events for DOC-123 must be processed in order
+  DocumentSourced(DOC-123, offset 0)
+  DocumentExtracted(DOC-123, offset 1)
+  QualityChecked(DOC-123, offset 2)
+  DocumentApproved(DOC-123, offset 3)
+
+Solution: Always use documentId as key
+  producer.send(topic="document-sourced", key="DOC-123", ...)
+  producer.send(topic="document-extracted", key="DOC-123", ...)
+  
+Result:
+  ✓ All DOC-123 events in same partition (DS-P0)
+  ✓ Consumer reads them in order
+  ✓ Processes DOC-123 sequentially
+  
+⚠️ If key changes or null:
+  DocumentSourced(DOC-123) → goes to P0
+  DocumentExtracted(DOC-123) → might go to P1
+  
+  Consumer might process them out of order!
+```
+
+---
+
+#### Kafka Topic Selection Decision Tree
+
+```text
+Producer decides: which topic?
+  ├─ orders? → send to pizza-orders topic
+  ├─ payments? → send to payment-completed topic
+  └─ documents? → send to document-sourced topic
+
+For selected topic, Kafka decides: which partition?
+  ├─ If key provided → hash(key) % num_partitions
+  ├─ If key = null → round-robin across partitions
+  
+Broker decides: who is leader for this partition?
+  └─ Only the leader accepts the write
+```
+
+---
+
+#### Real Timeline: How DOC-123 Flows
+
+```text
+t=0ms:   Producer calls:
+         producer.send(
+           topic="document-sourced",
+           key="DOC-123",
+           value={amount: 5000, ...}
+         )
+
+t=1ms:   Kafka calculates partition:
+         hash("DOC-123") % 2 = 0
+         → document-sourced Partition 0
+
+t=2ms:   Producer discovers leader:
+         asks Kafka cluster metadata
+         "Who leads document-sourced P0?"
+         → Response: "Broker 1"
+
+t=3ms:   Producer connects to Broker 1
+         sends record
+
+t=4ms:   Broker 1 writes to disk
+         (append to its log file)
+
+t=5ms:   Broker 1 sends to replicas
+         Broker 2 writes to disk
+         Broker 3 writes to disk
+
+t=10ms:  All 3 brokers send "ack" back
+         (if acks="all")
+
+t=11ms:  Producer receives ack
+         returns success to app
+
+t=12ms:  Extraction Consumer polls Broker 1
+         "Give me records from P0 offset 0+"
+         → Receives DOC-123
+
+t=13ms:  Consumer processes DOC-123
+         extracts fields, calls ML service
 ```
 
 ### Important distinction
