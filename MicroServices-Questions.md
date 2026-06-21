@@ -2,17 +2,49 @@
 
 ## Table of Contents
 
+### Core Patterns
 1. [What is the distributed transaction problem in microservices?](#1-what-is-the-distributed-transaction-problem-in-microservices)
 2. [What is the Saga pattern?](#2-what-is-the-saga-pattern)
 3. [What is Saga choreography?](#3-what-is-saga-choreography)
 4. [What is Saga orchestration?](#4-what-is-saga-orchestration)
+
+### Tracing and Observability
 4.5 [How to Enable Good Tracing in Choreography and Orchestration?](#45-how-to-enable-good-tracing-in-choreography-and-orchestration)
+  - [In Choreography (Event-Driven)](#in-choreography-event-driven)
+  - [In Orchestration (Centralized Control)](#in-orchestration-centralized-control)
+  - [Comparison: Choreography vs Orchestration Tracing](#comparison-choreography-vs-orchestration-tracing)
+  - [Should API Gateway Generate Trace ID Instead?](#should-api-gateway-generate-trace-id-instead)
+    - [Approach 1: API Gateway Generates (REST only)](#approach-1-api-gateway-generates-rest-only)
+    - [Approach 2: Service Generates (Event-driven)](#approach-2-service-generates-event-driven)
+    - [Approach 3: Hybrid (BEST for Most Systems)](#approach-3-hybrid-best-for-most-systems)
+  - [DCP Hybrid Approach: Complete Implementation](#dcp-hybrid-approach-complete-implementation)
+    - [DCP Architecture with Tracing](#dcp-architecture-with-tracing)
+    - [DCP Implementation: Hybrid Tracing Code](#dcp-implementation-hybrid-tracing-code)
+    - [DCP Debugging: Following a Trace ID](#dcp-debugging-following-a-trace-id)
+
+### Choreography vs Orchestration in Practice
+  - [Choreography vs Orchestration: DCP and Pizza Store Comparison](#choreography-vs-orchestration-dcp-and-pizza-store-comparison)
+    - [Pizza Store: Choreography-First (Simple)](#pizza-store-choreography-first-simple)
+    - [DCP: Hybrid (Choreography + Orchestration)](#dcp-hybrid-choreography--orchestration)
+    - [Comparison Table: When Each Pattern Shines](#comparison-table-when-each-pattern-shines)
+
+### Messaging Patterns
 5. [Are events used only in choreography?](#5-are-events-used-only-in-choreography)
 6. [What is the difference between a command and an event?](#6-what-is-the-difference-between-a-command-and-an-event)
+  - [Basic Difference](#basic-difference)
+  - [When to Use Commands vs Events: Pizza Store](#when-to-use-commands-vs-events-pizza-store)
+  - [When to Use Commands vs Events: DCP](#when-to-use-commands-vs-events-dcp)
+  - [Decision Tree: Command vs Event](#decision-tree-command-vs-event)
+  - [Pattern Summary](#pattern-summary)
+  - [Interview-Ready Answer](#interview-ready-answer)
+
+### Advanced Patterns
 7. [What is a compensating transaction?](#7-what-is-a-compensating-transaction)
 8. [What is event sourcing?](#8-what-is-event-sourcing)
 9. [What is idempotency?](#9-what-is-idempotency)
 10. [How do these patterns work together?](#10-how-do-these-patterns-work-together)
+
+### Implementation and Applications
 11. [Microservices design patterns and their DCP applicability](#11-microservices-design-patterns-and-their-dcp-applicability)
 12. [Interview-ready answer](#interview-ready-answer-2)
 
