@@ -540,32 +540,286 @@ LEAKING BUCKET = Bank Teller Queue
 
 ### 3. Fixed Window Counter Algorithm
 
+#### **Core Concept**
+
+Fixed Window Counter divides time into **fixed-size buckets** and counts requests in each bucket:
+
+```
+Timeline:
+┌──────────────┐──────────────┐──────────────┐
+│ Window 1     │ Window 2     │ Window 3     │
+│ 0:00 - 0:10  │ 0:10 - 0:20  │ 0:20 - 0:30  │
+│ Counter: 0   │ Counter: 0   │ Counter: 0   │
+└──────────────┴──────────────┴──────────────┘
+```
+
 **How It Works:**
-- Timeline divided into fixed-sized windows
-- Each window has a counter
-- Request increments counter
-- Once counter reaches threshold, new requests dropped until new window starts
+1. Divide timeline into equal-sized windows (e.g., 10 seconds each)
+2. Each window has a counter starting at 0
+3. Each request increments the counter by 1
+4. If counter < limit, request accepted
+5. If counter ≥ limit, request rejected
+6. When window ends, counter RESETS to 0 for next window
 
-**Example:**
+#### **Parameters:**
+
+1. **Window Size** - Time duration of each window
+   - Example: 10 seconds
+
+2. **Request Limit** - Max requests allowed per window
+   - Example: 10 requests per 10 seconds
+
+#### **Simple Example: Using Scenario**
+
+**Configuration:**
 ```
-Window size: 1 second
-Limit: 3 requests per second
-
-Window [1:00-1:01): Counter reaches 3 → excess requests dropped
-Window [1:01-1:02): Counter resets to 0
+Window Size: 10 seconds
+Request Limit: 10 requests per window
+Scenario: [3 requests at T=0s] → 6 sec quiet → [9 requests at T=9s]
 ```
 
-**Pros:**
-- ✅ Memory efficient
-- ✅ Easy to understand
-- ✅ Quota resets at end of time window
+**Phase 1: Initial Requests (T=0s)**
+```
+Current window: [T=0s to T=10s]
+Counter: 0
+
+3 requests arrive at T=0s:
+  Request #1: Counter: 0 → 1 ✓ (1 ≤ 10)
+  Request #2: Counter: 1 → 2 ✓ (2 ≤ 10)
+  Request #3: Counter: 2 → 3 ✓ (3 ≤ 10)
+
+Result: All 3 ACCEPTED
+Current counter: 3/10
+Remaining quota: 7 requests
+```
+
+**Phase 2: Quiet Period (T=0s to T=9s)**
+```
+Same window [T=0s to T=10s] still active
+Counter: 3 (no change during quiet)
+
+T=0-9s: No new requests arrive
+        Counter stays at 3
+        Still 7 requests quota remaining
+        
+T=10s: Window ends! Counter RESETS to 0
+       New window [T=10s to T=20s] begins
+```
+
+**Phase 3: BURST (T=9s) - Initial Look (seems OK)**
+```
+Current window: [T=0s to T=10s] (still 1 second left!)
+Counter: 3/10
+
+9 requests arrive at T=9s:
+  Request #1: Counter: 3 → 4  ✓ (4 ≤ 10)
+  Request #2: Counter: 4 → 5  ✓ (5 ≤ 10)
+  Request #3: Counter: 5 → 6  ✓ (6 ≤ 10)
+  Request #4: Counter: 6 → 7  ✓ (7 ≤ 10)
+  Request #5: Counter: 7 → 8  ✓ (8 ≤ 10)
+  Request #6: Counter: 8 → 9  ✓ (9 ≤ 10)
+  Request #7: Counter: 9 → 10 ✓ (10 ≤ 10, at limit!)
+  Request #8: Counter: 10 (LIMIT REACHED) ✗ REJECTED
+  Request #9: Counter: 10 (LIMIT REACHED) ✗ REJECTED
+
+Result: 7/9 requests accepted
+        2/9 requests rejected
+Counter: 10/10 (FULL)
+```
+
+#### **⚠️ THE CRITICAL PROBLEM: Edge Case Burst**
+
+This algorithm has a **FATAL FLAW** at window boundaries! Let me show you:
+
+**Evil Scenario (showing the problem):**
+```
+Window Size: 1 minute
+Request Limit: 5 requests per minute
+
+Window 1: [2:00:00 - 2:01:00]     Window 2: [2:01:00 - 2:02:00]
+```
+
+**Timeline showing WHERE IT BREAKS:**
+```
+Window 1: [2:00:00 - 2:01:00]
+  Counter: 0/5
+  T=2:00:55: 5 requests arrive ✓
+  Counter: 0 → 5 (FULL at last 5 seconds of window)
+
+Window boundary (RESET!)
+
+Window 2: [2:01:00 - 2:02:00]
+  Counter: 0/5 ← RESET!
+  T=2:01:05: 5 requests arrive ✓
+  Counter: 0 → 5 (FULL at first 5 seconds of new window)
+
+THE PROBLEM:
+─────────────────────────────────────────────────────
+In the ROLLING 10-second window [2:00:55 - 2:01:05]:
+  • 5 requests processed at 2:00:55
+  • 5 requests processed at 2:01:05
+  • TOTAL: 10 requests in 10 seconds!
+  
+But the LIMIT is 5 per MINUTE!
+  • Expected: 5 requests max per minute
+  • Actual: 10 requests allowed in 10 seconds! 🚨
+  
+That's 2X the allowed rate! CRITICAL FAILURE!
+```
+
+**Visual Breakdown:**
+```
+Limit: 5 requests/minute (60 seconds)
+
+Minute 1: [12:00:00 - 12:01:00]
+┌────────────────────────────────────────────┐
+│                                            │
+│ T=12:00:55: 5 reqs ✓ (last 5 sec)         │
+│ Counter: 0 → 5/5 FULL                      │
+│                                            │
+└────────────────────────────────────────────┘
+                  ↓ WINDOW ENDS, COUNTER RESETS!
+
+Minute 2: [12:01:00 - 12:02:00]
+┌────────────────────────────────────────────┐
+│                                            │
+│ T=12:01:05: 5 reqs ✓ (first 5 sec)        │
+│ Counter: 0 → 5/5 FULL (FRESH WINDOW!)      │
+│                                            │
+└────────────────────────────────────────────┘
+
+ROLLING WINDOW [12:00:55 - 12:01:05]:
+┌─────────────┐─────────────┐
+│Minute 1: 5  │Minute 2: 5  │ = 10 requests in 10 seconds!
+│ Last 5 sec  │First 5 sec  │
+└─────────────┴─────────────┘
+
+EXPECTED: 5 requests max
+ACTUAL:   10 requests allowed 🚨 TWICE THE LIMIT!
+```
+
+**The Root Cause:**
+```
+Fixed Window doesn't look at ROLLING TIME.
+It looks at ABSOLUTE WINDOWS.
+
+So at the edge where:
+  - End of Window 1 quota: Still has unused quota
+  - Start of Window 2 quota: Fresh, full quota
+
+Requests can use quota from BOTH windows in a short time!
+```
+
+#### **Mathematical Worst Case**
+
+```
+For any Fixed Window implementation:
+─────────────────────────────────────
+
+If Limit = L requests per time period T:
+  Maximum allowed in rolling window = 2L
+
+How?
+  Last portion of Window 1: Up to L requests
+  First portion of Window 2: Up to L requests
+  Combined: Up to 2L requests in < T seconds!
+
+Example:
+  Limit: 100 requests per 60 seconds
+  Worst case: 200 requests in 60 seconds (at edge)
+  Violation: 2X the limit!
+```
+
+#### **Complete Timeline Comparison**
+
+**All three algorithms on same scenario:**
+
+```
+Scenario: [3 requests at T=0s] → quiet 6s → [9 requests at T=9s]
+Limit: 10 requests per 10-second window
+
+TOKEN BUCKET (Bucket: 10, Refill: 1/sec):
+  T=0s:  3 requests ✓ (7 tokens remain)
+  T=1-3s: Tokens refill (7 → 10)
+  T=9s:  9 requests → 8 accepted ✓, 1 dropped ✗
+  Result: 8/9 (89% success)
+  Latency: ~0ms
+  
+LEAKING BUCKET (Queue: 10, Rate: 1/6s):
+  T=0s:  3 requests queued ✓
+  T=9s:  9 requests → 8 queued ✓, 1 dropped ✗
+  T=6-66s: Steady processing
+  Result: 8/9 (89% success)
+  Latency: 15-57 seconds
+  
+FIXED WINDOW (Window: 10s, Limit: 10):
+  T=0s:  3 requests ✓ (counter: 3/10)
+  T=9s:  9 requests → 7 accepted ✓, 2 dropped ✗
+  Result: 7/9 (78% success)
+  Latency: ~0ms
+  Risk: Could allow 2X limit at window edge! 🚨
+```
+
+#### **Pros:**
+- ✅ **Very simple** - Easy to implement
+- ✅ **Memory efficient** - Only need 1 counter per window
+- ✅ **Fast** - O(1) operation per request
+- ✅ **Easy to understand** - Straightforward logic
+- ✅ **Good for some use cases** - Works for non-critical limits
 
 **Cons:**
-- ❌ **Major Issue**: Burst traffic at window edges allows more requests than quota
-- ❌ Example: With 5 requests/minute limit:
-  - 5 requests between 2:00:00-2:01:00
-  - 5 requests between 2:01:00-2:02:00
-  - Between 2:00:30-2:01:30 window: 10 requests go through! (2x allowed)
+- ❌ **CRITICAL FLAW** - Edge case allows 2X requests at window boundaries
+- ❌ **Not strict** - Real rate limiting not properly enforced
+- ❌ **Unpredictable spikes** - Burst at edges can overwhelm system
+- ❌ **Not suitable for strict limits** - Users can game the system
+- ❌ **Hard to tune** - Window size affects vulnerability to edge cases
+
+#### **When to Use Fixed Window:**
+
+✅ **Simple quota systems** - Where edge cases don't matter much
+```
+Example: Website showing "You viewed 100 articles today"
+(Not critical if 200 go through at midnight)
+```
+
+✅ **Informational limits** - Not strict enforcement
+```
+Example: "Free users get 1000 API calls/month"
+(Best-effort, not guaranteed)
+```
+
+✅ **Best effort** - When approximate limiting is OK
+```
+Example: "We recommend not more than 100 requests/sec"
+(Guideline, not enforced)
+```
+
+❌ **NEVER for:**
+- Critical rate limiting (payment systems)
+- Security-related limits (login attempts)
+- Resource protection (database protection)
+- Any strict enforcement needed
+
+#### **Real Example: The Vulnerability**
+
+```
+GitHub API with Fixed Window (hypothetical):
+
+Limit: 60 requests per hour
+
+Your honest usage:
+  59 requests at T=59:50 (last 10 seconds of hour)
+  1 more request at T=1:10 (first 10 seconds of next hour)
+  
+GitHub allows this ✓ (both within their window)
+
+But in reality:
+  You made 60 requests in just 20 seconds!
+  That's 3600 per hour (vs 60 limit) 🚨
+
+GitHub's Fixed Window said: "OK!" ✗
+Real rate limiter would say: "NO!" ✓
+```
 
 ---
 
