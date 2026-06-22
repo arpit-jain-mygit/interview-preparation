@@ -1,32 +1,24 @@
 MacD Questions from Rohit G
-    refer (Kafka-Questions.md, MicroServices-Questions.md, NFR.md) and create a final revision md and explain these question/answers in simple way.
+    How to design rule engine for DCP validations (GreatExpectations, JBoss, current approach?), transformation (limited, as its data collection system), standardizations
+        rule engine -> design performance efficient, indendent, mutual exclusive -> parallelization
     
-    - 3 technical challenges as Architect in DCP, you helped your team, they were cluless
-    - 3 most dificult people leader challenges you faced and how did you solve them
-    - 3 most complex conflicts, you had to deal with your stakeholders, product management, QA, DevOps teams
-    - 3 most unrealistic demands you had to deal with leadership on deliveries
+    spring flowable for workflow for DCP
     
+    auto extraction - plug in play architecture for DCP, use multiple platforms for AI auto extraction
     
-    validations (GE), transformation, standardizations
-    rule engine -> performance efficient, indendent, mutual exclusive -> parallelization
+    whih DB to choose for DCP and in general- postgres, mongo, OLAP analytics
     
-    spring flowable for workflow
+    CAP theorm and applicability in which usecases?
     
-    auto extraction - plug in play architecture
+    Imp - NoSQL DBs (3 Vs from Big Data), diff from RDBMS
     
-    whih DB to choose - postgres, mongo, OLAP analytics
-    
-    CAP theorm
-    
-    NoSQL DBs (3 Vs from Big Data), diff from RDBMS
-    
-    Hive
+    Hive - practical use and usecases
     
     ELK dashboard for PROD INCs logs
     
-    Point of Sales system architecture
+    Point of Sales system architecture (e2e, UI, middle tier, which DB to store what)
     
-    where to keep write-heavy user data for any app
+    where to keep write-heavy user data for any app, similar for read-heavy app design
 ------------
 Alex Xu
   Rate Limiter system
