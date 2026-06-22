@@ -1142,31 +1142,350 @@ Better alternative: Token Bucket, Sliding Window, or hybrid
 
 ### 4. Sliding Window Log Algorithm
 
+#### **Core Concept**
+
+Sliding Window Log keeps a **complete record of all request timestamps** and checks them against a rolling window:
+
+```
+Redis Sorted Set (timestamp log):
+┌────────────────────────────────────────┐
+│ [12:00:01] [12:00:15] [12:00:30]       │
+│ [12:00:45] [12:00:58] [12:01:05]       │
+│ [12:01:20] [12:01:35]                  │
+│                                        │
+│ This is the COMPLETE HISTORY of when  │
+│ requests arrived!                      │
+└────────────────────────────────────────┘
+
+When new request arrives at T=12:01:40:
+  1. Look at rolling window [12:00:40 - 12:01:40] (last 60 sec)
+  2. Count requests in that window: 4 timestamps
+  3. If count < limit (5), ACCEPT
+  4. If count ≥ limit, REJECT
+```
+
 **How It Works:**
-- Keeps track of request timestamps (usually in Redis sorted sets)
-- When new request arrives, removes outdated timestamps (older than current window start)
-- Adds new request timestamp to log
-- If log size ≤ allowed count, request accepted; otherwise rejected
+1. Maintain a **log of ALL request timestamps** (in Redis sorted set)
+2. When new request arrives, identify the current time window (e.g., last 60 seconds)
+3. Remove timestamps **older than window start** from the log (cleanup)
+4. Count remaining timestamps in the current rolling window
+5. If count < limit, add new timestamp and ACCEPT
+6. If count ≥ limit, REJECT without adding timestamp
 
-**Example:**
+#### **Parameters:**
+
+1. **Window Size** - How long is the rolling window?
+   - Example: 1 minute (60 seconds)
+
+2. **Request Limit** - Max requests in that window?
+   - Example: 10 requests per 60 seconds
+
+3. **Storage** - Where to keep timestamps?
+   - Redis sorted sets (most common)
+   - In-memory map
+   - Any data structure supporting time-based queries
+
+#### **Simple Example: Using Scenario**
+
+**Configuration:**
 ```
-Rate limit: 2 requests per minute
-
-1:00:01 - Request arrives, log empty → ACCEPT (log size = 1)
-1:00:30 - Request arrives → ACCEPT (log size = 2)
-1:00:50 - Request arrives → REJECT (log size = 3, exceeds limit of 2)
-1:01:40 - Request arrives
-  - Remove outdated timestamps before 1:00:40 (1:00:01, 1:00:30)
-  - Add new timestamp → ACCEPT (log size = 2)
+Window Size: 1 minute (60 seconds)
+Request Limit: 10 requests per minute
+Storage: Redis sorted set
+Scenario: [3 requests at T=0s] → 6 sec quiet → [9 requests at T=9s]
 ```
 
-**Pros:**
-- ✅ Very accurate in any rolling window
-- ✅ Requests never exceed rate limit
+**Phase 1: Initial Requests (T=0s)**
+```
+T=0s: 3 requests arrive
+
+Request #1 at T=0:00:00:
+  Window: [11:59:00 - 12:00:00]
+  Log: [] (empty)
+  Count: 0 < 10 ✓ ACCEPT
+  Add timestamp: [12:00:00]
+
+Request #2 at T=0:00:02:
+  Window: [11:59:02 - 12:00:02]
+  Log: [12:00:00]
+  Old timestamps < 11:59:02: NONE
+  Count: 1 < 10 ✓ ACCEPT
+  Add timestamp: [12:00:00, 12:00:02]
+
+Request #3 at T=0:00:05:
+  Window: [11:59:05 - 12:00:05]
+  Log: [12:00:00, 12:00:02]
+  Old timestamps < 11:59:05: NONE
+  Count: 2 < 10 ✓ ACCEPT
+  Add timestamp: [12:00:00, 12:00:02, 12:00:05]
+
+Result: All 3 ACCEPTED
+Log now has: [12:00:00, 12:00:02, 12:00:05]
+Remaining quota: 7 requests
+```
+
+**Phase 2: Quiet Period (T=0s to T=9s)**
+```
+T=0 to T=9s: No new requests
+
+T=9s: Log still contains:
+  [12:00:00, 12:00:02, 12:00:05]
+
+Note: Log is NOT cleared during quiet period!
+These old timestamps persist.
+```
+
+**Phase 3: BURST (T=9s) - The Accurate Part!**
+
+```
+T=9s: 9 requests arrive rapidly
+
+Request #4 at T=0:00:09:
+  Window: [11:59:09 - 12:00:09]
+  Log: [12:00:00, 12:00:02, 12:00:05]
+  Remove old timestamps < 11:59:09: NONE (all recent)
+  Count: 3 < 10 ✓ ACCEPT
+  Add: [12:00:00, 12:00:02, 12:00:05, 12:00:09]
+
+Request #5 at T=0:00:09.1:
+  Window: [11:59:09.1 - 12:00:09.1]
+  Log: [12:00:00, 12:00:02, 12:00:05, 12:00:09]
+  Remove old: NONE
+  Count: 4 < 10 ✓ ACCEPT
+  Add: [12:00:00, 12:00:02, 12:00:05, 12:00:09, 12:00:09.1]
+
+Request #6 at T=0:00:09.2:
+  Count: 5 < 10 ✓ ACCEPT
+
+Request #7 at T=0:00:09.3:
+  Count: 6 < 10 ✓ ACCEPT
+
+Request #8 at T=0:00:09.4:
+  Count: 7 < 10 ✓ ACCEPT
+
+Request #9 at T=0:00:09.5:
+  Count: 8 < 10 ✓ ACCEPT
+
+Request #10 at T=0:00:09.6:
+  Count: 9 < 10 ✓ ACCEPT
+
+Request #11 at T=0:00:09.7:
+  Count: 10 >= 10 ✗ REJECT
+  (Don't add to log)
+
+Request #12 at T=0:00:09.8:
+  Count: 10 >= 10 ✗ REJECT
+  (Don't add to log)
+
+Result: 8/9 requests ACCEPTED
+        1/9 request REJECTED
+
+Final log: [12:00:00, 12:00:02, 12:00:05, 12:00:09, 12:00:09.1, 12:00:09.2, 12:00:09.3, 12:00:09.4, 12:00:09.5, 12:00:09.6]
+(9 total - 3 original + 6 from burst)
+```
+
+**THE KEY ACCURACY GUARANTEE:**
+```
+At ANY point in time, in ANY rolling 1-minute window:
+Maximum requests = 10 (GUARANTEED)
+
+No matter when you check:
+  [11:59:30 - 12:00:30]: 10 max ✓
+  [12:00:00 - 12:01:00]: 10 max ✓
+  [12:00:15 - 12:01:15]: 10 max ✓
+  [12:00:59 - 12:01:59]: 10 max ✓
+
+ZERO edge cases! NO exploitation possible!
+```
+
+#### **How Cleanup Works (Critical)**
+
+```
+As time passes, old timestamps get cleaned up:
+
+T=12:00:30: Request arrives
+  Window: [11:59:30 - 12:00:30]
+  Log before cleanup: [12:00:00, 12:00:02, 12:00:05, ...]
+  
+  Remove timestamps < 11:59:30:
+    Nothing to remove (all are recent)
+  
+  Log after cleanup: [12:00:00, 12:00:02, 12:00:05, ...]
+  Count: still 10
+
+T=12:01:30: Request arrives
+  Window: [12:00:30 - 12:01:30]
+  Log before cleanup: [12:00:00, 12:00:02, 12:00:05, 12:00:09, ...]
+  
+  Remove timestamps < 12:00:30:
+    [12:00:00, 12:00:02, 12:00:05, 12:00:09] ← REMOVED! ✗
+  
+  Log after cleanup: [12:00:35, 12:00:40, 12:00:45, ...]
+  These are the 6 "fresh" requests from burst
+  Count: 6 < 10 ✓ ACCEPT new request
+
+Result: Old requests expire naturally!
+```
+
+#### **Perfect Accuracy: Why It Works**
+
+```
+Sliding Window Log Accuracy:
+──────────────────────────────
+
+NEVER double-counts:
+  ✓ Each timestamp stored only once
+
+NEVER misses requests:
+  ✓ Every request timestamp recorded
+
+Respects ACTUAL rolling window:
+  ✓ Not fixed boundaries
+  ✓ Continuous sliding
+
+Can handle ANY traffic pattern:
+  ✓ Burst at start: Still accurate ✓
+  ✓ Burst at end: Still accurate ✓
+  ✓ Burst at middle: Still accurate ✓
+  ✓ Sustained traffic: Still accurate ✓
+
+Result: PERFECT rate limiting!
+```
+
+#### **The Trade-Off: Memory Cost**
+
+```
+Scenario: 1000 users, each with 100 requests/minute limit
+Average: 50 requests per user per minute
+
+Memory usage:
+──────────────
+
+Token Bucket:
+  Per user: 1 counter
+  Total: 1000 users × 1 × 8 bytes = 8 KB
+
+Fixed Window:
+  Per user: 1 counter
+  Total: 1000 users × 1 × 8 bytes = 8 KB
+
+Sliding Window LOG:
+  Per user: 50 timestamps per minute
+  Per timestamp: ~20 bytes (time + user_id + metadata)
+  Total: 1000 users × 50 × 20 bytes = 1 MB
+  
+That's 125X MORE memory! 🚨
+```
+
+**Memory Impact at Scale:**
+```
+Tiny system: 100 requests/sec
+  Memory: ~100MB (acceptable)
+
+Medium system: 10,000 requests/sec
+  Memory: ~10GB (expensive!)
+
+Large system: 1,000,000 requests/sec
+  Memory: ~1TB (IMPOSSIBLE!)
+
+Conclusion: Sliding Window Log doesn't scale to high traffic!
+```
+
+#### **Time Complexity**
+
+```
+Per Request Operation:
+
+Token Bucket: O(1) ✓
+  - Just check: token < limit
+  - Add/remove: instant
+
+Fixed Window: O(1) ✓
+  - Just check: counter < limit
+  - Increment counter: instant
+
+Sliding Window Log: O(n) ✗
+  - Must scan log: all timestamps
+  - Must remove old: scan and delete
+  - Must count: iterate through
+  - Where n = number of timestamps in window
+  
+If 100 requests in window:
+  - Each new request → scan 100 timestamps! 
+  - 1000 requests/sec × 100 scan = 100,000 ops/sec!
+  
+Token Bucket would do: just 1000 ops/sec!
+Sliding Window is 100X SLOWER!
+```
+
+#### **When to Use Sliding Window Log**
+
+✅ **Use when:**
+- **Perfect accuracy is CRITICAL**
+  - Financial transactions
+  - Security-sensitive operations (login attempts)
+  - Regulatory compliance required
+  
+- **Traffic is LOW/MODERATE**
+  - Backend can afford the memory/CPU cost
+  - Example: 1000 requests/sec or less
+  
+- **Window size is SMALL**
+  - E.g., 10 requests per second (not per hour)
+  - Less data to store
+  
+- **Data loss is UNACCEPTABLE**
+  - Never allow even 1 extra request
+  - Money involved
+
+✅ **Real-world examples:**
+```
+- Payment processing APIs
+- Banking systems
+- Security audit logs
+- Compliance-sensitive limits
+- Two-factor authentication attempts
+```
+
+❌ **NEVER use when:**
+- High traffic (millions of requests/sec)
+- Need extreme speed (microsecond latency)
+- Budget constraints (can't afford memory)
+- Best-effort is acceptable
+
+#### **Comparison: All Algorithms So Far**
+
+```
+Using scenario: [3 requests at T=0s] → 6s quiet → [9 requests at T=9s]
+
+TOKEN BUCKET:
+  ✓ 8/9 accepted | ⏱️ ~0ms latency | 💾 O(1) memory
+  
+LEAKING BUCKET:
+  ✓ 8/9 accepted | ⏱️ 15-57s latency | 💾 O(1) memory
+
+FIXED WINDOW:
+  ✓ 7/9 accepted | ⏱️ ~0ms latency | 💾 O(1) memory
+  ⚠️ EXPLOITABLE at edge cases!
+
+SLIDING WINDOW LOG:
+  ✓ 8/9 accepted | ⏱️ ~0ms latency | 💾 O(n) memory ← EXPENSIVE!
+  ✅ PERFECTLY ACCURATE, no exploitable edge cases
+```
+
+#### **Pros:**
+- ✅ **Perfectly accurate** - No edge cases, no exploits
+- ✅ **True rolling window** - Respects actual time, not boundaries
+- ✅ **Guaranteed rate limiting** - Can never exceed limit
+- ✅ **Fair to users** - Everyone gets exactly their quota
+- ✅ **No gaming** - Cannot exploit window boundaries
 
 **Cons:**
-- ❌ **High memory consumption** - Stores every rejected request timestamp
-- ❌ Not scalable for high-traffic systems
+- ❌ **High memory cost** - Stores every timestamp (O(n) space)
+- ❌ **Slow performance** - Must scan log per request (O(n) time)
+- ❌ **Not scalable** - Cannot handle millions of requests/sec
+- ❌ **Complex implementation** - Need sorted data structures
+- ❌ **Redis overhead** - Sorted sets are expensive to maintain
 
 ---
 
