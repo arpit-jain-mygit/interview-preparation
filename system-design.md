@@ -1595,12 +1595,277 @@ Why Redis:
 ✓ Distributed (shared across servers)
 ✓ Expiration support (auto-cleanup of old data)
 ✓ Sorted sets (for Sliding Window Log)
+```
 
-Commands needed:
-- INCR: Increment counter atomically
-- EXPIRE: Set auto-expiration time
-- DEL: Delete expired counters
-- ZINCRBY: For sliding window log
+#### Redis Usage by Algorithm
+
+**1️⃣ Token Bucket**
+
+```
+Data Structure: String counter
+Redis Key: "bucket:{user_id}"
+Value: Current token count (integer)
+
+Operations:
+  GET bucket:user123
+    → Returns: 8 (tokens available)
+  
+  DECR bucket:user123
+    → Atomically reduces by 1
+    → Returns: 7
+    → If < 0, request rejected
+  
+  EXPIRE bucket:user123 3600
+    → Auto-delete after 1 hour (cleanup)
+
+Pseudo-code:
+```
+def allow_request(user_id):
+  tokens = redis.GET(f"bucket:{user_id}")
+  if tokens < 1:
+    return False
+  
+  redis.DECR(f"bucket:{user_id}")
+  redis.EXPIRE(f"bucket:{user_id}", 3600)
+  return True
+
+Background job (refill):
+  Every 1 second:
+    redis.INCR(f"bucket:{user_id}")
+    if redis.GET() > MAX_TOKENS:
+      redis.SET(f"bucket:{user_id}", MAX_TOKENS)
+```
+
+Cost: O(1) per request, 8 bytes per user
+Simplicity: ⭐⭐⭐ (very simple)
+```
+
+**2️⃣ Leaking Bucket**
+
+```
+Data Structure: List (queue)
+Redis Key: "queue:{user_id}"
+Values: Request timestamps or IDs
+
+Operations:
+  LPUSH queue:user123 "req_12345"
+    → Add request to queue (O(1))
+  
+  LLEN queue:user123
+    → Check queue size
+    → If >= max_capacity, reject
+  
+  RPOP queue:user123
+    → Remove and process request
+    → Done in background worker
+  
+  EXPIRE queue:user123 3600
+    → Auto-delete old queues
+
+Pseudo-code:
+```
+def allow_request(user_id, request_id):
+  queue_size = redis.LLEN(f"queue:{user_id}")
+  if queue_size >= MAX_QUEUE:
+    return False  # Queue full, reject
+  
+  redis.LPUSH(f"queue:{user_id}", request_id)
+  redis.EXPIRE(f"queue:{user_id}", 3600)
+  return True  # Queued
+
+Background worker (drains queue):
+  Every 1 second:
+    request_id = redis.RPOP(f"queue:{user_id}")
+    if request_id:
+      process(request_id)
+```
+
+Cost: O(1) per request, 100 bytes per request in queue
+Simplicity: ⭐⭐ (needs background worker)
+Considerations: Requires scheduled background job (complexity!)
+```
+
+**3️⃣ Fixed Window Counter**
+
+```
+Data Structure: String counter + Timestamp
+Redis Keys: 
+  - "window:{user_id}:{timestamp}"
+  - "count:{user_id}"
+
+Operations:
+  GET count:user123
+    → Current count (integer)
+  
+  INCR count:user123
+    → Atomically increment by 1
+    → Returns new count
+  
+  EXPIRE count:user123 60
+    → Auto-reset after 60 seconds
+
+Pseudo-code:
+```
+def allow_request(user_id):
+  current_count = redis.GET(f"count:{user_id}")
+  
+  if current_count >= LIMIT:  # 10 requests
+    return False
+  
+  redis.INCR(f"count:{user_id}")
+  redis.EXPIRE(f"count:{user_id}", 60)  # Reset every 60 sec
+  return True
+```
+
+Cost: O(1) per request, 8 bytes per user
+Simplicity: ⭐⭐⭐ (simplest!)
+Weakness: Vulnerable at window boundaries (exploitable!)
+```
+
+**4️⃣ Sliding Window Log**
+
+```
+Data Structure: Sorted Set (for timestamps)
+Redis Key: "log:{user_id}"
+Values: Timestamps (scores for sorting)
+
+Operations:
+  ZADD log:user123 1719072000 "req_1"
+    → Add timestamp to sorted set
+    → Score = Unix timestamp
+  
+  ZCOUNT log:user123 min max
+    → Count requests in [now-60s, now]
+    → min = "now - 60", max = "now"
+  
+  ZREMRANGEBYSCORE log:user123 0 (now-60)
+    → Remove old timestamps (cleanup)
+  
+  EXPIRE log:user123 60
+    → Auto-delete old logs
+
+Pseudo-code:
+```
+def allow_request(user_id):
+  now = current_timestamp()
+  window_start = now - 60  # 60-second window
+  
+  # Remove old timestamps
+  redis.ZREMRANGEBYSCORE(f"log:{user_id}", 0, window_start)
+  
+  # Count requests in rolling window
+  count = redis.ZCOUNT(f"log:{user_id}", window_start, now)
+  
+  if count >= LIMIT:  # 50 requests
+    return False
+  
+  # Add new timestamp
+  redis.ZADD(f"log:{user_id}", now, f"req_{uuid}")
+  redis.EXPIRE(f"log:{user_id}", 60)
+  return True
+```
+
+Cost: O(n log n) per request, 2000+ bytes per user (expensive!)
+Simplicity: ⭐ (complex sorted set ops)
+Advantage: Perfect accuracy, no edge cases
+Disadvantage: Memory-intensive, slow at scale
+```
+
+**5️⃣ Sliding Window Counter**
+
+```
+Data Structure: String (multiple fields in one key)
+Redis Keys: "counter:{user_id}"
+Values: "prev_count|curr_count|window_start"
+
+Operations:
+  GET counter:user123
+    → Returns: "25|15|1719072000"
+  
+  SETEX counter:user123 60 "0|30|1719072060"
+    → Set with expiration (60 sec)
+
+Pseudo-code:
+```
+def allow_request(user_id):
+  now = current_timestamp()
+  
+  # Get current state
+  state = redis.GET(f"counter:{user_id}")
+  if not state:
+    state = "0|0|{now}"
+  
+  prev_count, curr_count, window_start = parse(state)
+  
+  # Check if window has passed
+  if now - window_start >= 60:
+    # New window
+    prev_count = curr_count
+    curr_count = 1
+    window_start = now
+  else:
+    # Still in same window
+    # Estimate: curr + (prev × overlap_percentage)
+    overlap = (window_start + 60 - now) / 60
+    estimated = curr_count + (prev_count × overlap)
+    
+    if estimated >= LIMIT:  # 10 requests
+      return False
+    
+    curr_count += 1
+  
+  # Save state back
+  new_state = f"{prev_count}|{curr_count}|{window_start}"
+  redis.SETEX(f"counter:{user_id}", 60, new_state)
+  return True
+```
+
+Cost: O(1) per request, 24 bytes per user (efficient!)
+Simplicity: ⭐⭐ (moderate logic)
+Accuracy: 99.997% (acceptable for most systems)
+Best for: Production systems (best balance!)
+```
+
+#### Redis Decision Matrix
+
+```
+Algorithm           │ Data Structure │ Complexity │ Cost/User │ Speed
+────────────────────┼────────────────┼────────────┼───────────┼──────
+Token Bucket        │ String         │ Simple     │ 8 bytes   │ O(1)
+Leaking Bucket      │ List           │ Moderate   │ 100 B/req │ O(1)
+Fixed Window        │ String         │ Simplest   │ 8 bytes   │ O(1)
+Sliding Window Log  │ Sorted Set     │ Complex    │ 2000+ B   │ O(n)
+Sliding Window Counter │ String      │ Moderate   │ 24 bytes  │ O(1)
+```
+
+#### Redis Lua Scripts for Atomicity
+
+```
+Why Lua scripts?
+  Without Lua: Race condition between GET and INCR
+  
+  Server 1: GET counter → 9
+  Server 2: GET counter → 9
+  Server 1: INCR → 10
+  Server 2: INCR → 10
+  
+  Both allowed! Bug! 😱
+
+With Lua script (atomic):
+  redis.eval(script, keys, args)
+  → Entire script runs without interruption
+  → Can't be interleaved with other requests
+
+Lua example for Sliding Window Counter:
+```
+local count = redis.call('GET', KEYS[1])
+if not count or tonumber(count) < tonumber(ARGV[1]) then
+  redis.call('SETEX', KEYS[1], ARGV[2], ARGV[3])
+  return 1  -- allowed
+else
+  return 0  -- rejected
+end
+```
 ```
 
 ### Rate Limit Headers
