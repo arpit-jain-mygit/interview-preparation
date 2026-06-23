@@ -1937,26 +1937,46 @@ Operations:
   EXPIRE bucket:user123 3600
     → Auto-delete after 1 hour (cleanup)
 
-Pseudo-code:
-```
+```python
 def allow_request(user_id):
+  # Check available tokens
   tokens = redis.GET(f"bucket:{user_id}")
-  if tokens < 1:
-    return False
   
+  # No tokens available?
+  if tokens < 1:
+    return False  # REJECT request
+  
+  # Consume one token
   redis.DECR(f"bucket:{user_id}")
+  
+  # Auto-expire bucket
   redis.EXPIRE(f"bucket:{user_id}", 3600)
-  return True
+  
+  return True  # ACCEPT request
 
-Background job (refill):
-  Every 1 second:
+# Background Job (refill tokens)
+while True:
+  for user_id in all_users:
+    # Add one token per second
     redis.INCR(f"bucket:{user_id}")
-    if redis.GET() > MAX_TOKENS:
+    
+    # But don't exceed max
+    current_tokens = redis.GET(f"bucket:{user_id}")
+    if current_tokens > MAX_TOKENS:
       redis.SET(f"bucket:{user_id}", MAX_TOKENS)
+  
+  # Wait 1 second, then refill again
+  sleep(1)
 ```
 
-Cost: O(1) per request, 8 bytes per user
-Simplicity: ⭐⭐⭐ (very simple)
+**Performance:**
+- Time: O(1) per request (check + decrement)
+- Memory: 8 bytes per user (one counter)
+- Refill: 1 token per second (background job)
+
+**Simplicity:**
+- ⭐⭐⭐ Very simple implementation
+- Requires background refill job
 ```
 
 **2️⃣ Leaking Bucket**
@@ -1981,27 +2001,46 @@ Operations:
   EXPIRE queue:user123 3600
     → Auto-delete old queues
 
-Pseudo-code:
-```
+```python
 def allow_request(user_id, request_id):
+  # Check current queue size
   queue_size = redis.LLEN(f"queue:{user_id}")
-  if queue_size >= MAX_QUEUE:
-    return False  # Queue full, reject
   
+  # Is queue at capacity?
+  if queue_size >= MAX_QUEUE:
+    return False  # Queue full - REJECT request
+  
+  # Add request to queue (FIFO)
   redis.LPUSH(f"queue:{user_id}", request_id)
+  
+  # Auto-expire old queues
   redis.EXPIRE(f"queue:{user_id}", 3600)
-  return True  # Queued
+  
+  return True  # Request QUEUED (not processed yet)
 
-Background worker (drains queue):
-  Every 1 second:
+# Background Worker (separate thread/process)
+while True:
+  for user_id in all_users:
+    # Remove request from queue (FIFO order)
     request_id = redis.RPOP(f"queue:{user_id}")
+    
+    # If request exists, process it
     if request_id:
-      process(request_id)
+      process_request(request_id)
+  
+  # Wait 1 second before next drain cycle
+  sleep(1)
 ```
 
-Cost: O(1) per request, 100 bytes per request in queue
-Simplicity: ⭐⭐ (needs background worker)
-Considerations: Requires scheduled background job (complexity!)
+**Performance:**
+- Time: O(1) per request (add to queue), O(1) per drain (remove from queue)
+- Memory: 100+ bytes per queued request
+- Wait time: Could be 10+ seconds (queue processing delay)
+
+**Architecture:**
+- ⚠️ Requires background worker (separate thread/service)
+- ⚠️ Adds operational complexity
+- Drains queue at fixed rate (1 request per second)
 ```
 
 **3️⃣ Fixed Window Counter**
@@ -2023,22 +2062,36 @@ Operations:
   EXPIRE count:user123 60
     → Auto-reset after 60 seconds
 
-Pseudo-code:
-```
+```python
 def allow_request(user_id):
+  # Get current count in this window
   current_count = redis.GET(f"count:{user_id}")
   
-  if current_count >= LIMIT:  # 10 requests
-    return False
+  # Check if we've hit the limit
+  if current_count >= LIMIT:  # Example: LIMIT = 10 requests
+    return False  # REJECT request
   
+  # Increment counter
   redis.INCR(f"count:{user_id}")
-  redis.EXPIRE(f"count:{user_id}", 60)  # Reset every 60 sec
-  return True
+  
+  # Set expiration for window reset (60 seconds)
+  redis.EXPIRE(f"count:{user_id}", 60)
+  
+  return True  # ACCEPT request
 ```
 
-Cost: O(1) per request, 8 bytes per user
-Simplicity: ⭐⭐⭐ (simplest!)
-Weakness: Vulnerable at window boundaries (exploitable!)
+**Performance:**
+- Time: O(1) per request (get + increment)
+- Memory: 8 bytes per user (one counter)
+- Window reset: Automatic after 60 seconds (EXPIRE)
+
+**Simplicity:**
+- ⭐⭐⭐ Simplest implementation!
+- No background jobs needed
+- No complex logic
+
+**Security Weakness:**
+- ⚠️ Exploitable at window boundaries (2X limit possible!)
 ```
 
 **4️⃣ Sliding Window Log**
@@ -2064,30 +2117,42 @@ Operations:
     → Auto-delete old logs
 
 Pseudo-code:
-```
+```python
 def allow_request(user_id):
+  # Current time
   now = current_timestamp()
-  window_start = now - 60  # 60-second window
   
-  # Remove old timestamps
+  # Rolling window: last 60 seconds
+  window_start = now - 60
+  
+  # Step 1: Remove old timestamps outside window (cleanup)
   redis.ZREMRANGEBYSCORE(f"log:{user_id}", 0, window_start)
   
-  # Count requests in rolling window
+  # Step 2: Count requests within rolling window [window_start, now]
   count = redis.ZCOUNT(f"log:{user_id}", window_start, now)
   
-  if count >= LIMIT:  # 50 requests
-    return False
+  # Step 3: Check if we've exceeded limit
+  if count >= LIMIT:  # Example: LIMIT = 50 requests
+    return False  # REJECT this request
   
-  # Add new timestamp
+  # Step 4: Request accepted - add timestamp to sorted set
   redis.ZADD(f"log:{user_id}", now, f"req_{uuid}")
+  
+  # Step 5: Set expiration for automatic cleanup
   redis.EXPIRE(f"log:{user_id}", 60)
-  return True
+  
+  return True  # ACCEPT this request
 ```
 
-Cost: O(n log n) per request, 2000+ bytes per user (expensive!)
-Simplicity: ⭐ (complex sorted set ops)
-Advantage: Perfect accuracy, no edge cases
-Disadvantage: Memory-intensive, slow at scale
+**Performance:**
+- Time: O(n log n) per request (scan + insert sorted set)
+- Memory: 2000+ bytes per user (all timestamps stored!)
+- Accuracy: Perfect ✓ (every timestamp tracked)
+
+**Tradeoffs:**
+- ✅ Perfect accuracy, no edge cases
+- ❌ Memory-intensive, slow at scale
+- ❌ Complex sorted set operations
 ```
 
 **5️⃣ Sliding Window Counter**
@@ -2104,39 +2169,47 @@ Operations:
   SETEX counter:user123 60 "0|30|1719072060"
     → Set with expiration (60 sec)
 
-Pseudo-code:
-```
+```python
 def allow_request(user_id):
+  # Current time
   now = current_timestamp()
   
-  # Get current state
+  # Step 1: Get current state from Redis
   state = redis.GET(f"counter:{user_id}")
   if not state:
+    # First time: initialize
     state = "0|0|{now}"
   
+  # Parse the three values
   prev_count, curr_count, window_start = parse(state)
   
-  # Check if window has passed
+  # Step 2: Check if we've moved to a new window
   if now - window_start >= 60:
-    # New window
-    prev_count = curr_count
-    curr_count = 1
-    window_start = now
+    # New window started! Shift counts.
+    prev_count = curr_count  # Old current becomes previous
+    curr_count = 1           # New request is first in new window
+    window_start = now       # Mark new window start
   else:
-    # Still in same window
-    # Estimate: curr + (prev × overlap_percentage)
+    # Still in same window - estimate rolling window
+    
+    # How much of previous window overlaps current rolling window?
     overlap = (window_start + 60 - now) / 60
-    estimated = curr_count + (prev_count × overlap)
     
-    if estimated >= LIMIT:  # 10 requests
-      return False
+    # Estimate: current requests + (previous requests × overlap)
+    estimated = curr_count + (prev_count * overlap)
     
+    # Step 3: Check if limit exceeded
+    if estimated >= LIMIT:  # Example: LIMIT = 10 requests
+      return False  # REJECT this request
+    
+    # Request accepted - increment current count
     curr_count += 1
   
-  # Save state back
+  # Step 4: Save updated state back to Redis
   new_state = f"{prev_count}|{curr_count}|{window_start}"
   redis.SETEX(f"counter:{user_id}", 60, new_state)
-  return True
+  
+  return True  # ACCEPT this request
 ```
 
 Cost: O(1) per request, 24 bytes per user (efficient!)
