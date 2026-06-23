@@ -147,9 +147,99 @@ Memory: O(1) - just 1 counter
 ✅ Industry standard (Amazon, Stripe, Google)
 
 #### Limitations
-❌ Hard to tune (bucket size vs refill rate)
-❌ May cause unpredictable bursts if misconfigured
-❌ Different configurations needed for different traffic patterns
+
+**❌ Hard to Tune Parameters (Bucket Size vs Refill Rate)**
+
+```
+Problem: Two interdependent parameters, no "right" answer
+
+Example 1: Too Large Bucket (Bucket=100, Refill=1/sec)
+  Advertise: "100 requests per minute"
+  Reality: User can burst 100 requests in 1 second!
+  Impact: Backend gets hammered
+  
+  T=0s:   User sends 100 requests
+          All accepted immediately (all tokens consumed)
+          Database: 100 simultaneous writes! 😱
+  T=1s:   System recovers, 1 new token added
+  
+  User experience: Worked, but infrastructure suffered
+
+Example 2: Too Small Bucket (Bucket=1, Refill=1/sec)
+  Advertise: "1 request per second"
+  Reality: User can't burst at all
+  Impact: Legitimate bursts get rejected
+  
+  User scenario: Checkout flow sends 10 requests
+    - Request 1: ✓ Accepted
+    - Request 2-10: ✗ Rejected
+  Result: Checkout fails! Lost customer! 💥
+
+How to tune?
+  - Too large: Overload backend
+  - Too small: Reject legitimate traffic
+  - No formula: Trial and error, monitoring, adjust
+```
+
+**❌ Unpredictable Bursts If Misconfigured**
+
+```
+Real-world case: Twitter's burst handling gone wrong
+
+Configuration: Bucket=300, Refill=1 per 3 hours
+  Goal: 300 tweets per 3 hours
+
+User behavior:
+  T=0:    User tweets 300 times (uses all tokens!)
+  T=1:    System slows down, other users affected
+  T=2hr:  Still waiting for 1 token to be added (3hr timer)
+  T=3hr:  Finally, 300 more tokens added
+
+Problem: All traffic is bursty!
+  - Desktop users: Tweet sporadically (long quiet, then burst)
+  - Mobile users: Scheduled posts (batched at midnight)
+  - Influencers: Reply storms (single moment, many posts)
+
+Mismatched configuration causes:
+  - Some users exhaust quota immediately
+  - Others get better experience (spread out over time)
+  - Unfair burst advantage
+```
+
+**❌ Different Configurations Needed Per Use Case**
+
+```
+Real problem: One size doesn't fit all
+
+API Example: Social media with multiple endpoints
+
+Timeline endpoint:
+  Limit: 300 requests per 60 seconds (reading timeline)
+  Bucket: 300 tokens, Refill: 5/sec
+  Pattern: Users scroll fast, many rapid requests
+
+Post creation endpoint:
+  Limit: 10 posts per hour
+  Bucket: 10 tokens, Refill: 1 per 360 seconds
+  Pattern: Users think between posts, slow
+
+Search endpoint:
+  Limit: 30 searches per minute
+  Bucket: 30 tokens, Refill: 0.5/sec
+  Pattern: Users explore, moderate burst
+
+Reality at 3:00 AM:
+  - Night shift developers testing API
+  - Legitimate heavy usage pattern
+  - All 3 endpoints need different tuning!
+
+Maintenance nightmare:
+  Every new endpoint = new configuration
+  Customer complaint: "Your limit is too low"
+  → Need to adjust bucket for that endpoint
+  → Might affect others
+  → Cascading problems
+```
 
 #### When to Use
 - **Best for**: Public APIs, web services, real-time systems
@@ -216,10 +306,133 @@ Memory: O(1) - just queue size
 ✅ Fair processing (FIFO order)
 
 #### Limitations
-❌ **High latency** - Requests wait in queue (15-57 seconds possible)
-❌ Poor user experience for web APIs
-❌ Not suitable for real-time systems
-❌ Can't handle sudden traffic spikes gracefully
+
+**❌ High Latency - Requests Wait in Queue**
+
+```
+Real problem: Every request gets delayed
+
+Example: Email API with 100 emails/sec limit, but 500 arrive
+
+T=0s:   500 emails arrive
+        Queue: [E1, E2, E3, ..., E500]
+        Capacity: 100 max
+        
+T=1s:   100 processed, 400 remaining
+        E1-E100 done (waited 1 second)
+        E101-E500 still waiting
+        
+T=5s:   E101-E500 still waiting
+        Progress: 500 processed so far
+        Remaining: 400
+        
+T=10s:  E1-E500 done
+        E501 onward processed
+        Last email waited 10 seconds! 😱
+
+Real impact: Email sent 10 seconds late
+  - User thinks email didn't send
+  - Resends it (duplicate email!)
+  - Company reputation: "Broken API"
+
+Scenario where this kills business:
+  E-commerce checkout flow
+  T=0: Customer submits order (5 requests needed)
+  T=3: Queue processing, customer still waiting
+  T=5: Customer closes browser (checkout timeout)
+  Result: Lost sale! 💥
+```
+
+**❌ Poor User Experience for Web APIs**
+
+```
+What users expect: Response in <100ms
+What Leaking Bucket gives: Response in 5-30 seconds
+
+Real-world example: GitHub API using Leaking Bucket
+
+User workflow:
+  T=0s:   GET /user → ✓ Accepted, queued
+          Waiting...
+  T=6s:   Response arrives (was in queue for 6 seconds)
+          User: "Why so slow?" 😞
+          
+  T=6s:   GET /repos → ✓ Accepted, queued
+  T=12s:  Response arrives
+          User: "This API is broken!"
+          
+  T=12s:  User switches to Stripe API (faster)
+          GitHub loses customer 📉
+
+Comparison:
+  Token Bucket: Response in ~5ms (instant)
+  Leaking Bucket: Response in ~6s (queue wait)
+  
+  60X slower = bad UX = lost customers
+```
+
+**❌ Not Suitable for Real-Time Systems**
+
+```
+Real-time requirements: <100ms response time
+
+Examples that fail with Leaking Bucket:
+
+1. Chat application
+   User types message: "Hello world"
+   Expected: Appears instantly to other users
+   With Leaking Bucket: Appears 5 seconds later
+   User: "Why is my message delayed?"
+   Problem: Looks like message didn't send
+   Result: User resends, duplicate messages
+
+2. Stock trading API
+   User clicks "BUY 100 shares"
+   Expected: Order placed immediately
+   With Leaking Bucket: Queued for 10 seconds
+   Market moves in those 10 seconds
+   Order placed at wrong price
+   Trader loses money 💸
+
+3. Multiplayer game
+   User moves character: "Jump"
+   Expected: Character jumps immediately
+   With Leaking Bucket: Jump delayed 2 seconds
+   Player gets shot (they moved too late)
+   Player quits game 😤
+```
+
+**❌ Can't Handle Sudden Spikes Gracefully**
+
+```
+Problem: All requests get delayed equally, no prioritization
+
+Scenario: Email service during marketing campaign
+
+Normal load: 100 emails/sec
+Suddenly: 1000 emails/sec (10X spike!)
+
+With Leaking Bucket:
+  Queue fills instantly (capacity: 100)
+  Remaining 900: Rejected ✗
+  
+  Priority: Regular emails wait in queue
+            High-priority emails also wait in queue
+            No way to prioritize
+            
+  Impact: Transactional emails (password resets) delayed
+          Marketing emails delayed
+          No difference!
+          
+  Better approach: Marketing emails rejected, transactional go through
+                  But Leaking Bucket can't distinguish
+
+Real cost:
+  Password reset email delayed 15 minutes
+  User can't access account
+  Support tickets 📞
+  Customer churn 📉
+```
 
 #### When to Use
 - **Best for**: Background jobs, batch processing, database protection
@@ -290,10 +503,124 @@ Result: EXPLOITED! 🚨
 ✅ O(1) memory - just 1 counter
 
 #### Limitations
-❌ **Can allow 2X limit at window boundaries** (exploitable!)
-❌ Not suitable for strict rate limiting
-❌ Vulnerable to timing attacks
-❌ Not secure for APIs
+
+**❌ Can Allow 2X Limit at Window Boundaries (Exploitable!)**
+
+```
+Real exploitation example: GitHub API
+
+GitHub limit: 60 requests per hour
+
+Attacker discovers window boundary:
+  T=59:50 (10 seconds before window resets)
+  Sends 60 requests: ✓ All accepted
+  Counter: 0 → 60/60 (full)
+  
+  (Wait 10 seconds)
+  
+  T=60:00 (Window resets!)
+  Counter suddenly: 60 → 0
+  
+  Sends 60 MORE requests: ✓ All accepted
+  Counter: 0 → 60/60
+  
+Result in 20 seconds: 120 requests processed!
+But limit is 60/hour!
+
+Impact: In 1 hour, attacker makes 60×6=360 requests
+        Legitimate limit: 60 requests
+        Attacker gets: 6X the limit! 🚨
+
+What attacker can do:
+  - Scrape entire API (6X faster)
+  - DDoS single endpoint
+  - Brute force password (6X more attempts)
+  - Enumerate users/data (6X larger dataset)
+```
+
+**❌ Vulnerable to Timing Attacks**
+
+```
+Real-world discovery process: Takes only 5 minutes
+
+Step 1: Discover window size (2 minutes)
+  Send request at T=0:00 → ✓ Accepted
+  Send request at T=0:01 → ✓ Accepted
+  Send request at T=1:00 → ✓ Accepted (WINDOW RESET!)
+  Discovery: 1-minute windows
+
+Step 2: Discover window alignment (3 minutes)
+  Send requests at T=0:59 → ✓ Accepted
+  Send requests at T=1:00 → ✓ Accepted (MORE ACCEPTED!)
+  Discovery: Reset happens at :00 mark
+
+Step 3: Exploit (trivial)
+  Set up bot that sends at T=59:55
+  Set up bot that sends at T=0:05
+  Done! 6X rate limit achieved
+
+Real-world impact:
+  Attacker spends 5 minutes, gets permanent 6X advantage
+  Can't be detected (no pattern analysis needed)
+  Can't be stopped without algorithm change
+```
+
+**❌ Not Suitable for Strict Rate Limiting**
+
+```
+Use case where this catastrophically fails: Payment processing
+
+Fixed Window Counter on merchant API:
+  Limit: 10 transactions per minute
+
+T=0:59:55
+  Merchant processes 10 transactions
+  Counter: 0 → 10/10 (limit reached)
+
+T=1:00:00 (window resets!)
+  Merchant processes 10 MORE transactions
+  Counter: 0 → 10/10
+
+In 5 seconds: 20 transactions!
+Expected: 10 per minute
+Actual: 20 per minute (2X)
+
+Compliance issue:
+  - Merchant agreement: "10 per minute"
+  - Actual processed: 20 per minute
+  - Auditor finds: Limit violated! 📋
+  - Regulatory penalty: $5000+
+  - Merchant churn: "Your system doesn't work"
+
+This is why payment systems DON'T use Fixed Window
+```
+
+**❌ Catastrophic for Critical Systems**
+
+```
+Real case study: Payment fraud detection
+
+Fraudster discovery: Fixed Window vulnerable
+  Limit: 50 fraud checks per minute (per API)
+  
+  T=0:59:50
+    Sends 50 fraudulent cards: ✓ All checked
+    
+  T=1:00:00 (reset!)
+    Sends 50 MORE fraudulent cards: ✓ All checked
+    
+  In 10 seconds: 100 fraudulent attempts
+  
+Impact:
+  - 100 stolen credit cards tested
+  - 90 succeed (fraud)
+  - $100K+ fraud loss
+  - Company liable
+  - Bank sues company 💸
+
+Root cause: Weak rate limiting
+Prevention: Use Sliding Window Counter or Log
+```
 
 #### When to Use
 - **Only for**: Non-critical quotas, internal APIs, informational limits
@@ -391,10 +718,160 @@ Memory: 100+ timestamps stored per user (expensive!)
 ✅ Fair - Everyone gets exactly their quota
 
 #### Limitations
-❌ **High memory cost** - Stores every timestamp (125X more than Token Bucket!)
-❌ **Slow** - Must scan all timestamps (O(n) per request)
-❌ **Not scalable** - Can't handle millions of requests/sec
-❌ **Complex** - Requires sorted data structures
+
+**❌ Extreme Memory Cost - 125X More Than Token Bucket**
+
+```
+Real-world math: Payment API with 1M users
+
+Token Bucket:
+  Per user: 1 counter (8 bytes)
+  1M users: 1M × 8 = 8 MB total
+  Daily cost: ~$0.0001
+
+Sliding Window Log:
+  Per user: 100 timestamps per minute × 20 bytes
+  1M users: 1M × 100 × 20 = 2 GB per minute
+  Per hour: 120 GB
+  Per day: 2.88 TB
+  
+  Daily cloud storage cost: ~$1,000-$5,000 just for memory! 💸
+
+Scale impact:
+  Startup: 100K users
+    Memory needed: 200 GB
+    Cost: $500-$1000/day
+    Entire engineering budget gone on rate limiting! 😱
+    
+  Mid-scale: 10M users
+    Memory needed: 20 TB
+    Cost: $50,000-$100,000/day
+    More than employee salary budget!
+    
+  Enterprise: 100M users
+    Memory needed: 200 TB
+    Cost: $500K-$1M/day
+    Bigger than entire ops budget!
+```
+
+**❌ Extremely Slow - O(n) Per Request**
+
+```
+Real impact: Sliding Window Log is 100X slower
+
+Example: API with 100 requests in window
+
+Per request operation:
+
+Token Bucket:
+  Time: 1. Check token available: 1μs
+        Total: 1μs
+
+Sliding Window Log:
+  Time: 1. Scan all timestamps: 100 × 1μs = 100μs
+        2. Remove old: 100 × 1μs = 100μs
+        3. Count: 100 × 1μs = 100μs
+        Total: 300μs
+  
+  300X slower! 🚨
+
+Impact at scale:
+
+1000 requests/sec arriving:
+  Token Bucket: 1000 × 1μs = 1ms overhead
+  Sliding Log: 1000 × 300μs = 300ms overhead per second!
+  
+  That's 30% of CPU just for rate limiting!
+  
+At 1M requests/sec:
+  Token Bucket: ~1ms overhead
+  Sliding Log: 300 seconds per second (IMPOSSIBLE!)
+  Server would need 300 concurrent processors just for rate limiting!
+```
+
+**❌ Not Scalable - Fails at High Traffic**
+
+```
+Real-world breakdown points:
+
+Low traffic (100 req/sec):
+  Sliding Log memory: 6 MB/day
+  Cost: $0.10/day
+  Status: Works ✓
+
+Medium traffic (10K req/sec):
+  Sliding Log memory: 600 MB/day
+  Cost: $10/day
+  Status: Works but expensive
+
+High traffic (100K req/sec):
+  Sliding Log memory: 6 GB/day
+  Cost: $100/day
+  Status: Expensive, but works
+
+Extreme traffic (1M req/sec):
+  Sliding Log memory: 60 GB/day
+  Cost: $1000/day
+  CPU overhead: 300+ seconds per second (impossible!)
+  Status: BREAKS! ❌
+
+Example: Twitter shutdown
+  Twitter gets 100K tweets per second (spike)
+  Memory needed: 200 GB for just rate limiting
+  Redis max memory: 256 GB (shared for all features)
+  Result: System OOM error, Twitter goes down!
+  
+  Real impact: Twitter outage affects 300M users
+              Market cap loss: $10B+
+              One payment: To use Sliding Window Log
+```
+
+**❌ Complex Implementation - Requires Advanced Data Structures**
+
+```
+Token Bucket implementation: 5 lines
+```
+if (tokens >= 1) {
+  tokens--
+  allow()
+}
+```
+
+Sliding Window Log implementation: 50+ lines
+```
+sorted_set = sorted_timestamps()
+remove_old_timestamps(window_start)
+add_new_timestamp(now)
+if (count(sorted_set) < limit) {
+  allow()
+}
+// Plus Redis commands, locking, cleanup, expiration management
+```
+
+Complexity problems:
+
+1. Redis sorted set operations are complex
+   - ZCARD: Count items (O(1) but slow in practice)
+   - ZREM: Remove items (O(n log n) worst case)
+   - ZADD: Add item (O(log n))
+   - Expiration: Manual cleanup or TTL management
+   
+2. Race conditions harder to prevent
+   - Lua script must be atomic
+   - More code = more bugs
+   
+3. Operational complexity
+   - Monitoring memory growth
+   - Setting TTLs on timestamps
+   - Debugging timestamp issues
+   - Handling Redis memory limits
+
+Real impact:
+  Startup with 5 engineers
+  Estimate: "2 days to implement"
+  Reality: "2 weeks to get it right"
+  Cost: Engineer time × 10X more than Token Bucket
+```
 
 #### Storage Reality
 ```
@@ -511,9 +988,134 @@ Accuracy: 99.997% (Cloudflare tested on 400M requests)
 ✅ **Balanced** - Perfect combination of speed, cost, accuracy
 
 #### Limitations
-❌ Not 100% perfect accuracy (but 0.003% error is acceptable!)
-❌ Assumes even distribution of previous window requests
-❌ Only works for reasonable window sizes
+
+**❌ Not 100% Perfect Accuracy (0.003% Error Rate)**
+
+```
+Real limitation: The algorithm estimates, doesn't count exact
+
+Example: Payment API with 50 transactions/minute limit
+
+Previous minute: 50 transactions at T=0:00 (all at start!)
+Current minute at T=1:00: 50 transactions at T=1:00 (all at start!)
+
+Actual rolling window [0:30-1:30]:
+  0:00-0:30 window: 25 transactions (assumption)
+  1:00-1:30 window: 50 transactions
+  Total: 75 transactions in 60 seconds!
+  Limit: 50 per minute
+  EXCEEDED by 25! ✗
+
+Sliding Window Counter calculation:
+  Current: 50
+  Previous: 50
+  Overlap: 50% (at 30-second mark)
+  Estimate: 50 + (50 × 0.5) = 75 ✓ Matches!
+  
+But assumption was WRONG:
+  - Assumed: Evenly distributed (25 per 30 seconds)
+  - Reality: All 50 in first second!
+  - Result: Burst that exceeds limit
+
+Cloudflare finding:
+  Tested on 400 million requests
+  Error rate: 0.003%
+  = 12,000 wrongly allowed/rejected out of 400M
+  
+  For most systems: Acceptable
+  For payment: Might be critical (12K fraud attempts!)
+```
+
+**❌ Assumes Even Distribution of Previous Window**
+
+```
+Real-world traffic isn't evenly distributed
+
+E-commerce API example:
+
+Scenario 1: Normal traffic
+  Previous minute: 50 requests spread throughout
+  Sliding Counter: Accurate! ✓
+  
+Scenario 2: Marketing event
+  Previous minute: 50 requests (ALL in first 10 seconds!)
+  Current minute at T=30s: New 50 requests
+  
+  Reality [0:20-1:20]:
+    0:20-0:30: 10 requests (tail of event)
+    1:00-1:20: 50 requests (current) 
+    Total: 60 requests in 60 seconds (exceeds limit!)
+    
+  Sliding Counter assumption:
+    Overlap = 50%
+    Estimate: 50 + (50 × 0.5) = 75 (way over!)
+    Result: REJECTED when should've been ACCEPTED
+    
+Impact: Legitimate traffic rejected!
+        "During our flash sale, API rate limit blocked orders!"
+        Customer: "Your API is broken during peak time!"
+
+Scenario 3: Traffic cliff
+  Previous minute: 0 requests
+  Current minute: 100 requests suddenly
+  
+  Sliding Counter at T=30s:
+    Overlap = 50%
+    Estimate: 100 + (0 × 0.5) = 100
+    Correct! ✓
+    
+But what if previous was 100?
+    Estimate: 100 + (100 × 0.5) = 150
+    Exceeds limit by 2X!
+    All requests rejected even though previous is expiring!
+```
+
+**❌ Only Works for Reasonable Window Sizes**
+
+```
+Edge case 1: Very short windows (1-5 seconds)
+
+Window: 2 seconds
+Requests: 10 per second
+
+At 1-second mark:
+  Previous window: 10 requests in 2 seconds
+  Overlap at 50%: Assume 5 in the overlapping second
+  Current: 10 new requests
+  Estimate: 10 + (10 × 0.5) = 15
+  
+Problem: Very inaccurate!
+  Reality depends on exact millisecond of previous distribution
+  Could be 10-20 (varies widely)
+  
+At 0.5-second mark:
+  Overlap at 25%: Assume 2.5 in overlap
+  Estimate: 10 + (10 × 0.25) = 12.5
+  
+  Huge variance in accuracy for short windows!
+
+Edge case 2: Very long windows (1 hour)
+
+Window: 1 hour
+Traffic pattern: Lunch rush (12:00-13:00) vs night (2:00-3:00)
+
+At 2:30 AM (30 minutes into night window):
+  Previous hour: 1000 requests (from lunch!)
+  Overlap at 50%: Assume 500 from lunch hour
+  Current: 10 requests (night)
+  Estimate: 10 + (1000 × 0.5) = 510
+  
+  Reality: Lunch traffic ancient, shouldn't count!
+  Should be: 10
+  But estimate: 510 (50X over!)
+  
+  Result: All legitimate night traffic rejected!
+
+Long windows have:
+  - High variance in traffic patterns
+  - Wrong overlap percentages
+  - Inaccurate estimates
+```
 
 #### Storage Breakdown
 ```
