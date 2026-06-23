@@ -1,13 +1,91 @@
 # System Design Interview - Chapter 4: Design a Rate Limiter
 
 ## Table of Contents
+
+### Core Concepts
 1. [Problem Statement](#problem-statement)
-2. [Why Rate Limiting Matters](#why-rate-limiting-matters)
-3. [Testing Scenarios](#testing-scenarios)
-4. [Algorithm Comparison](#algorithm-comparison)
-5. [Interview Q&A](#interview-qa)
-6. [Implementation Guide](#implementation-guide)
-7. [Distributed Systems Challenges](#distributed-systems-challenges)
+   - [Real-World Examples](#real-world-examples)
+   - [Why Rate Limiting Matters](#why-rate-limiting-matters)
+   - [Rate Limiting for BOTH Free AND Paid APIs](#rate-limiting-for-both-free-and-paid-apis)
+2. [Testing Scenarios](#testing-scenarios)
+   - [Scenario A: Web API Rate Limiting](#scenario-a-web-api-rate-limiting)
+   - [Scenario B: Payment Processing](#scenario-b-payment-processing)
+   - [Scenario C: Email Service](#scenario-c-email-service)
+
+### Algorithm Deep Dive
+3. [Algorithm Comparison](#algorithm-comparison)
+   - [1️⃣ Token Bucket Algorithm](#️-token-bucket-algorithm-)
+     * [How It Works](#how-it-works)
+     * [Using Scenario A](#using-scenario-a-web-api)
+     * [Advantages](#advantages)
+     * [Limitations](#limitations)
+     * [When to Use](#when-to-use)
+     * [Real-World Case: GitHub API](#real-world-case-github-api)
+   - [2️⃣ Leaking Bucket Algorithm](#️-leaking-bucket-algorithm)
+     * [How It Works](#how-it-works-1)
+     * [Problems It Solves](#problems-it-solves-from-token-bucket)
+     * [Using Scenario C](#using-scenario-c-email-service)
+     * [Advantages](#advantages-1)
+     * [Limitations](#limitations-1)
+     * [When to Use](#when-to-use-1)
+     * [Real-World Case: Shopify](#real-world-case-shopify)
+   - [3️⃣ Fixed Window Counter](#️-fixed-window-counter)
+     * [How It Works](#how-it-works-2)
+     * [Problems It Solves](#problems-it-solves)
+     * [Using Scenario A](#using-scenario-a-web-api-1)
+     * [Advantages](#advantages-2)
+     * [Limitations](#limitations-2)
+     * [When to Use](#when-to-use-2)
+     * [Real-World Case: NOT RECOMMENDED](#real-world-case-not-recommended)
+     * [Security: How Attackers Exploit This](#security-how-attackers-exploit-this)
+   - [4️⃣ Sliding Window Log](#️-sliding-window-log)
+     * [How It Works](#how-it-works-3)
+     * [Problems It Solves](#problems-it-solves-from-fixed-window)
+     * [Using Scenario B](#using-scenario-b-payment-processing)
+     * [Advantages](#advantages-3)
+     * [Limitations](#limitations-3)
+     * [Storage Reality](#storage-reality)
+     * [When to Use](#when-to-use-3)
+     * [Real-World Case: Payment Systems](#real-world-case-payment-systems)
+   - [5️⃣ Sliding Window Counter](#️-sliding-window-counter-)
+     * [How It Works](#how-it-works-4)
+     * [Problems It Solves](#problems-it-solves-1)
+     * [Using Scenario A](#using-scenario-a-web-api-2)
+     * [Advantages](#advantages-4)
+     * [Limitations](#limitations-4)
+     * [Storage Breakdown](#storage-breakdown)
+     * [When to Use](#when-to-use-4)
+     * [Real-World Case: Most Companies](#real-world-case-most-companies)
+   - [Side-by-Side Using Scenario A](#side-by-side-using-scenario-a)
+   - [Decision Matrix](#decision-matrix)
+
+### Interview Preparation
+4. [Interview Q&A](#interview-qa)
+   - [Design Questions](#design-questions)
+   - [Problem-Solving Questions](#problem-solving-questions)
+   - [Trade-off Questions](#trade-off-questions)
+
+### Implementation & Operations
+5. [Implementation Guide](#implementation-guide)
+   - [Choosing Where to Place Rate Limiter](#choosing-where-to-place-rate-limiter)
+   - [Storage: Why Redis?](#storage-why-redis)
+   - [Rate Limit Headers](#rate-limit-headers)
+   - [Client Retry Strategy](#client-retry-strategy)
+
+6. [Distributed Systems Challenges](#distributed-systems-challenges)
+   - [Challenge 1: Race Conditions](#challenge-1-race-conditions)
+   - [Challenge 2: Synchronization Across Data Centers](#challenge-2-synchronization-across-data-centers)
+   - [Challenge 3: Eventual Consistency](#challenge-3-eventual-consistency)
+
+7. [Edge Cases & Gotchas](#edge-cases--gotchas)
+   - [Edge Case 1: Clock Skew](#edge-case-1-clock-skew)
+   - [Edge Case 2: Sudden Traffic Spike](#edge-case-2-sudden-traffic-spike)
+   - [Edge Case 3: User Identity Issues](#edge-case-3-user-identity-issues)
+
+### Reference
+8. [Real-World Companies & Their Approaches](#real-world-companies--their-approaches)
+9. [Summary: Quick Reference](#summary-quick-reference)
+10. [References](#references)
 
 ---
 
