@@ -1070,21 +1070,300 @@ Some payment processors use Sliding Window Log:
 
 ### 5️⃣ Sliding Window Counter ⭐ (Recommended)
 
-#### How It Works
+#### Core Idea (Simplest Possible)
 
 ```
-Concept: Use TWO counters to estimate rolling window (not store all timestamps!)
+PROBLEM with Sliding Window Log:
+  Storing all timestamps = 2000+ bytes per user = TOO EXPENSIVE!
 
-Store: 
-  - Previous window count
-  - Current window count
-  - Window start timestamp (just 1!)
-
-Calculate:
-  requests_in_rolling_window ≈ current_count + (previous_count × overlap%)
+SOLUTION - Sliding Window Counter:
+  What if we DON'T store all timestamps?
+  What if we just store TWO numbers and estimate?
   
-If estimate < limit: ACCEPT
-Else: REJECT
+  Number 1: Requests in previous minute
+  Number 2: Requests in current minute
+  
+  Then: ESTIMATE total using math!
+  
+RESULT: Only 24 bytes per user instead of 2000+!
+```
+
+---
+
+#### Step 1: The Three Values We Store
+
+```
+Let's say it's 12:05:30 (5 minutes and 30 seconds)
+
+We store exactly 3 things:
+
+1️⃣  prev_count = 8
+    "In the PREVIOUS minute (12:04:30-12:05:30), 
+     we had 8 requests"
+
+2️⃣  curr_count = 5
+    "In the CURRENT minute (12:05:30-12:06:30, 
+     we have 5 requests so far"
+
+3️⃣  window_start = 12:05:30
+    "The current minute started at 12:05:30"
+
+That's it! Just 3 numbers!
+```
+
+---
+
+#### Step 2: Understanding "Rolling Window"
+
+```
+ROLLING WINDOW = Last 60 seconds from RIGHT NOW
+
+Current time: 12:05:30
+
+Rolling window (last 60 seconds):
+  [12:04:30 -------- 12:05:30]
+   ↑                 ↑
+   60 seconds        Now
+   ago               
+   
+This window overlaps BOTH minutes:
+  ✓ Part of previous minute (12:04:30 to 12:05:30) = 60 seconds
+  ✓ Part of current minute (nothing yet, just started)
+
+BUT WAIT - time moves forward!
+
+Current time: 12:05:35 (5 seconds later)
+
+Rolling window (last 60 seconds):
+  [12:04:35 -------- 12:05:35]
+   ↑                 ↑
+   60 seconds        Now
+   ago               
+   
+This window overlaps BOTH minutes:
+  ✓ Part of previous minute (12:04:35 to 12:05:30) = 55 seconds
+  ✓ Part of current minute (12:05:30 to 12:05:35) = 5 seconds
+```
+
+---
+
+#### Step 3: The Overlap Percentage
+
+```
+WHAT IS OVERLAP?
+
+As time moves forward in the current minute, 
+more of the previous minute "expires" (falls out of rolling window)
+
+Let me show this visually:
+
+Time: 12:05:30 (just started current minute)
+
+  Previous min    │ Current min
+  12:04:30─12:05:30│12:05:30─12:06:30
+        [PREV 8]  │   [CURR 5]
+        
+Rolling window (last 60 sec): [12:04:30 to 12:05:30]
+  All previous requests in rolling window!
+  
+Overlap = 60 / 60 = 100% of previous window is relevant
+          (all 60 seconds of previous window fit in rolling window)
+
+────────────────────────────────────────────────────
+
+Time: 12:05:35 (5 seconds into current minute)
+
+  Previous min    │ Current min
+  12:04:30─12:05:30│12:05:30─12:05:35
+        [PREV 8]  │ [CURR 5]
+        
+Rolling window (last 60 sec): [12:04:35 to 12:05:35]
+                              ↑
+                              Requests before 12:04:35 are OUT!
+  
+Only PART of previous window in rolling window!
+
+Overlap = 55 / 60 = 91.7% of previous window is relevant
+          (only 55 seconds of previous window fit in rolling window)
+
+────────────────────────────────────────────────────
+
+Time: 12:05:50 (20 seconds into current minute)
+
+Rolling window (last 60 sec): [12:04:50 to 12:05:50]
+                              ↑
+                              Requests before 12:04:50 are OUT!
+  
+Overlap = 40 / 60 = 66.7% of previous window is relevant
+          (only 40 seconds of previous window fit in rolling window)
+
+────────────────────────────────────────────────────
+
+Time: 12:06:30 (current minute ends, becomes previous minute)
+
+Rolling window (last 60 sec): [12:05:30 to 12:06:30]
+  
+Overlap = 0 / 60 = 0% of previous window is relevant
+          (the old "previous window" is completely outside rolling window!)
+```
+
+---
+
+#### Step 4: The Overlap Formula
+
+```
+HOW TO CALCULATE OVERLAP PERCENTAGE?
+
+Data we have:
+  window_start = 12:05:30 (when current minute started)
+  now = 12:05:35 (current time)
+  window_size = 60 seconds
+
+Formula:
+  overlap = (window_start + window_size - now) / window_size
+          = (12:05:30 + 60 - 12:05:35) / 60
+          = (12:06:30 - 12:05:35) / 60
+          = 55 seconds / 60 seconds
+          = 0.917 (or 91.7%)
+
+IN ENGLISH:
+  "How much longer until current window ends?" / "Window size"
+  = "Time left in window" / "Total window size"
+```
+
+---
+
+#### Step 5: The Complete Estimation
+
+```
+FORMULA:
+  estimate = curr_count + (prev_count × overlap)
+
+EXAMPLE:
+
+Time: 12:05:35
+  window_start = 12:05:30
+  curr_count = 5 requests
+  prev_count = 8 requests
+  
+Calculate overlap:
+  overlap = (12:05:30 + 60 - 12:05:35) / 60
+          = 55 / 60
+          = 0.917
+  
+Estimate:
+  estimate = 5 + (8 × 0.917)
+           = 5 + 7.33
+           = 12.33
+           ≈ 12 requests in rolling window
+  
+Limit: 10 requests
+Decision: 12 > 10 → REJECT! ✗
+```
+
+---
+
+#### Step 6: Real-World Example With Timeline
+
+```
+SCENARIO: Rate limit = 10 requests per minute
+          User making requests every 2 seconds
+
+TIME 12:04:00 - Window starts
+  prev_count = 0
+  curr_count = 0
+  window_start = 12:04:00
+
+TIME 12:04:06 - 3 requests arrived
+  prev_count = 0
+  curr_count = 3
+  window_start = 12:04:00
+  
+  overlap = (12:04:00 + 60 - 12:04:06) / 60 = 54/60 = 0.9
+  estimate = 3 + (0 × 0.9) = 3
+  3 < 10? YES → ACCEPT ✓
+
+TIME 12:04:30 - 8 more requests
+  prev_count = 0
+  curr_count = 8
+  window_start = 12:04:00
+  
+  overlap = (12:04:00 + 60 - 12:04:30) / 60 = 30/60 = 0.5
+  estimate = 8 + (0 × 0.5) = 8
+  8 < 10? YES → ACCEPT ✓
+
+TIME 12:05:00 - Window boundary! Current becomes previous
+  Previous window (12:04:00-12:05:00) had: 8 requests
+  Current window starts: 12:05:00
+  
+  prev_count = 8 (the old 8 requests)
+  curr_count = 0 (new window just started)
+  window_start = 12:05:00
+
+TIME 12:05:02 - 2 requests arrive
+  prev_count = 8
+  curr_count = 2
+  window_start = 12:05:00
+  
+  overlap = (12:05:00 + 60 - 12:05:02) / 60 = 58/60 = 0.967
+  estimate = 2 + (8 × 0.967) = 2 + 7.73 = 9.73 ≈ 9
+  9 < 10? YES → ACCEPT ✓
+
+TIME 12:05:04 - 1 more request
+  prev_count = 8
+  curr_count = 3
+  window_start = 12:05:00
+  
+  overlap = (12:05:00 + 60 - 12:05:04) / 60 = 56/60 = 0.933
+  estimate = 3 + (8 × 0.933) = 3 + 7.46 = 10.46 ≈ 10
+  10 >= 10? YES → REJECT ✗ (exactly at limit)
+```
+
+---
+
+#### Step 7: Why It Works
+
+```
+KEY INSIGHT: We're estimating based on AVERAGE distribution
+
+Assumption:
+  Previous window had 8 requests spread evenly over 60 seconds
+  = About 0.13 requests per second
+  
+If previous window had requests at:
+  12:04:05, 12:04:15, 12:04:25, 12:04:35, 12:04:45, 12:04:55...
+  
+Rolling window at 12:05:04 includes:
+  [12:04:04 to 12:05:04]
+  
+From previous: 12:04:05, 12:04:15, 12:04:25, 12:04:35, 12:04:45, 12:04:55
+               = 6 requests in rolling window (out of 8)
+               
+Overlap = 6/8 = 75% ≈ Our calculation of 93.3%
+                      (Close enough for practical purposes!)
+
+The 93.3% is OVERESTIMATE (conservative) because:
+  We assume even distribution
+  Real distribution might be clumpy
+  Better to overestimate → Reject early → Safer!
+```
+
+---
+
+#### Step 8: Why Only 24 Bytes?
+
+```
+Token Bucket:
+  prev_count:         8 bytes (integer)
+  curr_count:         8 bytes (integer)
+  window_start:       8 bytes (timestamp)
+  ────────────────────────────
+  Total:             24 bytes per user ✓
+
+Compared to:
+  Sliding Window Log: 2000+ bytes (100 timestamps × 20 bytes each)
+  
+SAVINGS: 83X more efficient! 🎉
 ```
 
 #### Problems It Solves
