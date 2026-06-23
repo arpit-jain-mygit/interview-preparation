@@ -358,22 +358,30 @@ Process: Request added to queue if not full
 #### Using Scenario C (Email Service)
 
 ```
-Configuration: Queue = 100 emails, Outflow = 10/sec
+Configuration: Queue capacity = 100 emails, Outflow = 10/sec (1 every 0.1 sec)
 
-T=0s:    500 emails queued
-         Queue: [E1, E2, ..., E500]
+T=0s:    500 emails arrive
+         Queue capacity: 100 max
+         Accepted: 100 (fill the queue)
+         Rejected: 400 ✗
+         Queue: [E1, E2, ..., E100]
          Status: Processing at 10/sec
 
-T=50s:   Still processing (500/10 = 50 seconds)
-         Queue draining steadily
+T=10s:   All 100 emails processed (100 ÷ 10/sec = 10 sec)
+         Queue now empty
 
 T=120s:  Burst of 800 emails arrives
-         Queue size = 100 max
-         Accepted: 100 (fill remaining capacity)
-         Rejected: 700
+         Queue size = 0 (was drained)
+         Capacity available: 100
+         Accepted: 100 (fill the queue)
+         Rejected: 700 ✗
+         Queue: [E1, E2, ..., E100]
          
-Result: 100/800 accepted (only 12.5%)
-Wait time: Up to 10 seconds (100 emails × 1sec each)
+T=130s:  All 100 queued emails processed
+         
+Result: Total accepted = 100 + 100 = 200 out of 1400
+        Success rate: 14.3%
+Wait time: Up to 10 seconds (100 emails × 0.1sec each)
 Memory: O(1) - just queue size
 ```
 
