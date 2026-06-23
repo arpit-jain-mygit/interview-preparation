@@ -1586,34 +1586,252 @@ SLIDING WINDOW LOG:
 
 ### 5. Sliding Window Counter Algorithm (Hybrid Approach)
 
-**How It Works:**
-- Combines fixed window counter and sliding window log
-- Uses formula to estimate requests in rolling window:
-  ```
-  Requests in current window + 
-  (Requests in previous window × overlap percentage of rolling window)
-  ```
+#### **Core Concept**
+
+Sliding Window Counter is a **smart compromise** between accuracy and efficiency:
+
+```
+Instead of storing ALL timestamps (Sliding Window Log):
+  Sliding Window Log: [12:00:01, 12:00:05, 12:00:10, ...]  ← 100+ timestamps!
+
+Store just TWO counters + ONE timestamp:
+  Sliding Window Counter:
+    prev_count: 5
+    curr_count: 3
+    last_window_start: 12:00:00  ← Only 1 timestamp!
+```
+
+**The Genius:** Use math to estimate what's in the rolling window without storing everything!
+
+#### **What Gets Stored (Important Clarification)**
+
+You store **3 pieces of data per user:**
+
+```
+Redis storage:
+
+user_123 = {
+  "prev_count": 5,                    ← Requests in PREVIOUS minute
+  "curr_count": 3,                    ← Requests in CURRENT minute  
+  "last_window_start": 1719072000     ← When current window started
+}
+
+Total storage: 24 bytes per user
+
+Compare:
+  Sliding Window Log: 2000 bytes per user
+  Ratio: 2000 / 24 = 83X LESS storage! ✓
+```
+
+**Why we need the timestamp:**
+```
+We need to know: "When should we roll the counters to new minute?"
+
+At T=12:00:45:
+  last_window_start = 12:00:00
+  Compare: 12:00:45 < 12:01:00? YES, same window
+
+At T=12:01:05:
+  last_window_start = 12:00:00
+  Compare: 12:01:05 >= 12:01:00? YES, new window!
+  ACTION: Roll counters
+    prev_count = 3 (old curr becomes prev)
+    curr_count = 0 (new curr starts fresh)
+    last_window_start = 12:01:00 (update timestamp)
+```
+
+#### **How It Calculates**
+
+**Formula:**
+```
+Requests in rolling window ≈ current_count + 
+                              (previous_count × overlap_percentage)
+
+Where:
+  overlap_percentage = (window_size - (current_time mod window_size)) / window_size
+```
 
 **Example:**
 ```
-Rate limit: 7 requests per minute
-Previous minute requests: 5
-Current minute requests: 3
-New request arrives at 30% position in current minute:
+At T=12:00:30 (30 seconds into minute):
+  current_count: 3 requests
+  previous_count: 5 requests
+  window_size: 60 seconds
 
-Calculation: 3 + (5 × 0.7) = 3 + 3.5 = 6.5 → round down to 6
-Since 6 < 7 limit: REQUEST ACCEPTED
+Overlap = (60 - 30) / 60 = 30/60 = 0.5 (50%)
+
+Rolling window estimate = 3 + (5 × 0.5) = 3 + 2.5 = 5.5 → round to 5
+
+Is 5 < limit of 10? YES ✓ ACCEPT
 ```
 
-**Pros:**
-- ✅ Smooths out traffic spikes
-- ✅ Based on average rate of previous window
-- ✅ Memory efficient
+**Why this works:**
+```
+If previous minute had 5 requests,
+and we're halfway through current minute,
+then roughly 50% of those previous requests
+are still relevant to our rolling window!
+
+Not perfect (assumes even distribution), but good enough!
+Error rate: Only 0.003% among 400 million requests (Cloudflare test)
+```
+
+#### **Step-by-Step Process**
+
+```
+When new request arrives at T=12:00:45:
+
+Step 1: Check if window has rolled
+  Current window start = floor(12:00:45 / 60) × 60 = 12:00:00
+  Last stored start = 12:00:00
+  Has it rolled? NO
+
+Step 2: Calculate overlap percentage
+  Time into window = 45 seconds
+  Overlap = (60 - 45) / 60 = 0.25 (25%)
+
+Step 3: Estimate rolling window count
+  prev_count = 5
+  curr_count = 3
+  estimate = 3 + (5 × 0.25) = 3 + 1.25 = 4.25 → 4
+
+Step 4: Check limit
+  4 < 10? YES ✓
+  ACCEPT request
+  curr_count++ → now 4
+
+Step 5: At next minute (T=12:01:00)
+  Window has rolled!
+  prev_count = 4 (old curr becomes prev)
+  curr_count = 0 (new curr resets)
+  last_window_start = 12:01:00
+```
+
+#### **Storage Comparison (Complete Picture)**
+
+```
+PER USER, PER MINUTE:
+
+TOKEN BUCKET:
+  Store: 1 value
+    - tokens_in_bucket
+  Storage: 8 bytes
+
+LEAKING BUCKET:
+  Store: 1 value
+    - queue_size
+  Storage: 8 bytes
+
+FIXED WINDOW:
+  Store: 1 value
+    - counter
+  Storage: 8 bytes
+
+SLIDING WINDOW LOG:
+  Store: Many values
+    - [timestamp1, timestamp2, ..., timestamp100]
+  Storage: 100 × 20 bytes = 2000 bytes
+
+SLIDING WINDOW COUNTER:
+  Store: 3 values
+    - prev_count (8 bytes)
+    - curr_count (8 bytes)
+    - last_window_start (8 bytes)
+  Storage: 24 bytes
+```
+
+**The Key Point:**
+```
+Yes, we store a timestamp (last_window_start)
+But just ONE timestamp, not one per request!
+
+Sliding Window Log:  1 timestamp × 100 requests = 100 timestamps ✗
+Sliding Window Counter: 1 timestamp × 1 user = 1 timestamp ✓
+```
+
+#### **Comparison: All Five Algorithms**
+
+```
+Using scenario: [3 requests at T=0s] → 6s quiet → [9 requests at T=9s]
+Limit: 10 requests per minute
+
+TOKEN BUCKET:
+  ✓ 8/9 accepted | ⏱️ ~0ms latency | 💾 8 bytes
+  ⚠️ Hard to tune parameters
+
+LEAKING BUCKET:
+  ✓ 8/9 accepted | ⏱️ 15-57s latency | 💾 8 bytes
+  ❌ Poor user experience (too slow)
+
+FIXED WINDOW:
+  ✓ 7/9 accepted | ⏱️ ~0ms latency | 💾 8 bytes
+  🚨 EXPLOITABLE at edge cases
+
+SLIDING WINDOW LOG:
+  ✓ 8/9 accepted | ⏱️ ~0ms latency | 💾 2000 bytes
+  ✅ Perfect accuracy, but expensive
+
+SLIDING WINDOW COUNTER: ⭐
+  ✓ 8/9 accepted | ⏱️ ~0ms latency | 💾 24 bytes
+  ✅ 99.997% accurate + fast + cheap!
+```
+
+#### **Pros:**
+- ✅ **Fast:** O(1) per request - just one calculation
+- ✅ **Accurate:** 99.997% accuracy (0.003% error)
+- ✅ **Memory efficient:** Only 24 bytes per user (vs 2000 for Log)
+- ✅ **No exploitable edges:** Uses rolling window concept
+- ✅ **Smooth rate limiting:** Doesn't spike like Fixed Window
+- ✅ **Scalable:** Handles millions of requests/sec
 
 **Cons:**
-- ❌ Only works for not-so-strict lookback windows
-- ❌ Approximation (assumes even distribution)
-- ❌ Cloudflare found only 0.003% error rate among 400M requests (acceptable)
+- ❌ Not 100% perfect (but 99.997% is good enough!)
+- ❌ Assumes even distribution (may cause minor approximation errors)
+- ❌ Only works for reasonable window sizes
+
+#### **When to Use Sliding Window Counter**
+
+✅ **Use when:** (Most common choice!)
+- Building public REST APIs
+- Need good accuracy AND speed AND low memory
+- Traffic can be bursty or steady
+- 99.997% accuracy is acceptable
+- Examples: **Most real-world APIs** (Twitter, GitHub, etc.)
+
+```
+Use Cases:
+  ✓ Public REST API rate limiting
+  ✓ Web service traffic control
+  ✓ SaaS platform rate limits
+  ✓ Mobile app API throttling
+  ✓ Most production systems
+```
+
+❌ **Don't use when:**
+- Need PERFECT accuracy (use Sliding Window Log)
+- Can't tolerate any approximation error
+- Handling financial transactions (use Log)
+
+#### **Why It's The "Goldilocks" Algorithm**
+
+```
+TOKEN BUCKET:        ✓ Fast ✓ Memory ✗ Hard to tune
+LEAKING BUCKET:      ✓ Memory ✗ Slow ✗ Poor UX
+FIXED WINDOW:        ✓ Fast ✓ Memory ✗ Exploitable
+SLIDING WINDOW LOG:  ✓ Accurate ✓ Secure ✗ Expensive
+
+SLIDING WINDOW COUNTER: ✓ Fast ✓ Memory ✓ Accurate ✓ Secure!
+```
+
+**The formula is the trick:**
+```
+Instead of remembering everything,
+just remember two snapshots (previous + current)
+and use math to estimate the rolling window!
+
+Result: Get 99.997% accuracy of the expensive algorithm
+        with the speed and memory of the simple algorithm!
+```
 
 ---
 
