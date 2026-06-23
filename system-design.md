@@ -1258,7 +1258,47 @@ Estimate:
            ≈ 12 requests in rolling window
   
 Limit: 10 requests
-Decision: 12 > 10 → REJECT! ✗
+Decision: 12 > 10 → REJECT THIS NEW REQUEST! ✗
+
+⚠️ IMPORTANT CLARIFICATION:
+───────────────────────────
+
+We're NOT rejecting all 12 requests!
+We're rejecting THIS ONE NEW REQUEST that just arrived!
+
+What happens:
+  ✓ The 12 existing requests stay in system
+  ✓ THIS new request is rejected (not added to counter)
+  ✓ User must wait until some old requests expire
+
+Timeline:
+  Time 12:05:04 - User sends request #11
+  System: "estimate = 12, limit = 10, 12 > 10"
+  Action: REJECT request #11 (don't add to counter)
+  Result: curr_count stays at 5
+  
+  Time 12:05:10 - User sends request #12
+  System recalculates overlap = (12:05:00 + 60 - 12:05:10) / 60 = 50/60 = 0.833
+  estimate = 5 + (8 × 0.833) = 5 + 6.67 = 11.67 ≈ 11
+  System: "estimate = 11, limit = 10, 11 > 10"
+  Action: REJECT request #12 (don't add to counter)
+  Result: curr_count stays at 5
+  
+  Time 12:05:30 - Window boundary!
+  Old previous window (12:04:00-12:05:00) with 8 requests EXPIRES
+  prev_count becomes 0!
+  
+  Time 12:05:30 - User sends request #13
+  System: prev_count = 0, curr_count = 5, overlap = 60/60 = 1.0
+  estimate = 5 + (0 × 1.0) = 5
+  System: "estimate = 5, limit = 10, 5 < 10"
+  Action: ACCEPT request #13 ✓
+  Result: curr_count = 6
+  
+SUMMARY:
+  We reject requests ONE AT A TIME (not in batches)
+  As old requests expire from rolling window, we accept new ones
+  Counter only increases when we ACCEPT a request
 ```
 
 ---
