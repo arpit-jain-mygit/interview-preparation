@@ -2,10 +2,511 @@
 
 ## Table of Contents
 
-1. [MCP (Model Context Protocol)](#mcp-model-context-protocol)
-2. [Agents vs Tools](#agents-vs-tools)
-3. [Workflow Orchestration](#workflow-orchestration)
-4. [Best Practices](#best-practices)
+1. [LangChain](#langchain)
+2. [LanGraph](#langgraph)
+3. [RAG (Retrieval Augmented Generation)](#rag-retrieval-augmented-generation)
+4. [Embeddings](#embeddings)
+5. [Vector Stores](#vector-stores)
+6. [Chains & Prompts](#chains--prompts)
+7. [MCP (Model Context Protocol)](#mcp-model-context-protocol)
+8. [Agents vs Tools](#agents-vs-tools)
+9. [Workflow Orchestration](#workflow-orchestration)
+10. [Best Practices](#best-practices)
+
+---
+
+## LangChain
+
+### What is LangChain?
+
+**LangChain** = Python/JS framework for building LLM applications with reusable abstractions
+
+```
+Your business logic
+    ↓
+LangChain (abstractions)
+    ↓
+LLMs + External tools + Databases
+```
+
+**Components:**
+- **Document loaders** → Load PDFs, CSVs, APIs
+- **Text splitters** → Chunk documents smartly
+- **Embeddings** → Convert text to vectors
+- **Vector stores** → Cache embeddings
+- **Chains** → Connect LLM calls together
+- **Agents** → Let LLM decide what to do
+
+### LangChain Example
+
+```python
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains import LLMChain
+
+# Define LLM
+llm = ChatOpenAI(model="gpt-4", temperature=0)
+
+# Define prompt template
+prompt = ChatPromptTemplate.from_template(
+    "Extract vendor and amount from this invoice:\n{invoice_text}"
+)
+
+# Create chain (LLM + prompt)
+chain = LLMChain(llm=llm, prompt=prompt)
+
+# Use chain
+result = chain.run(invoice_text="Invoice from Acme Corp for $5000")
+print(result)
+# Output: {"vendor": "Acme Corp", "amount": "$5000"}
+```
+
+### Why Use LangChain?
+
+**Without LangChain:**
+```python
+# You manage everything manually
+response = openai.ChatCompletion.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": "Extract vendor and amount"},
+        {"role": "user", "content": invoice_text}
+    ]
+)
+result = parse_json(response["choices"][0]["message"]["content"])
+```
+
+**With LangChain:**
+```python
+# Framework handles boilerplate
+chain = LLMChain(llm=llm, prompt=prompt)
+result = chain.run(invoice_text)
+```
+
+---
+
+## LanGraph
+
+### What is LanGraph?
+
+**LanGraph** = Framework for building **agentic workflows** with LangChain
+
+```
+LangChain = Basic LLM chains
+LanGraph = Complex agent workflows with state & loops
+```
+
+Think: Graph-based state machine where LLM decides paths
+
+### LanGraph Example
+
+```python
+from langgraph.graph import StateGraph
+from langchain.chat_models import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4")
+
+# Define workflow nodes
+def extract_node(state):
+    """Extract invoice data"""
+    result = llm.invoke(f"Extract from: {state['document']}")
+    state['extracted'] = result
+    return state
+
+def validate_node(state):
+    """Validate extracted data"""
+    result = llm.invoke(f"Validate this data: {state['extracted']}")
+    state['validated'] = result['is_valid']
+    return state
+
+def categorize_node(state):
+    """Categorize expense"""
+    result = llm.invoke(f"Categorize this amount: {state['amount']}")
+    state['category'] = result
+    return state
+
+# Build graph
+graph = StateGraph(dict)
+graph.add_node("extract", extract_node)
+graph.add_node("validate", validate_node)
+graph.add_node("categorize", categorize_node)
+
+# Define edges (workflow paths)
+graph.add_edge("extract", "validate")  # Always validate after extract
+graph.add_conditional_edges(
+    "validate",
+    lambda state: "categorize" if state['validated'] else "extract"
+    # If valid, categorize. Else, extract again
+)
+
+# Compile and run
+workflow = graph.compile()
+result = workflow.invoke({"document": "Invoice from Acme..."})
+print(result)
+```
+
+### LanGraph vs Simple Loop
+
+**Without LanGraph (manual loop):**
+```python
+# You manage state and loops
+state = {"document": "..."}
+
+# Extract
+state['extracted'] = extract(state['document'])
+
+# Validate
+if validate(state['extracted']):
+    # Categorize
+    state['category'] = categorize(state['amount'])
+else:
+    # Retry extract
+    state['extracted'] = extract(state['document'])
+```
+
+**With LanGraph (declarative):**
+```python
+# Framework manages state and loops
+graph = StateGraph(dict)
+graph.add_node("extract", extract_node)
+graph.add_conditional_edges("validate", router)
+workflow = graph.compile()
+result = workflow.invoke({"document": "..."})
+```
+
+---
+
+## RAG (Retrieval Augmented Generation)
+
+### What is RAG?
+
+**RAG** = Pattern that combines retrieval + generation for better answers
+
+```
+Without RAG:
+User: "What's in my company handbook?"
+Claude: Uses only training data (outdated, generic)
+
+With RAG:
+User: "What's in my company handbook?"
+Claude: Retrieves relevant handbook pages first
+        Then generates answer from actual handbook
+```
+
+### RAG Architecture
+
+```
+User question
+    ↓
+1. Retrieve (search for relevant documents)
+    ↓
+2. Augment (add retrieved docs to prompt)
+    ↓
+3. Generate (LLM answers using retrieved context)
+    ↓
+Answer
+```
+
+### RAG Example
+
+```python
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Pinecone
+from langchain.chains import RetrievalQA
+from langchain.chat_models import ChatOpenAI
+
+# 1. Load documents and store embeddings
+embeddings = OpenAIEmbeddings()
+vector_store = Pinecone.from_documents(
+    docs,  # Your documents (handbook, policies, etc.)
+    embeddings,
+    index_name="company-handbook"
+)
+
+# 2. Create retriever
+retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+
+# 3. Create RAG chain
+llm = ChatOpenAI(model="gpt-4")
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    retriever=retriever,
+    chain_type="stuff"  # Combine retrieved docs + question
+)
+
+# 4. Query
+response = qa_chain.run("What's the vacation policy?")
+# Behind the scenes:
+# - Retrieves 3 most relevant handbook pages
+# - Adds them to prompt: "Using this handbook: [...], answer: ..."
+# - LLM answers from actual handbook
+```
+
+### Why RAG?
+
+```
+Problem: LLM training data is old
+Solution: Retrieve current docs → LLM generates from them
+
+Example:
+Q: "What's our Q3 revenue?"
+Without RAG: "I don't know, my training data ends in April 2024"
+With RAG: Retrieves latest financial doc → "Q3 revenue is $15M"
+```
+
+---
+
+## Embeddings
+
+### What are Embeddings?
+
+**Embedding** = Vector representation of text
+
+```
+Text → AI Model → Vector (list of numbers)
+
+"The cat sat on the mat"
+    ↓
+[0.234, -0.156, 0.891, 0.456, ...] (1536 dimensions)
+```
+
+**Key insight:** Similar meanings = nearby vectors
+
+```
+Vector 1: "The cat sat" → [0.234, -0.156, ...]
+Vector 2: "The dog sat" → [0.235, -0.157, ...]
+                            ↑ Similar (nearby in space)
+
+Vector 3: "Flying airplane" → [0.891, 0.234, ...]
+                              ↑ Different (far away)
+```
+
+### Embeddings Example
+
+```python
+from langchain.embeddings import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+
+# Embed single text
+vector = embeddings.embed_query("The cat sat on the mat")
+print(len(vector))  # 1536 dimensions
+
+# Embed multiple texts
+vectors = embeddings.embed_documents([
+    "The cat sat on the mat",
+    "The dog sat on the mat",
+    "Flying airplane"
+])
+
+# Calculate similarity (closer = more similar)
+import numpy as np
+similarity = np.dot(vectors[0], vectors[1])
+print(f"Similarity between cat and dog: {similarity}")  # 0.98 (very similar)
+print(f"Similarity between cat and airplane: {np.dot(vectors[0], vectors[2])}")  # 0.21 (different)
+```
+
+### Why Embeddings?
+
+```
+Problem: How to find "similar documents"?
+Solution: Convert to vectors → Find nearby vectors
+
+Use cases:
+1. Search: User query → embedding → find similar docs
+2. Clustering: Group similar documents
+3. Recommendations: "Users who liked this, also liked..."
+4. Duplicate detection: Same embedding = duplicate
+```
+
+---
+
+## Vector Stores
+
+### What is a Vector Store?
+
+**Vector Store** = Database optimized for storing & searching embeddings
+
+```
+Traditional DB: Stores text
+Vector Store: Stores vectors + text, searches by similarity
+
+Query: "vacation policy"
+  ↓
+Convert to vector
+  ↓
+Find 3 nearest vectors in store
+  ↓
+Return matching documents
+```
+
+### Vector Store Examples
+
+```python
+from langchain.vectorstores import Pinecone, Chroma, FAISS
+from langchain.embeddings import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings()
+
+# Option 1: Pinecone (cloud, scalable)
+vector_store = Pinecone.from_documents(
+    documents=docs,
+    embedding=embeddings,
+    index_name="my-index"
+)
+
+# Option 2: Chroma (local, simple)
+vector_store = Chroma.from_documents(docs, embeddings)
+
+# Option 3: FAISS (local, fast)
+vector_store = FAISS.from_documents(docs, embeddings)
+
+# Search
+results = vector_store.similarity_search("vacation policy", k=3)
+for doc in results:
+    print(doc.page_content)  # Top 3 matching documents
+```
+
+### Vector Store vs Regular DB
+
+| Feature | Regular DB | Vector Store |
+|---------|-----------|--------------|
+| **Search** | Exact match | Similarity match |
+| **Query** | `WHERE name = 'John'` | `Find similar to 'John'` |
+| **Use case** | Structured data | Document search, RAG |
+| **Speed** | Fast for exact | Fast for similarity |
+
+---
+
+## Chains & Prompts
+
+### What are Chains?
+
+**Chain** = Sequence of LLM calls linked together
+
+```
+Without chain:
+response1 = llm("Summarize: " + text)
+response2 = llm("Translate to Spanish: " + response1)
+response3 = llm("Make it fun: " + response2)
+
+With chain:
+chain = Summarize → Translate → Make fun
+result = chain.invoke(text)
+```
+
+### Chains Example
+
+```python
+from langchain.chains import LLMChain, SequentialChain
+from langchain.prompts import ChatPromptTemplate
+from langchain.chat_models import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4")
+
+# Chain 1: Summarize
+summarize_prompt = ChatPromptTemplate.from_template(
+    "Summarize this in 2 sentences:\n{text}"
+)
+summarize_chain = LLMChain(llm=llm, prompt=summarize_prompt)
+
+# Chain 2: Translate
+translate_prompt = ChatPromptTemplate.from_template(
+    "Translate to Spanish:\n{summary}"
+)
+translate_chain = LLMChain(llm=llm, prompt=translate_prompt)
+
+# Chain 3: Make fun
+fun_prompt = ChatPromptTemplate.from_template(
+    "Make this funny and engaging:\n{translation}"
+)
+fun_chain = LLMChain(llm=llm, prompt=fun_prompt)
+
+# Combine chains
+overall_chain = SequentialChain(
+    chains=[summarize_chain, translate_chain, fun_chain],
+    input_variables=["text"],
+    output_variables=["fun_version"]
+)
+
+result = overall_chain(text="Long document here...")
+print(result["fun_version"])
+```
+
+### Prompt Templates
+
+**Prompt Template** = Reusable template with placeholders
+
+```python
+from langchain.prompts import ChatPromptTemplate
+
+# Simple template
+template = "Summarize this: {text}"
+prompt = ChatPromptTemplate.from_template(template)
+
+# Use it
+formatted = prompt.format(text="Long document...")
+# Output: "Summarize this: Long document..."
+
+# Complex template
+template = """
+You are a {role}.
+Extract the following from this document:
+- Name
+- Email
+- Phone
+
+Document:
+{document}
+
+Output as JSON.
+"""
+prompt = ChatPromptTemplate.from_template(template)
+
+formatted = prompt.format(
+    role="customer service rep",
+    document="Customer: John, email john@example.com..."
+)
+```
+
+---
+
+## Summary Comparison
+
+| Tool | Purpose | Use Case |
+|------|---------|----------|
+| **LangChain** | Build LLM apps | Simple chains, document Q&A |
+| **LanGraph** | Build agent workflows | Multi-step agentic workflows |
+| **RAG** | Retrieve + Generate | Query company documents, handbooks |
+| **Embeddings** | Vector representation | Search, similarity, clustering |
+| **Vector Store** | Store embeddings | Fast similarity search |
+| **MCP** | LLM calls tools | Claude calling your APIs |
+
+---
+
+## Quick Decision Tree
+
+```
+Q: Do you need to call multiple LLMs?
+  ├─ YES → Use LangChain (abstractsion)
+  └─ NO → Direct API calls are fine
+
+Q: Do you need smart multi-step workflows?
+  ├─ YES → Use LanGraph
+  └─ NO → Use LangChain
+
+Q: Do you need to search documents?
+  ├─ YES → Use RAG (retrieval + generation)
+  └─ NO → Direct LLM calls
+
+Q: Do you need LLM to call your APIs?
+  ├─ YES → Use MCP
+  └─ NO → Direct API calls
+
+Q: Do you need to find similar documents?
+  ├─ YES → Use Embeddings + Vector Store
+  └─ NO → Database search is fine
+```
 
 ---
 
