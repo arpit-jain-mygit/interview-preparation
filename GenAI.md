@@ -103,6 +103,493 @@ GenAI (generative models)
 
 ---
 
+# Choosing a Model for Your Use Case
+
+## Key Decision Factors
+
+### 1. **Modality**
+What type of input/output does your use case need?
+
+```
+Modality = Type of data the model processes
+
+Text-Only:
+├─ Input: Text questions
+├─ Output: Text answers
+└─ Models: GPT-4, Claude, Gemini, Llama
+
+Multimodal (Text + Image):
+├─ Input: Text questions + images
+├─ Output: Text answers about images
+└─ Models: GPT-4 Vision, Claude 3 Opus, Gemini 1.5
+
+Image Generation:
+├─ Input: Text descriptions
+├─ Output: Generated images
+└─ Models: DALL-E 3, Midjourney, Stable Diffusion
+
+Audio:
+├─ Input: Speech/audio
+├─ Output: Text or speech
+└─ Models: Whisper, SpeechT5
+
+Video:
+├─ Input: Video + text
+├─ Output: Text analysis
+└─ Models: GPT-4 Vision (supports video)
+```
+
+**Decision:** Match modality to your actual use case
+- Need image analysis? → Multimodal model
+- Just text QA? → Text-only (cheaper & faster)
+- Need image generation? → Diffusion model
+
+---
+
+### 2. **Context Window**
+How much text can the model process in one request?
+
+```
+Context Window = Maximum tokens model can accept in one prompt
+
+Examples:
+GPT-4 Turbo: 128K tokens (~96K words, ~300 pages)
+Claude 3 Opus: 200K tokens (~150K words, ~500 pages)
+Claude 3.5 Sonnet: 200K tokens
+Gemini 1.5 Pro: 1M tokens (~750K words, ~2,500 pages)
+Llama 2: 4K tokens (~3K words, ~10 pages)
+
+Token ≈ 0.75 words (roughly)
+```
+
+**Use cases:**
+- **Small context (4K-32K):** Simple Q&A, chat
+- **Large context (128K-200K):** Full documents, code files, long conversations
+- **Very large context (1M):** Entire books, long codebases, multi-document analysis
+
+**Decision:**
+```
+Q: Need to analyze a whole PDF (50 pages)?
+├─ NO → Smaller context = cheaper & faster
+└─ YES → Need large context window
+
+Q: Entire codebase analysis (10K lines)?
+├─ NO → Small context sufficient
+└─ YES → Large context (200K+)
+```
+
+---
+
+### 3. **Security & Privacy**
+Where does your data go? Who can access it?
+
+```
+Security Considerations:
+
+Option 1: Cloud API (OpenAI, Anthropic, Google)
+├─ Data: Sent to cloud, processed on vendor's servers
+├─ Pros: Latest models, low latency
+├─ Cons: Data leaves your infrastructure
+├─ Best for: Non-sensitive data (public docs, generic Q&A)
+└─ Examples: ChatGPT API, Claude API, Gemini API
+
+Option 2: Self-Hosted / On-Premise
+├─ Data: Runs on your servers, never leaves
+├─ Pros: Full data privacy & control
+├─ Cons: Need GPU infrastructure, maintenance burden
+├─ Best for: Sensitive data (healthcare, finance, legal)
+└─ Examples: Llama 2 (open source), Mistral
+
+Option 3: Private Cloud (VPC)
+├─ Data: Dedicated instance in your VPC
+├─ Pros: Privacy + managed service
+├─ Cons: More expensive
+└─ Examples: Claude on AWS Bedrock, GPT Azure Private
+```
+
+**Decision Tree:**
+```
+Q: Handling sensitive/regulated data (health, financial)?
+├─ YES → Self-hosted or private cloud required
+└─ NO → Cloud API acceptable
+
+Q: HIPAA/PCI-DSS/SOC2 compliance needed?
+├─ YES → Private cloud or on-premise
+└─ NO → Cloud API fine
+```
+
+---
+
+### 4. **Availability & Reliability**
+How often is the model available? What's the uptime?
+
+```
+Service Level Agreements (SLAs):
+
+Cloud APIs:
+├─ OpenAI: 99.9% uptime SLA
+├─ Anthropic: 99.9% uptime SLA
+├─ Google: 99.99% uptime SLA
+└─ AWS/Azure: 99.99% uptime SLA
+
+Rate Limits:
+├─ Free tier: 3-100 requests/min
+├─ Paid: 1,000-500,000+ requests/min
+└─ Enterprise: Custom negotiated
+
+Load Balancing:
+├─ Single region: Single point of failure
+├─ Multi-region: Redundancy
+└─ Self-hosted: Your responsibility
+```
+
+**Decision:**
+```
+Q: Mission-critical application (always needs to be available)?
+├─ YES → Multi-region cloud with SLA
+└─ NO → Single cloud API acceptable
+
+Q: High volume (1M+ requests/day)?
+├─ YES → Enterprise plan or self-hosted
+└─ NO → Standard cloud API
+
+Q: Can tolerate 5-minute downtime?
+├─ YES → Standard cloud fine
+└─ NO → Multi-region failover needed
+```
+
+---
+
+### 5. **Cost**
+What's the financial impact per request?
+
+```
+Pricing Models:
+
+Pay-per-token (most common):
+├─ Input token: $0.01 per 1M (Claude 3 Haiku)
+├─ Output token: $0.03 per 1M (Claude 3 Haiku)
+├─ Example: 1000 input + 500 output = ~$0.00005 per request
+└─ Best for: Variable workloads
+
+Subscription (flat monthly):
+├─ ChatGPT Plus: $20/month (unlimited usage)
+├─ Claude Pro: $20/month
+└─ Best for: Fixed usage patterns
+
+Self-hosted (upfront infrastructure):
+├─ GPU: $1,000-$10,000+ per month
+├─ Maintenance: Engineer time
+└─ Best for: High volume (amortizes cost)
+```
+
+**Cost Comparison Example:**
+```
+Scenario: 1M tokens processed per day
+
+Cloud API (Claude 3 Haiku):
+├─ Input: 1M tokens × $0.00001 = $10/day = $300/month
+├─ Output: 500K × $0.00003 = $15/day = $450/month
+└─ Total: ~$750/month
+
+Cloud API (GPT-4):
+├─ Input: 1M tokens × $0.003 = $3,000/day
+└─ Total: ~$90,000/month ❌ (expensive)
+
+Self-hosted (Llama 2):
+├─ NVIDIA A100 GPU: $3,000/month
+├─ Engineer: $10,000/month salary (pro-rated)
+└─ Total: ~$13,000/month
+
+Verdict: Use cheaper model (Haiku, Sonnet) unless you need GPT-4's power
+```
+
+**Decision Tree:**
+```
+Q: What's your monthly AI spending budget?
+├─ <$1000: Use Haiku, Sonnet (cheaper models)
+├─ $1000-$10000: Use Opus, GPT-4 (more powerful)
+└─ >$10000: Self-host or negotiate enterprise deals
+
+Q: High volume (10M+ tokens/day)?
+├─ YES → Self-hosting becomes cost-effective
+└─ NO → Cloud API better
+```
+
+---
+
+### 6. **Performance**
+How fast and accurate does the model need to be?
+
+```
+Performance Metrics:
+
+Latency (speed):
+├─ Fast: <500ms (Haiku, Sonnet)
+├─ Medium: 500ms-2s (GPT-4)
+└─ Slow: >2s (some multimodal models)
+
+Throughput (requests/sec):
+├─ High: 1000+ requests/sec (cloud with scaling)
+├─ Medium: 100-1000 (standard cloud)
+└─ Low: <100 (self-hosted, limited GPU)
+
+Quality/Accuracy:
+├─ Factual tasks: GPT-4 > Claude 3 Opus > Sonnet
+├─ Code generation: GPT-4 ≈ Claude 3 Opus
+├─ Reasoning: Claude 3 Opus ≈ GPT-4
+└─ Speed: Haiku >> Sonnet >> Opus >> GPT-4
+
+Hallucinations:
+├─ High: Haiku, Sonnet (smaller models)
+└─ Low: GPT-4, Claude 3 Opus (larger models)
+```
+
+**Decision:**
+```
+Q: Real-time user-facing app (chat interface)?
+├─ YES → Need <1s latency → Haiku/Sonnet
+└─ NO → Can tolerate 2-5s delay → Opus/GPT-4
+
+Q: Need highly accurate/factual answers?
+├─ YES → Use larger model (Opus, GPT-4)
+└─ NO → Smaller model sufficient (Haiku, Sonnet)
+
+Q: Cost vs Quality tradeoff?
+├─ Priority: Cost → Haiku
+├─ Priority: Balanced → Sonnet
+└─ Priority: Quality → Opus or GPT-4
+```
+
+---
+
+### 7. **Fine-tuning & Optimization**
+Can you customize the model for your specific domain?
+
+```
+Fine-tuning Options:
+
+Option 1: No Fine-tuning (Use as-is)
+├─ Cost: Just per-token usage
+├─ Time: Deploy immediately
+├─ Quality: Generic performance
+└─ Best for: General use cases (Q&A, coding, writing)
+
+Option 2: Prompt Engineering (Few-shot examples)
+├─ Cost: Free (just more tokens in prompt)
+├─ Time: Hours to days
+├─ Quality: 10-30% improvement
+└─ Best for: Domain-specific instructions
+└─ Example: "You are a legal expert. Answer questions about contracts."
+
+Option 3: Fine-tuning (LoRA / Full)
+├─ Cost: Training data prep + API cost
+├─ Time: Days to weeks
+├─ Quality: 30-50% improvement
+└─ Best for: Specialized tasks with examples
+└─ Example: Fine-tune GPT-4 on your company's documents
+
+Option 4: Retrieval Augmented Generation (RAG)
+├─ Cost: Embedding API + vector store
+├─ Time: Hours to days
+├─ Quality: 50%+ improvement
+└─ Best for: Knowledge-heavy tasks
+└─ Example: Q&A over company handbook
+```
+
+**Decision:**
+```
+Q: Does model perform well out-of-the-box?
+├─ YES → No fine-tuning needed
+└─ NO → Needs optimization
+
+Q: Do you have domain-specific knowledge to encode?
+├─ YES → Use RAG or fine-tuning
+└─ NO → Prompt engineering sufficient
+
+Q: Do you have labeled examples? (500+)
+├─ YES → Fine-tuning can help
+└─ NO → RAG better approach
+```
+
+---
+
+### 8. **Ease of Integration**
+How easy is it to integrate the model into your system?
+
+```
+Integration Complexity:
+
+Easiest: Cloud API
+├─ SDK: Python, Node.js, REST API
+├─ Setup: pip install + API key = 5 minutes
+├─ Deployment: Call API endpoint (no server needed)
+└─ Examples: OpenAI, Anthropic, Google APIs
+
+Medium: Managed Services
+├─ SDK: Language-specific
+├─ Setup: Configure cloud provider (30 min)
+├─ Deployment: Handled by cloud (auto-scaling)
+└─ Examples: AWS SageMaker, Azure OpenAI
+
+Complex: Self-hosted
+├─ SDK: HuggingFace Transformers
+├─ Setup: GPU provisioning, Docker containers (days)
+├─ Deployment: Kubernetes, load balancing (weeks)
+└─ Examples: Llama 2 on EC2, Mistral on K8s
+
+Documentation & Community:
+├─ Excellent: OpenAI, Anthropic, Google (large community)
+├─ Good: Meta Llama, Mistral (growing community)
+└─ Niche: Custom/proprietary models (small support)
+```
+
+**Decision:**
+```
+Q: How much DevOps/Infrastructure experience do you have?
+├─ None → Use cloud API
+├─ Some → Managed service (AWS Bedrock, Azure)
+└─ Expert → Self-host if cost-justified
+
+Q: Need custom deployment options?
+├─ YES → Self-hosted or managed service
+└─ NO → Cloud API simplest
+
+Q: How important is SDK quality & docs?
+├─ Very → OpenAI, Anthropic (best docs)
+└─ Moderate → Google, AWS, Azure
+```
+
+---
+
+## Model Selection Decision Tree
+
+```
+Start: "I need an AI model"
+  ↓
+Q1: What modality? (text, image, video, audio)
+  ├─ Text only → Text models (GPT-4, Claude, Gemini)
+  ├─ Image in → Image understanding (Claude 3, GPT-4 Vision)
+  ├─ Image out → Image generation (DALL-E, Stable Diffusion)
+  └─ Video/Audio → Specialized (Whisper, GPT-4 Vision)
+  ↓
+Q2: How much text to process? (context window)
+  ├─ <4K tokens (1 page) → Any model works
+  ├─ 4K-32K tokens (10-50 pages) → Need 32K+ context
+  ├─ 32K-200K (100-500 pages) → Claude 3 (200K) or GPT-4 Turbo
+  └─ 200K+ → Gemini 1.5 Pro (1M context)
+  ↓
+Q3: Sensitive data?
+  ├─ YES (health, financial, legal) → Self-hosted or private cloud
+  └─ NO → Cloud API acceptable
+  ↓
+Q4: Real-time requirements?
+  ├─ YES (<500ms) → Haiku, Sonnet
+  ├─ Medium (500ms-2s) → Opus, GPT-4 Turbo
+  └─ NO (can wait 5s) → Opus, GPT-4
+  ↓
+Q5: Budget?
+  ├─ Very low (<$100/month) → Haiku, Sonnet
+  ├─ Medium ($100-1000/month) → Opus, GPT-4 Turbo
+  ├─ High (>$1000/month) → Self-hosted becomes viable
+  └─ Unlimited → Use best model for task (GPT-4, Opus)
+  ↓
+Q6: Need customization?
+  ├─ YES → RAG (easiest) or Fine-tuning (most powerful)
+  └─ NO → Use model as-is
+  ↓
+RECOMMENDATION: [Selected Model]
+```
+
+---
+
+## Quick Reference: Model Comparison
+
+| Factor | Haiku | Sonnet | Opus | GPT-4 | Gemini |
+|--------|-------|--------|------|-------|--------|
+| **Cost** | $ | $$ | $$$ | $$$$ | $$-$$$ |
+| **Speed** | ⚡⚡⚡ | ⚡⚡ | ⚡ | ⚡ | ⚡⚡ |
+| **Quality** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Context** | 200K | 200K | 200K | 128K | 1M |
+| **Modality** | Text | Text+Image | Text+Image | Text+Image | Text+Image+Video |
+| **Best For** | Fast, cheap | Balanced | Quality+Speed | Reasoning | Long context |
+
+---
+
+## Example: Choosing a Model for a Use Case
+
+### Scenario 1: Customer Support Chatbot
+```
+Requirements:
+- Real-time chat responses (<500ms)
+- Customer conversations (simple queries)
+- NOT sensitive data
+- Moderate accuracy OK
+- Cost-conscious (high volume)
+
+Decision:
+Q1: Modality? → Text only
+Q2: Context? → 4K tokens fine (short conversations)
+Q3: Sensitive? → NO
+Q4: Real-time? → YES (need <500ms)
+Q5: Budget? → Low (many requests/day)
+Q6: Customization? → NO (general Q&A)
+
+✅ RECOMMENDATION: Claude 3.5 Haiku
+   - Fastest response time
+   - Cheapest option
+   - Good enough quality for support
+```
+
+### Scenario 2: Legal Document Analysis
+```
+Requirements:
+- Analyze 100-page contracts
+- High accuracy (legal liability)
+- Sensitive data (contracts, NDA)
+- Can wait 5-10 seconds per document
+- Moderate cost
+
+Decision:
+Q1: Modality? → Text + analysis
+Q2: Context? → 50-100 pages → Need 200K context
+Q3: Sensitive? → YES → Self-hosted or private
+Q4: Real-time? → NO (batch processing OK)
+Q5: Budget? → Moderate
+Q6: Customization? → YES (legal knowledge) → RAG with contract knowledge base
+
+✅ RECOMMENDATION: Claude 3 Opus (self-hosted or private cloud)
+   - 200K context for full documents
+   - High accuracy for legal work
+   - Private cloud for data security
+   - Add RAG with legal document templates
+```
+
+### Scenario 3: Real-time Image Recognition App
+```
+Requirements:
+- User uploads image, gets instant analysis
+- <1 second response time
+- Can be generic (public data OK)
+- Moderate volume
+- Simple, fast to integrate
+
+Decision:
+Q1: Modality? → Image understanding (text in, image + text out)
+Q2: Context? → Small (just image + question)
+Q3: Sensitive? → NO
+Q4: Real-time? → YES (<1s)
+Q5: Budget? → Moderate
+Q6: Customization? → NO
+
+✅ RECOMMENDATION: GPT-4 Vision or Claude 3.5 Sonnet
+   - Both support image input
+   - Sonnet slightly faster & cheaper
+   - Cloud API simplest to integrate
+```
+
+---
+
 # GenAI & LLM Integration Guide
 
 ## Table of Contents
