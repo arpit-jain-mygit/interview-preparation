@@ -7,9 +7,19 @@
 
 ---
 
+## 🔗 Essential Links
+
+- **[Certification Page](https://cloud.google.com/learn/certification/generative-ai-leader/)** — Official cert details and registration
+- **[Exam Guide PDF](https://services.google.com/fh/files/misc/generative_ai_leader_exam_guide_english.pdf)** — Detailed exam topics and domains
+- **[Sample Questions](https://forms.gle/soztS7Q74AXBncATA)** — Practice questions (unlimited attempts)
+- **[Learning Path Home](https://www.skills.google/paths/1951)** — Complete learning path on Google Cloud Skills Boost
+
+---
+
 ## Week 1: Foundation & Fundamentals
 
 ### Day 1-2: Course 1 - Gen AI: Beyond the Chatbot
+**Course Link:** [Gen AI: Beyond the Chatbot](https://www.skills.google/paths/1951/course_templates/1268)  
 **Daily Goal:** Understand gen AI beyond chat interfaces (4 hours total)
 - **Hour 1:** Module overview + Introduction to generative AI applications
 - **Hour 2:** Real-world use cases, business impact, and chat vs. other gen AI applications
@@ -19,6 +29,7 @@
 ---
 
 ### Day 3-4: Course 2 - Gen AI: Unlock Foundational Concepts
+**Course Link:** [Gen AI: Unlock Foundational Concepts](https://www.skills.google/paths/1951/course_templates/1265)  
 **Daily Goal:** Master core gen AI principles (4 hours total)
 - **Hour 1:** How transformers work, embeddings, and neural networks basics
 - **Hour 2:** Prompting techniques, fine-tuning, RAG (Retrieval-Augmented Generation)
@@ -28,6 +39,7 @@
 ---
 
 ### Day 5-6: Course 3 - Gen AI: Navigate the Landscape
+**Course Link:** [Gen AI: Navigate the Landscape](https://www.skills.google/paths/1951/course_templates/1261)  
 **Daily Goal:** Understand the gen AI market and Google's offerings (4 hours total)
 - **Hour 1:** Current gen AI landscape, competitors, models comparison (GPT vs. Gemini, etc.)
 - **Hour 2:** Google Cloud's gen AI solutions, Vertex AI, Gemini models, enterprise features
@@ -39,6 +51,7 @@
 ## Week 2: Applications & Strategy
 
 ### Day 7-8: Course 4 - Gen AI Apps: Transform Your Work
+**Course Link:** [Gen AI Apps: Transform Your Work](https://www.skills.google/paths/1951/course_templates/1266)  
 **Daily Goal:** Practical application and tools (4 hours total)
 - **Hour 1:** Hands-on with Gemini Advanced, Google AI Studio, Notebook LM
 - **Hour 2:** Workflow transformation, productivity gains, integration patterns
@@ -48,6 +61,7 @@
 ---
 
 ### Day 9-10: Course 5 - Gen AI Agents: Transform Your Organization
+**Course Link:** [Gen AI Agents: Transform Your Organization](https://www.skills.google/paths/1951/course_templates/1267)  
 **Daily Goal:** Enterprise-scale deployment and AI agents (4 hours total)
 - **Hour 1:** What are AI agents, autonomous workflows, orchestration
 - **Hour 2:** Organizational change management, implementation strategies, ROI calculations
@@ -148,10 +162,21 @@ Map each course to the exam domains:
 
 ## 📚 Resources You'll Need
 
+### Official Certification Resources
+- [ ] **[Certification Page](https://cloud.google.com/learn/certification/generative-ai-leader/)** — Overview, requirements, registration info
+- [ ] **[Exam Guide PDF](https://services.google.com/fh/files/misc/generative_ai_leader_exam_guide_english.pdf)** — Detailed exam topics and knowledge domains
+- [ ] **[Sample Questions](https://forms.gle/soztS7Q74AXBncATA)** — Practice exam questions (unlimited attempts)
+
+### Learning Path & Courses
+- [ ] **[Learning Path Home](https://www.skills.google/paths/1951)** — Google Cloud Skills Boost
+  - [ ] [Course 1: Gen AI: Beyond the Chatbot](https://www.skills.google/paths/1951/course_templates/1268)
+  - [ ] [Course 2: Gen AI: Unlock Foundational Concepts](https://www.skills.google/paths/1951/course_templates/1265)
+  - [ ] [Course 3: Gen AI: Navigate the Landscape](https://www.skills.google/paths/1951/course_templates/1261)
+  - [ ] [Course 4: Gen AI Apps: Transform Your Work](https://www.skills.google/paths/1951/course_templates/1266)
+  - [ ] [Course 5: Gen AI Agents: Transform Your Organization](https://www.skills.google/paths/1951/course_templates/1267)
+
+### Personal Tools Needed
 - [ ] Google Cloud Skills Boost account (free or paid - courses included)
-- [ ] The 5 courses (provided in the learning path)
-- [ ] [Exam Guide PDF](https://services.google.com/fh/files/misc/generative_ai_leader_exam_guide_english.pdf)
-- [ ] [Sample Questions Form](https://forms.gle/soztS7Q74AXBncATA)
 - [ ] Notebook/note-taking app
 - [ ] Calendar to track daily progress
 
