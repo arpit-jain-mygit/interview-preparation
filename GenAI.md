@@ -1,3 +1,108 @@
+# AI & ML Fundamentals
+
+## **AI (Artificial Intelligence)**
+The broadest field — any system that mimics human intelligence. Includes rule-based systems, chatbots, recommendation engines, everything below.
+
+---
+
+## **ML (Machine Learning)**
+Subset of AI where systems *learn from data* instead of following hard-coded rules.
+
+### **Three Main Types:**
+
+1. **Supervised Learning** — learn from labeled examples
+   - Data: questions + answers (input + correct output)
+   - Example: spam detection (emails labeled "spam" or "not spam")
+   - Output: predict for new unlabeled data
+
+2. **Unsupervised Learning** — find hidden patterns in unlabeled data
+   - Data: just the questions, no answers
+   - Example: group customers by behavior (no predefined groups)
+   - Output: clusters or relationships
+
+3. **Reinforcement Learning** — learn by trial-and-error with rewards
+   - Data: actions that give rewards or penalties
+   - Example: chess AI learns by playing games
+   - Output: optimal strategy
+
+---
+
+## **Deep Learning**
+Subset of ML using **neural networks** (layers of interconnected nodes). Excellent at learning from raw data (images, text, audio).
+- Example: image recognition, language translation
+
+---
+
+## **Foundation Model (FM)**
+A large neural network pre-trained on *massive amounts of unlabeled data*, then fine-tuned for specific tasks. Often uses **semi-supervised learning** (mix of labeled + unlabeled data).
+- Example: BERT, GPT models
+
+---
+
+## **LLM (Large Language Model)**
+Foundation Model specialized for **text understanding & generation**.
+- Trained on billions of words from the internet
+- Can: answer questions, write code, translate, summarize
+
+---
+
+## **GenAI (Generative AI)**
+AI that *creates new content* (text, images, code, music).
+- Foundation: LLMs + image models + other generative models
+- Examples: ChatGPT, DALL-E, Copilot
+
+---
+
+## **Diffusion Models**
+A type of **generative model** that creates images, text, or other data by gradually refining random noise into coherent output.
+
+### **How They Work (Simple Analogy):**
+
+**Forward process (noise):** Take a clear image → add noise step-by-step → ends up as pure random noise
+
+**Reverse process (denoising):** Start with random noise → remove noise step-by-step → get back a clear image
+
+The model learns the *reverse process* and uses it to generate new things from scratch.
+
+### **Key Steps:**
+
+1. **Training:** Learn to denoise (remove noise from images)
+2. **Generation:** Start with random noise, denoise iteratively → new image appears
+
+Example: 50 steps of denoising → DALL-E quality image
+
+### **Where They Fit:**
+
+```
+GenAI (generative models)
+ ├─ LLMs (transformer-based, text generation)
+ └─ Diffusion Models ← image, audio, video generation
+     ├─ DALL-E, Stable Diffusion (images)
+     ├─ Imagen (Google, images)
+     └─ Suno, Udio (music)
+```
+
+### **Advantages vs LLMs:**
+- ✅ Better at image quality & control
+- ✅ Faster than some alternatives
+- ❌ Slower than LLM text generation (multiple steps needed)
+- ❌ More compute-intensive for training
+
+### **Real Examples:**
+- **DALL-E 3** — text → photorealistic images
+- **Stable Diffusion** — open-source image generation
+- **Midjourney** — artistic image generation
+- **Suno** — text → music
+
+### **Key Difference from LLMs:**
+| LLM | Diffusion |
+|-----|-----------|
+| Token-by-token generation | Iterative refinement |
+| One pass → output | Multiple denoising steps |
+| Text-focused | Image/audio-focused |
+
+---
+
 # GenAI & LLM Integration Guide
 
 ## Table of Contents
