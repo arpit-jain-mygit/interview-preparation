@@ -11,6 +11,7 @@ A practical guide to discussing your experience as an architect using DCP as the
 3. [Stakeholder Conflicts](#stakeholder-conflicts)
 4. [Unrealistic Demands](#unrealistic-demands)
 5. [Bonus: Technology Decisions](#bonus-technology-decisions)
+6. [Bonus: Data Catalog](#bonus-data-catalog)
 
 ---
 
@@ -2252,5 +2253,403 @@ When asked "What container orchestration would you choose for [company]?":
 | **Cost at 100 pods** | 🟢 Cheap | 🟡 Medium | 🔴 Expensive | 🟡 Medium |
 | **Multi-cloud** | 🟢 Yes | 🔴 AWS only | 🟡 GCP only | 🟢 Yes |
 | **Team size to operate** | 1 person | 1-2 people | 0.5 people | 2-5 people |
+
+---
+
+## Bonus: Data Catalog
+
+### What is a Data Catalog?
+
+**Definition:** A searchable index of all data assets in your organization.
+
+```
+Analogy:
+  Library Card Catalog: "Where is this book?"
+  Data Catalog: "Where is this data?"
+  
+Library Card:
+  Title: "The Great Gatsby"
+  Author: F. Scott Fitzgerald
+  Location: Shelf 5, Row 3
+  ISBN: 123-456
+  
+Data Catalog Entry:
+  Name: "user_transactions"
+  Owner: Finance Team
+  Location: BigQuery / PostgreSQL
+  Schema: columns, data types
+  Updated: Daily at 6am UTC
+  Quality: 99.9% complete
+  Governance: PII, GDPR protected
+  Lineage: payment_api → transformed → stored
+```
+
+---
+
+### Why You Need It
+
+**Problem before Data Catalog:**
+```
+Engineer: "Where's the revenue data?"
+Answer: "Maybe Snowflake? Or S3? Ask John?"
+John: (left company 6 months ago)
+
+Result:
+  ❌ 1 week to find the right data
+  ❌ Use wrong dataset, get wrong insights
+  ❌ Duplicate datasets everywhere
+  ❌ Data quality issues hidden
+  ❌ Compliance violations (no GDPR audit trail)
+  ❌ Team wasted time searching
+```
+
+**After Data Catalog:**
+```
+Engineer: Search "revenue"
+
+Results:
+  1. revenue_daily (Finance, daily at 6am, 99.9% quality)
+  2. revenue_by_product (Analytics, real-time)
+  3. revenue_forecast (ML team, weekly)
+
+Click to see:
+  ✅ Who owns it
+  ✅ When updated
+  ✅ Data quality
+  ✅ Governance rules
+  ✅ Who uses it (impact analysis)
+  ✅ Where it comes from (lineage)
+```
+
+---
+
+### How It Works (4 Steps)
+
+#### **Step 1: Discover & Ingest**
+
+Automatically finds all your data:
+
+```
+Crawls:
+  ✅ PostgreSQL, MySQL, Oracle
+  ✅ Snowflake, BigQuery, Redshift
+  ✅ S3, GCS buckets
+  ✅ Kafka topics
+  ✅ APIs
+  ✅ Data lakes
+  
+Extracts:
+  - Table/dataset names
+  - Column names & types
+  - Data size
+  - Last updated timestamp
+  - Owner info
+```
+
+#### **Step 2: Catalog & Organize**
+
+Stores rich metadata:
+
+```
+For each dataset:
+  Name: customer_profiles
+  Owner: data-platform-team@company.com
+  
+  Schema:
+    customer_id (integer, PK)
+    email (string, PII)
+    signup_date (timestamp)
+    lifetime_value (decimal)
+  
+  Properties:
+    Location: s3://data/customers/
+    Rows: 5.2M
+    Size: 2.3GB
+    Updated: Daily 2am UTC
+    Format: Parquet
+    
+  Governance:
+    Tags: finance, crm, public
+    PII: Yes
+    GDPR: Protected
+    SLA: 99% availability
+```
+
+#### **Step 3: Lineage & Impact**
+
+Shows data flow end-to-end:
+
+```
+Lineage (Where does data come from?):
+
+  customer_api (source)
+      ↓ [real-time]
+  kafka_topic (streaming)
+      ↓ [processed hourly]
+  customer_profiles (table)
+      ↓ [used by]
+      ├─ customer_dashboard
+      ├─ marketing_ml_model
+      ├─ fraud_detection
+      └─ billing_service
+
+Impact Analysis:
+  "If we delete customer_profiles..."
+  → Breaks: 4 systems, 50+ engineers
+  → Revenue risk: CRITICAL
+  → Decision: Do NOT delete!
+```
+
+#### **Step 4: Search & Governance**
+
+Users discover and understand data:
+
+```
+Search: "revenue"
+
+Results (ranked by relevance):
+  
+  revenue_daily
+    Owner: john@finance.com
+    Updated: Daily 6am UTC
+    Quality: 99.9%
+    Last refresh: 2024-06-25 06:15
+    Governance: Financial, PII
+    Users: Dashboard, Billing, Reporting
+    Lineage: payments → ETL → revenue_daily
+    
+  [Click to see full details, schema, samples]
+```
+
+---
+
+### Real Example: DCP Data Catalog
+
+```
+15 Data Assets Discovered:
+
+1. documents_raw
+   Owner: Sourcing team
+   Location: PostgreSQL + S3
+   Updated: Real-time (as uploaded)
+   Quality: 100% (raw input)
+   Governance: GDPR, PII
+   SLA: 7-day retention
+   Users: Extraction, Archive
+
+2. documents_extracted
+   Owner: Extraction team
+   Location: MongoDB + PostgreSQL
+   Updated: Within 5 seconds of extraction
+   Quality: 99.5% (extraction accuracy)
+   Governance: Financial PII, audit trail
+   SLA: 30-day retention
+   Users: Quality, Billing, Analytics
+   Lineage: documents_raw → ML extraction → documents_extracted
+
+3. documents_approved
+   Owner: Approval team
+   Location: PostgreSQL + S3 Archive
+   Updated: When approved (hours/days)
+   Quality: 99.99% (human verified)
+   Governance: GDPR, legal hold, full audit trail
+   SLA: 7-year retention
+   Users: Customers, Dissemination, Legal
+
+4. extraction_metrics
+   Owner: Platform team
+   Location: Prometheus + TimeSeries DB
+   Updated: Real-time (per extraction)
+   Quality: 100% (observed metrics)
+   Governance: Public (non-sensitive)
+   SLA: 90-day retention
+   Users: Monitoring, SLA dashboard
+   Lineage: documents_extracted → metrics aggregation → extraction_metrics
+
+RESULT:
+  ✅ All 15 data sources documented
+  ✅ Lineage visible: raw → extraction → approval
+  ✅ Governance tracked: GDPR, PII, audit trails
+  ✅ SLAs clear: retention, update frequency, quality
+  ✅ Impact analysis: who uses what
+  ✅ No more "where's the data?" questions
+```
+
+---
+
+### Popular Tools
+
+| Tool | Best For | Cloud | Cost |
+|------|----------|-------|------|
+| **Collibra** | Enterprise, governance | Any | $$$ |
+| **Alation** | Data intelligence | Any | $$$ |
+| **Atlan** | Modern, Slack-native | Any | $$ |
+| **DataHub** | Open-source, self-hosted | Any | $ |
+| **Google Data Catalog** | GCP ecosystem | GCP | $$ |
+| **AWS Glue Catalog** | AWS-native | AWS | $ |
+| **Dataedo** | Small teams | Any | $ |
+
+**For DCP at 200 engineers:** Would choose **Atlan** (modern, integrates well, good governance)
+
+---
+
+### Benefits by Role
+
+**Data Engineers:**
+```
+Before: "Where should I build this pipeline?"
+After: See all data assets, avoid duplication, find owners
+```
+
+**Data Scientists:**
+```
+Before: "What data can I use for ML?"
+After: Search catalog, find datasets, check quality, understand lineage
+```
+
+**Analysts:**
+```
+Before: "Is this data current?"
+After: See update frequency, last refresh, quality metrics
+```
+
+**Engineering Leaders:**
+```
+Before: "What data assets do we own?"
+After: See all data, owners, SLAs, compliance status, dependencies
+```
+
+**Compliance/Legal:**
+```
+Before: "Where is all our PII?"
+After: Catalog tags all PII, shows retention, audit trails for GDPR
+```
+
+---
+
+### Data Catalog vs Similar Concepts
+
+**Common Confusion:**
+
+```
+Data Lake:
+  Raw storage for all data
+  Analogy: Bookstore storage room (everything dumped)
+  Example: S3, HDFS, unstructured files
+  
+Data Warehouse:
+  Cleaned, organized data for analytics
+  Analogy: Organized bookstore shelves
+  Example: Snowflake, BigQuery, well-structured tables
+  
+Data Catalog:
+  Index/map of where everything is
+  Analogy: Library card catalog + librarian
+  Example: Collibra, Atlan, DataHub
+  
+Relationship:
+  Data Lake + Data Warehouse + APIs
+        ↓
+  Data Catalog (indexes everything)
+        ↓
+  Engineers search Data Catalog to find data
+```
+
+---
+
+### Interview Answer
+
+When asked "How does a data catalog work?":
+
+> "A data catalog is like a library card catalog for your data. It automatically discovers and indexes all your data assets, making them searchable and traceable.
+>
+> **How it works:**
+> 1. **Discover:** Crawls your databases, data warehouse, S3, Kafka
+> 2. **Catalog:** Extracts metadata—schema, owner, update frequency, quality
+> 3. **Lineage:** Shows where data comes from and who uses it
+> 4. **Governance:** Tags with compliance rules (PII, GDPR, SLA, retention)
+> 5. **Search:** Engineers search 'revenue' and find all related datasets
+>
+> **Why it matters:**
+> - Prevents duplicate datasets (save engineering time)
+> - Data quality tracked and visible (SLAs, accuracy)
+> - Impact analysis: 'deleting X breaks Y teams'
+> - GDPR compliance: Track all PII, deletion requests
+> - Team knowledge: No more 'where is X data?'
+>
+> **For DCP (15 data sources):**
+> - All sources auto-discovered and documented
+> - Lineage visible: documents → extraction → approval
+> - Quality tracked: extraction 99.5%, approved 99.99%
+> - Governance: GDPR PII tagged, retention policies enforced
+> - Result: Team knows what data exists, who owns it, quality SLAs
+>
+> **Business impact:**
+> - Reduced data discovery time from weeks to minutes
+> - Prevented 3 major data quality issues
+> - Enabled GDPR compliance audit trail"
+
+---
+
+### Implementation Roadmap for DCP
+
+**Week 1-2: Setup**
+```
+- Choose tool (Atlan recommended)
+- Connect to all data sources
+- Auto-discover 15+ datasets
+```
+
+**Week 3-4: Enrich**
+```
+- Add owners and descriptions
+- Tag with governance (PII, GDPR, Financial)
+- Document lineage manually
+- Set SLAs and quality metrics
+```
+
+**Week 5-6: Adoption**
+```
+- Train teams on catalog
+- Set up search UI
+- Create governance policies
+- Monitor adoption
+```
+
+**Ongoing: Maintenance**
+```
+- Keep metadata fresh (automated where possible)
+- Add new datasets as created
+- Update lineage as pipelines change
+- Monthly governance reviews
+```
+
+---
+
+### Key Metrics to Track
+
+```
+After implementing Data Catalog:
+
+1. Discovery time:
+   Before: 1 week to find revenue data
+   After: 2 minutes
+   
+2. Data duplication:
+   Before: 5 duplicate revenue datasets
+   After: 1 canonical dataset
+   
+3. Quality issues:
+   Before: Unknown (hidden in system)
+   After: Visible, tracked, SLA-based
+   
+4. GDPR compliance:
+   Before: Manual audit (risky)
+   After: Automated, complete audit trail
+   
+5. Team adoption:
+   Target: 80% of engineers use catalog monthly
+   Measure: Search queries, navigation
+```
 
 ---
