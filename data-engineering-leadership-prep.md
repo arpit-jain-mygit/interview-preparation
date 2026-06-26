@@ -846,5 +846,237 @@ Key insight: *"Lambda Architecture — Flink handles recency, Spark handles hist
 
 ---
 
+#### Lambda Architecture — Important Clarification
+
+Lambda Architecture is a **data engineering design pattern**, coined by Nathan Marz in 2011. Nothing to do with AWS Lambda.
+
+```
+Named after Greek letter λ — two paths merging into one:
+
+    Batch path  \
+                 λ  → merged result at serving layer
+    Speed path  /
+```
+
+| Term | What it is |
+|---|---|
+| Lambda Architecture | Design pattern — batch + stream pipelines merged at serving layer |
+| AWS Lambda | Amazon's serverless compute product — run functions without managing servers |
+
+In interviews always clarify which one is being asked about.
+
+---
+
+### Scenario 3 — GB + Real-time + Dashboards
+
+**Quick Recap — Scenario 2 systems:**
+```
+PostgreSQL  → OLTP source of truth (synchronous, ACID)
+Kafka       → event bus (decouples producers from consumers)
+Flink       → real-time features (stateful, RAM-based, fast)
+Spark       → historical features (batch, reads S3 hourly)
+Redis       → Feature Store online layer (sub-ms point lookups)
+ML Service  → pulls from Redis, runs model, responds synchronously
+```
+
+---
+
+**Situation:** 5 GB/day, ~25M events/day. Dashboards must show live data, refresh every 30 seconds, load in under 2 seconds.
+
+**Example:** Food delivery startup ops team watching a live dashboard during a peak sale event:
+
+```
+"How many orders placed in last 5 minutes?"
+"Which city is seeing order drop right now?"
+"Is payment failure rate spiking?"
+"Average delivery time right now vs yesterday same hour?"
+```
+
+These are dashboard questions — pre-computed, fast reads, auto-refreshing. Not ad-hoc analyst queries.
+
+#### Two Types of Dashboards (Important Distinction)
+
+```
+Ops Dashboard (real-time):
+- Who: Operations team, oncall engineers
+- Question: "What is happening RIGHT NOW?"
+- Latency: must refresh every 30 sec, load in <2 sec
+- Data: last few hours only
+- Tool: ClickHouse + Grafana
+
+Business Dashboard (near real-time):
+- Who: Executives, product managers
+- Question: "How are we doing TODAY vs last week?"
+- Latency: 15-30 min delay acceptable
+- Data: days/weeks of history
+- Tool: Snowflake + Tableau/Looker
+```
+
+Both need to coexist. Same underlying data, different consumers, different tools.
+
+#### The Full Architecture
+
+```
+[Customer places order]
+        ↓
+[App] ──WRITE (HTTP)──→ [PostgreSQL]        ← saves order (OLTP)
+                               │
+                         READ (WAL)
+                               │
+                        [Debezium CDC]
+                               │
+                             WRITE
+                               │
+                           [Kafka] ──────WRITE──────→ [S3]
+                               │                  raw Parquet files
+                    READ       │       READ              │
+              ┌────────────────┼────────────┐          READ
+              ↓                ↓            ↓            │
+        [Payment]          [Driver]      [Flink]      [Spark]
+         Service            Service     state in      reads S3
+          OLTP               OLTP        RAM           hourly
+                                           │               │
+                                         WRITE           WRITE
+                                     aggregated       aggregated
+                                      results          results
+                                           │               │
+                                           ↓               ↓
+                                      [ClickHouse]    [Snowflake]
+                                      last few hrs    weeks/months
+                                           │               │
+                                         READ            READ
+                                           │               │
+                                       [Grafana]    [Tableau/Looker]
+                                      Ops Dashboard  Biz Dashboard
+                                      auto-refresh   analyst queries
+                                       every 30s     on-demand
+```
+
+#### What Flink Writes to ClickHouse
+
+Flink does not write raw events. It writes **pre-aggregated results** every 30 seconds:
+
+```
+{
+  window:        "last 5 minutes",
+  city:          "Mumbai",
+  orders_count:  847,
+  avg_delivery:  "32 min",
+  payment_failures: 3,
+  timestamp:     "2024-01-15 11:30:00"
+}
+```
+
+Grafana reads these pre-computed rows — no aggregation at query time. That is why it loads in <2 seconds.
+
+#### What Spark Writes to Snowflake
+
+Spark runs hourly, reads S3, cleans and joins data:
+
+```
+Reads:  raw order events from S3
+Joins:  with user table, restaurant table, driver table
+Writes: clean fact table to Snowflake
+
+Result: analysts can run any SQL without worrying about data quality
+```
+
+#### Why Not Use Snowflake for Ops Dashboard
+
+```
+Grafana queries Snowflake every 30 seconds:
+→ Snowflake cold query = 3-10 seconds minimum
+→ Dashboard always shows stale data
+→ During sale event with 100 analysts also querying = contention
+→ Cost: Snowflake charges per query compute
+
+ClickHouse:
+→ query on pre-aggregated rows = <100ms
+→ dedicated for dashboard only, no contention
+→ Cost: fixed small machine ~$50/month
+```
+
+#### Why Not Use ClickHouse for Business Dashboard
+
+```
+Business analyst query:
+"Show me revenue by restaurant category,
+ compare last 4 weeks, broken down by city,
+ only for orders above $500"
+
+ClickHouse: holds only last few hours of data
+→ cannot answer multi-week historical queries
+→ no joins across user/restaurant/driver tables
+
+Snowflake: holds months of clean joined data
+→ answers this in 5-8 seconds
+→ purpose built for this
+```
+
+#### Grafana vs Tableau — Key Difference
+
+```
+Grafana:
+- Connects to ClickHouse
+- Pre-built time-series panels
+- Auto-refreshes automatically
+- Used by: engineers, ops team
+- Good for: "is something broken right now?"
+
+Tableau/Looker:
+- Connects to Snowflake
+- Drag and drop exploration
+- Manual refresh, on-demand
+- Used by: business teams, executives
+- Good for: "why did revenue drop last Tuesday?"
+```
+
+#### Tool Summary
+
+| Tool | Role | READ/WRITE |
+|---|---|---|
+| PostgreSQL | Saves orders (OLTP) | App WRITEs, Debezium READs WAL |
+| Debezium | Captures WAL changes | READs WAL, WRITEs to Kafka |
+| Kafka | Routes events to all consumers | Consumers READ |
+| Payment/Driver Service | OLTP consumers | READ from Kafka |
+| S3 | Raw Parquet storage | Kafka WRITEs, Spark READs |
+| Flink | Real-time aggregation | READs Kafka, WRITEs ClickHouse |
+| Spark | Historical aggregation + cleaning | READs S3, WRITEs Snowflake |
+| ClickHouse | Real-time dashboard store | Flink WRITEs, Grafana READs |
+| Snowflake | Historical dashboard store | Spark WRITEs, Tableau READs |
+| Grafana | Ops dashboard (auto-refresh 30s) | READs ClickHouse |
+| Tableau/Looker | Business dashboard (on-demand) | READs Snowflake |
+
+#### GB Scale Reality
+
+```
+PostgreSQL       → 1 medium machine   ($50/month)
+Kafka + Debezium → 1 small machine    ($30/month)
+Flink            → 1 small machine    ($50/month)
+ClickHouse       → 1 small machine    ($50/month)
+Spark (on-demand)→ runs hourly        ($20/month)
+Snowflake        → pay per query      ($50/month at GB scale)
+S3               → GB scale           ($10/month)
+Total: ~$260/month
+```
+
+#### Interview Answer
+
+*"Design real-time + business dashboards alongside order processing at GB scale"*
+
+```
+1. App WRITEs to PostgreSQL (OLTP)
+2. Debezium CDC → Kafka → Payment/Driver services
+3. Kafka → Flink → pre-aggregated results → ClickHouse
+4. Grafana READs ClickHouse every 30s → ops team sees live view
+5. Kafka → S3 (raw) → Spark hourly → clean joined data → Snowflake
+6. Tableau READs Snowflake → business team explores history
+7. Two dashboards, two tools, same underlying data
+```
+
+Key insight: *"Never use one tool for both dashboards. ClickHouse for real-time ops — cheap, fast, last few hours only. Snowflake for business history — flexible SQL, weeks of data. Each tool does one job well."*
+
+---
+
 <!-- TODO: After all scenarios complete — add consolidated architecture diagram showing all scenarios in one big tree -->
 
