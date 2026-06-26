@@ -550,6 +550,137 @@ Raw trip data
 
 ## GB Scale Scenarios
 
-> Coming soon — will be added scenario by scenario.
+### Scenario 1 — GB + Real-time + Analytics
+
+**Situation:** 5 GB/day, ~25M events/day. Need answers in seconds.
+
+**Example:** Food delivery startup — "Orders by city right now? Which restaurant is spiking? Is volume dropping suddenly?"
+
+#### Analytics Only Architecture
+
+```
+[App] → [Kafka] → [Flink] → [ClickHouse] → [Grafana]
+                                ↓
+                          [S3 raw Parquet]  (parallel, for historical)
+```
+
+#### Why No RDBMS for Analytics
+
+RDBMS is ruled out by use case, not size. At GB scale PostgreSQL handles the volume fine — but:
+- Continuous aggregation queries (every 10 sec) = full table scan = CPU spikes
+- Mixing OLTP and OLAP on same DB = analytical queries steal resources from order processing
+- ClickHouse is purpose-built for this — same query in <1 sec vs minutes on PostgreSQL
+
+#### Modified: OLTP + OLAP Together
+
+Real systems need both — save orders (OLTP) AND analyze them (OLAP).
+
+**The wrong approaches:**
+
+```
+App → Kafka directly (no PostgreSQL):
+- Kafka is not a database — 7 day retention, no random reads
+- Dual write risk: Kafka up but PostgreSQL down = payment charged, no order saved
+
+App → Kafka → PostgreSQL:
+- Async gap: customer sees "confirmed" before order actually saved
+- Consumer crash = order lost forever
+- Valid only for non-customer-facing async work
+```
+
+**The right approach: PostgreSQL → Debezium (CDC) → Kafka**
+
+```
+[Customer places order]
+        ↓
+[App] ──writes──→ [PostgreSQL]  ← single source of truth, synchronous commitment
+                       │
+                  WAL (automatic internal log)
+                       │
+                  [Debezium]   ← reads WAL after confirmed write, outside the app
+                       │
+                    [Kafka]    ← central event bus
+                       │
+       ┌───────────────┼───────────────┐
+       ↓               ↓               ↓
+[Payment Service] [Driver Service]  [Flink]
+OLTP consumer     OLTP consumer        │
+                                  [ClickHouse]
+                                  OLAP store
+                                       │
+                                  [Grafana]
+                                  Live dashboard
+```
+
+#### CDC — What It Is and Why It Matters
+
+CDC = Change Data Capture. Captures every INSERT/UPDATE/DELETE from the database's own internal log.
+
+```
+PostgreSQL WAL (Write Ahead Log) — exists automatically for crash recovery
+MySQL     → Binlog
+Oracle    → Redo Log
+```
+
+Every change PostgreSQL makes is written to WAL first. Debezium reads this log and publishes to Kafka.
+
+**CDC event example (order placed):**
+```json
+{
+  "operation": "INSERT",
+  "table": "orders",
+  "timestamp": "2024-01-15 11:32:45",
+  "new_data": { "order_id": 98765, "user_id": "USR-123", "amount": 450, "status": "placed" }
+}
+```
+
+**What CDC gives you:**
+
+| Property | How |
+|---|---|
+| App stays simple | App only knows PostgreSQL. New consumer = zero app changes |
+| No dual write | CDC reads AFTER PostgreSQL confirms. Failed write = nothing published |
+| Guaranteed ordering | WAL is strictly ordered. Downstream always sees: placed → preparing → delivered |
+| No data loss on downtime | Kafka down 2 hours? Debezium catches up from WAL when it returns |
+
+#### Tool Summary
+
+| Tool | Role | Type |
+|---|---|---|
+| PostgreSQL | Stores orders, handles transactions | OLTP |
+| Debezium | Reads WAL, publishes every change to Kafka | CDC |
+| Kafka | Routes events to all consumers | Message bus |
+| Payment Service | Charges customer | OLTP consumer |
+| Driver Service | Assigns driver | OLTP consumer |
+| Flink | Aggregates events in real-time (count by city, restaurant) | Stream processor |
+| ClickHouse | Stores aggregated results, <1 sec queries | OLAP |
+| Grafana | Live dashboard, auto-refreshes every 10 sec | Visualization |
+
+#### GB Scale Reality
+
+```
+PostgreSQL  → 1 medium machine   ($50/month)
+Kafka       → 1 small machine    ($30/month)
+Flink       → 1 small machine    ($50/month)
+ClickHouse  → 1 small machine    ($50/month)
+Total: ~$200/month, managed by 1 engineer part-time
+```
+
+#### Interview Answer
+
+*"Design real-time order processing AND analytics at GB scale"*
+```
+1. App writes orders to PostgreSQL (single source of truth)
+2. Debezium CDC captures every change from WAL → publishes to Kafka
+3. Kafka routes to: Payment Service, Driver Service, Flink
+4. Flink aggregates every 10 sec → ClickHouse
+5. Grafana queries ClickHouse → live ops dashboard
+6. Raw events also land in S3 for historical analysis
+7. Entire system runs on 4-5 small machines at GB scale
+```
+
+Key insight to mention: *"CDC via Debezium keeps PostgreSQL as single source of truth while feeding all downstream consumers — app writes once, everything else follows automatically."*
+
+---
 
 ---
