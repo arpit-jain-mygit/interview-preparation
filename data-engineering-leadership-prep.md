@@ -982,6 +982,40 @@ Writes: clean fact table to Snowflake
 Result: analysts can run any SQL without worrying about data quality
 ```
 
+#### Why No Redis Between ClickHouse and Grafana
+
+```
+Grafana refreshes every 30 sec = 2 queries/min = 120 queries/hour
+ClickHouse handles thousands of queries/sec
+120 queries/hour is trivial — no caching layer needed
+```
+
+How "load in under 2 seconds" is achieved without Redis:
+
+1. **Flink pre-aggregates before writing to ClickHouse**
+```
+Raw event (Kafka):    full order record, 20+ fields
+What Flink writes:    { city, orders_count, avg_delivery, payment_failures }
+                      50 pre-aggregated rows per window — not 25M raw events
+```
+
+2. **ClickHouse answers in <10ms** — 50 rows fits entirely in RAM
+
+3. **Grafana renders in <500ms** — no heavy computation, just displays numbers
+
+```
+Total: ClickHouse query (10ms) + network (50ms) + render (500ms) = well under 2 sec
+```
+
+Add Redis between ClickHouse and dashboard ONLY when:
+```
+- Thousands of concurrent dashboard viewers (5000 ops staff all refreshing)
+- Refresh interval very aggressive (every 1 sec)
+- Flink did NOT pre-aggregate (Grafana querying raw events = expensive query)
+```
+
+At GB scale with a small ops team — none of these apply.
+
 #### Why Not Use Snowflake for Ops Dashboard
 
 ```
