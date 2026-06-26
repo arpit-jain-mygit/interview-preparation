@@ -1279,5 +1279,42 @@ ORDER BY (city, created_at)   -- no primary key, just sort order
 
 ---
 
+### Flink → ClickHouse vs Flink → Redis vs Flink → ClickHouse → Redis
+
+| Pattern | When | Consumer |
+|---|---|---|
+| Flink → ClickHouse | Many viewers, time-range queries, aggregations | Grafana, alerts, dashboards |
+| Flink → Redis | One system, key lookup, sub-ms response | ML inference, rate limiter, sessions |
+| Flink → ClickHouse → Redis | ClickHouse result queried too frequently, need caching | High-traffic product features, homepages |
+
+**Flink → ClickHouse:**
+```
+Use when: "SUM(orders) GROUP BY city for last 5 minutes"
+Many consumers query same aggregated result over time ranges
+Redis cannot do this — no time ranges, no aggregations
+```
+
+**Flink → Redis:**
+```
+Use when: "give me features for user USR-123 RIGHT NOW"
+One system, one key, one value, <1ms response needed
+ML inference, rate limiting, session storage
+ClickHouse minimum 10-50ms — too slow for ML inference at scale
+```
+
+**Flink → ClickHouse → Redis (caching pattern):**
+```
+Problem: 10,000 users/sec hitting homepage → 10,000 ClickHouse queries/sec → overload
+
+Solution:
+Flink → ClickHouse (aggregates continuously)
+Backend service queries ClickHouse every 2 min → WRITEs result to Redis (TTL=2min)
+Homepage READs from Redis (0.1ms) → ClickHouse gets 1 query per 2 min instead of 10,000/sec
+
+Example: "Trending Now" section — computed in ClickHouse, cached in Redis, served to millions
+```
+
+---
+
 <!-- TODO: After all scenarios complete — add consolidated architecture diagram showing all scenarios in one big tree -->
 
