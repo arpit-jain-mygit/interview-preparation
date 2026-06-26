@@ -872,6 +872,7 @@ In interviews always clarify which one is being asked about.
 **Quick Recap — Scenario 2 systems:**
 ```
 PostgreSQL  → OLTP source of truth (synchronous, ACID)
+Debezium    → CDC: reads WAL after confirmed write, publishes to Kafka (no dual write risk)
 Kafka       → event bus (decouples producers from consumers)
 Flink       → real-time features (stateful, RAM-based, fast)
 Spark       → historical features (batch, reads S3 hourly)
