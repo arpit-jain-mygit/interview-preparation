@@ -455,6 +455,99 @@ Lambda Architecture solves stale batch features: batch handles history, stream h
 
 ---
 
+### Fundamental 6 — Use Cases: What Does Each Consumer Need?
+
+#### The 4 Consumers
+
+**1. Analytics**
+- Who: Data analysts, business teams
+- Question: "What happened and why?"
+- Needs: Historical data, aggregations (SUM/COUNT/AVG/GROUP BY), SQL interface, delay acceptable
+- Best served by: Snowflake / BigQuery / Redshift
+
+**2. Machine Learning**
+- Who: Data scientists, ML engineers
+- Question: "What will happen next?"
+- Needs: Raw individual rows (not aggregated), large historical volume, clean schema
+- Two phases:
+  - Training → batch, slow okay → **S3 (Parquet) + Spark**
+  - Inference → milliseconds → **Feature Store + Redis**
+
+**Feature Store clarification:**
+```
+Feature Store = the CONCEPT (pre-computed features ready for inference)
+Redis         = the IMPLEMENTATION (online storage layer, lives in RAM)
+
+Feature Store layers:
+  ├── Offline store   (S3/Snowflake — historical features for training)
+  ├── Online store    (Redis/DynamoDB — real-time features for inference)
+  └── Feature registry (catalog of features, ownership)
+
+Read speeds:
+  PostgreSQL  →  5-20ms   (too slow)
+  DynamoDB    →  5-10ms   (acceptable at Amazon scale)
+  Redis       →  0.1-1ms  (fastest, RAM-based)
+
+Tools: Feast, Tecton, AWS SageMaker Feature Store (manage all three layers)
+```
+
+**3. Dashboards**
+- Who: Executives, operations, product managers
+- Question: "What is happening right now?"
+- Needs: Pre-computed numbers, fast page load (<2 sec), auto-refresh, NOT raw data
+- Real-time ops dashboards → **ClickHouse + Grafana**
+- Business dashboards → **Snowflake + Tableau/Looker**
+
+**4. Another System**
+- Who: Other microservices, APIs
+- Question: "Give me clean data I can act on immediately"
+- Needs: Structured format, low latency, exactly-once delivery, stable schema
+- Best served by: **Kafka (event-driven) or NoSQL (DynamoDB/Cassandra)**
+
+#### Side by Side
+
+| Consumer | Who | Question Type | Latency Need | Best Tool |
+|---|---|---|---|---|
+| Analytics | Analysts | What happened? | Hours okay | Snowflake/BigQuery |
+| ML Training | Data Scientists | Pattern learning | Hours okay | S3 + Spark |
+| ML Inference | ML Engineers | What will happen? | Milliseconds | Feature Store + Redis |
+| Dashboards (ops) | Operations | What's happening now? | Seconds | ClickHouse + Grafana |
+| Dashboards (business) | Executives | Business metrics | Minutes | Snowflake + Tableau |
+| Another System | Engineers | Give me clean data | Milliseconds | Kafka / NoSQL |
+
+#### Same Data, Different Architecture Per Consumer
+
+Uber trip data — one dataset, six consumers:
+```
+Raw trip data
+    |
+    ├── Analytics team        → Snowflake   "Revenue by city last month"
+    ├── ML training           → S3/Spark    "Train surge pricing model"
+    ├── ML inference          → Redis       "Predict surge for this zone now"
+    ├── Ops dashboard         → ClickHouse  "Active trips right now"
+    ├── Executive dashboard   → Snowflake   "Weekly business metrics"
+    └── Payment service       → Kafka       "Trip completed → charge rider"
+```
+
+#### The Leadership Insight
+
+> Always ask "who is consuming this data?" before designing anything. Wrong answer: "I'll put everything in Snowflake." Right answer: "It depends on who needs it and how fast."
+
+---
+
+### All 6 Fundamentals — Summary
+
+| Fundamental | Core Question | Key Takeaway |
+|---|---|---|
+| 1. Data Size | How much? | GB = one machine. TB/PB = many machines |
+| 2. Speed | How fast? | Faster = more expensive. Always justify your choice |
+| 3. Storage | Where? | Right storage for right job. Never one size fits all |
+| 4. Processing | How transformed? | GB = SQL/Python. TB/PB = Spark distributed |
+| 5. CAP Trade-off | C or A? | Wrong data worse → C. Going down worse → A |
+| 6. Use Cases | Who consumes? | Consumer determines everything about your design |
+
+---
+
 ## GB Scale Scenarios
 
 > Coming soon — will be added scenario by scenario.
