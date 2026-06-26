@@ -1172,5 +1172,112 @@ All of the above (mature platform):            Kafka feeds all
 
 ---
 
+### Columnar File Formats — Parquet and ORC
+
+#### What Is a File Format?
+
+How data is physically arranged on disk/S3. Determines read speed, file size, and tool compatibility.
+
+```
+.csv     → row format, plain text, no compression (baseline)
+.parquet → columnar format, compressed, fast for analytics
+.orc     → columnar format, compressed, Hadoop ecosystem
+```
+
+#### How Parquet Stores Data
+
+```
+CSV (row format on disk):
+[1,Mumbai,450,delivered] [2,Delhi,200,placed] [3,Bangalore,800,delivered]
+
+Parquet (columnar on disk):
+order_id column:  [1, 2, 3]
+city column:      [Mumbai, Delhi, Bangalore]
+amount column:    [450, 200, 800]
+status column:    [delivered, placed, delivered]
+```
+
+Parquet splits files into **Row Groups**, each with a footer storing min/max stats per column:
+
+```
+Query: WHERE amount > 1000
+
+Footer says:
+  Row Group 1: amount min=50,  max=900   → SKIP entirely
+  Row Group 2: amount min=200, max=5000  → READ
+
+= skips entire row groups without reading them (predicate pushdown)
+```
+
+#### Compression
+
+Similar values stored together compress extremely well:
+
+```
+status column: [delivered, delivered, placed, delivered, placed]
+→ Run-length encoding: (delivered,3),(placed,1),(delivered,1)
+→ 60-70% smaller
+
+Result:
+CSV:     1 GB
+Parquet: 100-200 MB  (5-10x smaller)
+```
+
+#### Parquet vs ORC
+
+| Feature | Parquet | ORC |
+|---|---|---|
+| Created for | Spark, general purpose | Hive, Hadoop ecosystem |
+| Ecosystem | Spark, Flink, Athena, BigQuery, Snowflake | Hive, Spark, Presto |
+| Adoption | More widely used today | Common in older Hadoop stacks |
+| Default choice | Yes | Only if using Hive/Hadoop |
+
+**Rule:** If unsure → always choose Parquet.
+
+#### How Parquet Fits in Architecture
+
+```
+[Kafka] ──WRITE──→ [S3]                    ← raw JSON (large, slow)
+                      │
+                    READ
+                      │
+                   [Spark]                  ← cleans, converts format
+                      │
+                    WRITE
+                      │
+                   [S3]                     ← clean Parquet (small, fast)
+                      │
+                    READ
+                      │
+          [Snowflake / Athena / Spark]      ← queries only needed columns
+```
+
+#### Why Not Store as JSON in S3?
+
+```
+Athena charges per byte scanned:
+JSON query on 5 GB:     reads 5 GB   → $25/query
+Parquet query on 5 GB:  reads 200 MB → $1/query
+
+Speed: Parquet is 10-50x faster for analytical queries
+```
+
+#### No Primary Key in Columnar Storage
+
+Columnar storage never looks up individual rows — it scans entire columns. No primary key needed.
+
+Speed comes from:
+- Physical column separation (read only needed columns)
+- Predicate pushdown (skip row groups via min/max stats)
+- Compression (less data to read from disk)
+
+ClickHouse uses ORDER BY for physical sorting instead of primary key:
+```sql
+CREATE TABLE orders (order_id UInt64, city String, amount Float64)
+ORDER BY (city, created_at)   -- no primary key, just sort order
+```
+
+---
+
 <!-- TODO: After all scenarios complete — add consolidated architecture diagram showing all scenarios in one big tree -->
 
