@@ -33,25 +33,84 @@ A comprehensive guide covering foundational system design concepts and detailed 
    - Time management
    - Dos and Don'ts
 
-### **Part 2: Case Studies**
-
-#### [Chapter 4: Design a Rate Limiter](#chapter-4-design-a-rate-limiter)
-   - Problem statement
-   - Five algorithms compared
-   - Interview Q&A
-   - Implementation guide
-   - Distributed systems challenges
-
-#### [Chapter 8: Design a URL Shortener](#chapter-8-design-a-url-shortener)
-   - Problem statement
-   - Hash-based vs base 62
-   - Architecture and scaling
-   - Real-world examples
-
 ---
 
 # Chapter 1: Scale from Zero to Millions of Users
 
+
+## ⚠️ Important Notice
+
+**This document is based on concepts from "System Design Interview" by Alex Xu.**
+
+This is **original content**: summaries, explanations, and real-world examples created to help understand system design concepts. It does not reproduce copyrighted material from the book. All content is restructured and rewritten for clarity and educational purposes.
+
+---
+
+## Table of Contents
+1. [Executive Summary](#executive-summary)
+2. [Single Server Setup](#single-server-setup)
+3. [Scaling Web Tier](#scaling-web-tier)
+4. [Scaling Database Tier](#scaling-database-tier)
+5. [Adding Cache Layer](#adding-cache-layer)
+6. [Content Delivery Network (CDN)](#content-delivery-network-cdn)
+7. [Stateless vs Stateful Architecture](#stateless-vs-stateful-architecture)
+8. [Multiple Data Centers](#multiple-data-centers)
+9. [Message Queue](#message-queue)
+10. [Complete Architecture](#complete-architecture)
+
+---
+
+## Executive Summary
+
+Scaling a system from supporting one user to millions requires a journey of continuous refinement. This chapter builds a system step-by-step, showing you the common techniques and patterns used in production systems.
+
+**Key Principle:** Scale horizontally (add more servers) rather than vertically (upgrade one server).
+
+---
+
+## Single Server Setup
+
+### The Journey Begins
+
+Start with everything on one server - web app, database, cache, everything.
+
+**Architecture:**
+```
+User → DNS → IP Address (15.125.23.214)
+           ↓
+       Web Server (Web App + Database)
+           ↓
+       HTML/JSON Response
+```
+
+### Request Flow
+
+```
+1. User visits: api.mysite.com
+   ↓
+2. DNS service returns IP: 15.125.23.214
+   ↓
+3. HTTP request sent to web server
+   ↓
+4. Web server processes request
+   ↓
+5. Returns HTML or JSON response
+```
+
+### Traffic Sources
+
+**Web Application:**
+- Server-side languages (Java, Python)
+- Client-side languages (HTML, JavaScript)
+
+**Mobile Application:**
+- HTTP protocol for communication
+- JSON format for API responses
+
+**Example API Response:**
+```json
+GET /users/12
+Response: { "id": 12, "name": "Alice", "email": "alice@example.com" }
 ```
 
 ### Problem with Single Server
@@ -665,6 +724,80 @@ Image processing happens in background
 
 # Chapter 2: Back-of-the-Envelope Estimation
 
+
+## ⚠️ Important Notice
+
+**This document is based on concepts from "System Design Interview" by Alex Xu.**
+
+This is **original content**: summaries, explanations, and real-world examples created to help understand system design concepts. It does not reproduce copyrighted material from the book. All content is restructured and rewritten for clarity and educational purposes.
+
+---
+
+## Table of Contents
+1. [Executive Summary](#executive-summary)
+2. [Power of Two](#power-of-two)
+3. [Latency Numbers](#latency-numbers-every-programmer-should-know)
+4. [Availability Numbers](#availability-numbers)
+5. [Estimation Techniques](#estimation-techniques)
+6. [Real-World Example: Twitter](#real-world-example-twitter)
+7. [Tips for Estimation](#tips-for-estimation)
+
+---
+
+## Executive Summary
+
+**Back-of-the-Envelope Estimation** = Rough calculations to understand system requirements using common performance numbers and basic math.
+
+**Why It Matters:**
+- Estimate if design meets requirements
+- Identify bottlenecks early
+- Make architectural decisions based on data, not guessing
+- Impress interviewer with structured thinking
+
+**Key Principle:** Process matters more than perfect accuracy. Interviewers want to see your problem-solving approach.
+
+---
+
+## Power of Two
+
+### Why Power of Two?
+
+Data grows exponentially in distributed systems. Understanding powers of 2 helps you quickly estimate:
+- Storage capacity
+- Memory needed
+- Request handling
+
+### Quick Reference Table
+
+```
+2^10 = 1 Thousand          (1K)
+2^20 = 1 Million           (1M)
+2^30 = 1 Billion           (1B)
+2^40 = 1 Trillion          (1T)
+
+Byte Units:
+1 Byte = 8 bits
+1 KB = 1,024 bytes         ≈ 1K
+1 MB = 1,024 KB            ≈ 1M
+1 GB = 1,024 MB            ≈ 1G
+1 TB = 1,024 GB            ≈ 1T
+1 PB = 1,024 TB            ≈ 1P
+```
+
+### Examples
+
+**ASCII Character:**
+```
+1 character = 1 byte
+
+"Hello" = 5 bytes
+
+Tweet (280 characters) = 280 bytes
+```
+
+**Storage Calculation:**
+```
+1M users × 1M data per user = 1T storage
 1M users × 1G data per user = 1P storage
 ```
 
@@ -1113,6 +1246,80 @@ If number seems way off:
 
 # Chapter 3: A Framework for System Design Interviews
 
+
+## ⚠️ Important Notice
+
+**This document is based on concepts from "System Design Interview" by Alex Xu.**
+
+This is **original content**: summaries, explanations, and real-world examples created to help understand system design concepts. It does not reproduce copyrighted material from the book. All content is restructured and rewritten for clarity and educational purposes.
+
+---
+
+## Table of Contents
+1. [Executive Summary](#executive-summary)
+2. [Understanding the Interview](#understanding-the-interview)
+3. [What Interviewers Look For](#what-interviewers-look-for)
+4. [The 4-Step Framework](#the-4-step-framework)
+5. [Step 1: Understand the Problem](#step-1-understand-the-problem-and-establish-design-scope)
+6. [Step 2: High-Level Design](#step-2-propose-high-level-design-and-get-buy-in)
+7. [Step 3: Design Deep Dive](#step-3-design-deep-dive)
+8. [Step 4: Wrap-up](#step-4-wrap-up)
+9. [Time Management](#time-management)
+10. [Dos and Don'ts](#dos-and-donts)
+
+---
+
+## Executive Summary
+
+System design interviews simulate **real-world collaboration** where two engineers solve an ambiguous problem together.
+
+**Key Insight:** The final design is LESS important than demonstrating:
+- Clear thinking and communication
+- Problem-solving approach
+- Ability to handle feedback
+- Architectural understanding
+
+**The Goal:** Show you can navigate ambiguity, ask good questions, and make sound decisions.
+
+---
+
+## Understanding the Interview
+
+### What It's NOT
+
+```
+✗ Not a trivia contest with right/wrong answers
+✗ Not about knowing everything
+✗ Not about designing Netflix from scratch in 45 minutes
+✗ Not about perfect code or detailed implementation
+```
+
+### What It IS
+
+```
+✓ Collaboration between two engineers
+✓ Solving an ambiguous, open-ended problem
+✓ Demonstrating design skills and trade-off analysis
+✓ Showing communication and problem-solving ability
+✓ Proving you can ask the RIGHT questions
+```
+
+### Real vs Interview Design
+
+```
+Real System (Netflix):
+  - Built by 1000+ engineers
+  - 10+ years of iteration
+  - Billions in infrastructure
+  - Unimaginably complex
+
+Interview Design (45 minutes):
+  - Focus on core concepts
+  - Demonstrate architectural thinking
+  - Show scalability patterns
+  - Explain trade-offs clearly
+
+You're NOT expected to design the real Netflix!
 ```
 
 ---
