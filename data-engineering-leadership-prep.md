@@ -5,8 +5,28 @@
 
 ---
 
+## TODO — Scenarios Not Yet Covered
+
+> These are MAANG-relevant pipeline topics missing from the 36 scenarios above. Add as full scenarios with architecture + interview questions.
+
+- [ ] **Lambda vs Kappa tradeoffs** — when do you ditch the batch layer entirely? When does Kappa break?
+- [ ] **Exactly-once semantics deep dive** — Kafka transactions, Flink checkpointing internals, idempotent producers
+- [ ] **Backfill at scale** — business logic changed, reprocess 2 years of PB-scale history without taking down prod
+- [ ] **Schema evolution** — breaking vs non-breaking changes, migrate 50 downstream consumers safely
+- [ ] **Multi-tenancy** — one pipeline serving 50 enterprise clients with different SLAs, data isolation, billing
+- [ ] **Pipeline observability** — how do you detect a silent data quality failure that happened 3 hours ago?
+- [ ] **Data contracts** — producer changes schema, 30 consumers break; who owns what?
+- [ ] **Disaster recovery** — primary Kafka cluster dies, recover with zero data loss
+- [ ] **Cost attribution** — which team is burning $200K/month in BigQuery?
+- [ ] **Push vs pull** — when do you let downstream systems pull vs pushing events to them?
+- [ ] **Data mesh** — domain ownership, federated governance at org scale
+- [ ] **CDC alternatives** — dual write, outbox pattern, event sourcing vs Debezium WAL
+
+---
+
 ## Table of Contents
 
+- [TODO — Scenarios Not Yet Covered](#todo--scenarios-not-yet-covered)
 - [The 3 Fundamental Questions](#the-3-fundamental-questions)
 - [The Mental Model](#the-mental-model-data-factory)
 - [Learning Path](#learning-path)
