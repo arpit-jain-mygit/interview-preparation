@@ -1,5 +1,13 @@
 # System Design Interview - Chapter 1: Scale from Zero to Millions of Users
 
+## ⚠️ Important Notice
+
+**This document is based on concepts from "System Design Interview" by Alex Xu.**
+
+This is **original content**: summaries, explanations, and real-world examples created to help understand system design concepts. It does not reproduce copyrighted material from the book. All content is restructured and rewritten for clarity and educational purposes.
+
+---
+
 ## Table of Contents
 1. [Executive Summary](#executive-summary)
 2. [Single Server Setup](#single-server-setup)
