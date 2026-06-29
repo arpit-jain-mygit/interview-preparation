@@ -474,22 +474,50 @@ Lambda Architecture solves stale batch features: batch handles history, stream h
   - Inference → milliseconds → **Feature Store + Redis**
 
 **Feature Store clarification:**
+
+Feature Store = a SYSTEM with 3 components. Redis is only one part of it.
+
 ```
-Feature Store = the CONCEPT (pre-computed features ready for inference)
-Redis         = the IMPLEMENTATION (online storage layer, lives in RAM)
+Feature Store components:
 
-Feature Store layers:
-  ├── Offline store   (S3/Snowflake — historical features for training)
-  ├── Online store    (Redis/DynamoDB — real-time features for inference)
-  └── Feature registry (catalog of features, ownership)
+1. Offline Store  (S3 / Snowflake)
+   → historical features for model TRAINING
+   → months of data, batch access, slow is fine
+   → "train model on last 6 months of restaurant features"
 
+2. Online Store   (Redis / DynamoDB)
+   → current features for model INFERENCE
+   → latest values only, sub-ms access required
+   → "give me restaurant 456's features RIGHT NOW"
+
+3. Feature Registry  (Feast / internal catalog)
+   → catalog of what features exist, who owns them
+   → "restaurant:avg_prep_time, computed by Spark hourly, source: orders table"
+```
+
+Redis = ONLY the Online Store layer. Not the entire Feature Store.
+
+```
 Read speeds:
-  PostgreSQL  →  5-20ms   (too slow)
+  PostgreSQL  →  5-20ms   (too slow for inference)
   DynamoDB    →  5-10ms   (acceptable at Amazon scale)
   Redis       →  0.1-1ms  (fastest, RAM-based)
-
-Tools: Feast, Tecton, AWS SageMaker Feature Store (manage all three layers)
 ```
+
+Why pre-compute features instead of querying at inference time:
+```
+Option A — compute at inference time:
+ML Service queries PostgreSQL, S3, multiple tables → 500ms+ to gather inputs → too slow
+
+Option B — Feature Store:
+Spark/Flink pre-compute → store in Redis → ML Service GET in 1ms → predict instantly
+```
+
+Managed tools (manage all 3 layers): Feast (open source), AWS SageMaker Feature Store, Tecton
+
+Flink writes real-time features to Redis (active_orders, driver_count) — different keys from Spark.
+Spark writes historical features to Redis (avg_prep_time, rating) — no key overlap, no conflict.
+Consistency risk: historical features can be stale (up to 1 hour) — acceptable for delivery time prediction, NOT acceptable for fraud detection (use 15-min Spark interval or Flink for those features too).
 
 **3. Dashboards**
 - Who: Executives, operations, product managers
@@ -1401,6 +1429,369 @@ Backend service queries ClickHouse every 2 min → WRITEs result to Redis (TTL=2
 Homepage READs from Redis (0.1ms) → ClickHouse gets 1 query per 2 min instead of 10,000/sec
 
 Example: "Trending Now" section — computed in ClickHouse, cached in Redis, served to millions
+```
+
+---
+
+---
+
+## MAANG Interview Questions — Scenario 1, 2, 3
+
+### Scenario 1 — GB + Real-time + Analytics
+
+**Q1. Walk me through how you would design a real-time analytics pipeline for a food delivery app generating 5GB/day.**
+```
+1. Events → PostgreSQL (OLTP, source of truth)
+2. Debezium CDC reads WAL → Kafka (no dual write risk)
+3. Kafka fans out to: Payment Service, Driver Service, Flink
+4. Flink aggregates every 10 sec → ClickHouse
+5. Grafana queries ClickHouse → live ops dashboard
+6. Kafka also writes raw events to S3 for historical analysis
+
+Key decision: CDC via Debezium — app writes once, everything follows automatically.
+```
+
+**Q2. Why not write directly from the app to Kafka instead of going through PostgreSQL first?**
+```
+Two problems with App → Kafka directly:
+
+1. Kafka is not a database:
+   - 7-day retention only, no random reads, no ACID
+
+2. Dual write problem:
+   - App writes to PostgreSQL AND Kafka separately
+   - Kafka write fails after PostgreSQL succeeds → order saved, payment never notified
+   - PostgreSQL write fails after Kafka succeeds → payment charged, no order exists
+
+CDC solves this:
+   - App writes ONLY to PostgreSQL
+   - Debezium reads WAL AFTER confirmed write
+   - Impossible to notify downstream for a failed write
+```
+
+**Q3. Your ClickHouse dashboard is showing stale data. How do you debug?**
+```
+Step 1 — Check Kafka consumer lag:
+→ Growing lag = app not writing OR Flink falling behind
+
+Step 2 — Check Flink job status:
+→ Running/failed/restarting?
+→ Check Flink checkpoint status (stuck = processing paused)
+→ Check Flink backpressure (slow ClickHouse writes = upstream slowdown)
+   Flink backpressure = slow downstream component signals upstream to slow down
+   Kafka lag grows → Flink is processing slowly → ClickHouse is the bottleneck
+
+Step 3 — Check ClickHouse insert rate:
+→ Last write timestamp → if 10 min ago, Flink→ClickHouse connector broken
+
+Step 4 — Check Grafana:
+→ Data source connection, time range filter, timezone
+
+Most common root cause: Flink job silently failed and restarting
+Fix: add alerting on Flink job health + pipeline staleness panel in Grafana
+```
+
+**Q4. How would you handle a 10x traffic spike during a sale event?**
+
+| Component | Handles 10x? | Fix | Pre-sale Action |
+|---|---|---|---|
+| App servers | No — overloads | Auto-scale (Kubernetes) | Pre-warm servers |
+| PostgreSQL | Partially — reads bottleneck | Read replicas + PgBouncer | Vertical scale, tune connections |
+| Debezium | Yes — may lag slightly | Acceptable lag, catches up | Increase heap memory |
+| Kafka | Yes — designed for this | Increase partitions + retention | Pre-provision disk |
+| Flink | Partially — needs pre-scaling | Increase parallelism BEFORE sale | Scale cluster ahead of event |
+| ClickHouse | Yes at GB scale | Batch writes if needed | Monitor write rate |
+| S3 | Yes — infinitely scalable | Nothing needed | None |
+| Spark | Partially — job takes longer | More executors, run more often | Pre-scale cluster |
+
+```
+Read Replicas — how they stay updated:
+Primary PostgreSQL writes to WAL automatically.
+WAL serves two consumers simultaneously:
+  1. Debezium → reads WAL → publishes to Kafka (CDC)
+  2. Read Replica → reads WAL → applies changes to itself (replication)
+
+Async replication (default): replica lags 10-100ms behind primary
+Sync replication: zero lag but every write waits for replica confirmation
+
+Risk — replication lag:
+  Order placed at 11:32:45.000 on Primary
+  Replica has it at 11:32:45.087
+  Driver queries Replica at 11:32:45.050 → "order not found"
+  Fix: read-your-own-writes (route user's next read to Primary after their write)
+
+PgBouncer — connection pooling:
+  50 app servers × 20 connections = 1000 connections → PostgreSQL max_connections=100 → crash
+  PgBouncer: app connects to PgBouncer (handles 1000) → PgBouncer maintains 20-50 to PostgreSQL
+```
+
+```
+Golden Rule for sale events:
+Cannot fix most things DURING the spike. Everything must be prepared BEFORE.
+
+Pre-sale checklist:
+□ Load test at 20x expected traffic
+□ Pre-warm app servers
+□ Scale Flink parallelism (cannot change at runtime without job restart)
+□ Increase Kafka partitions and retention
+□ Add PostgreSQL read replicas + PgBouncer
+□ Increase Spark cluster size
+□ Brief oncall, set up war room, define rollback plan
+
+Leadership insight:
+"Kafka absorbs the spike for downstream — but bottleneck is upstream:
+app servers and PostgreSQL need pre-scaling.
+Flink needs pre-scaling too — parallelism cannot change at runtime.
+Only truly elastic component is S3. Everything else requires pre-sale preparation."
+```
+
+**Q5. Junior engineer suggests using PostgreSQL for analytics to reduce complexity. How do you respond?**
+```
+Valid concern — complexity should be justified.
+
+PostgreSQL works for analytics IF:
+- Query runs once a day (not every 30 sec)
+- Simple queries, small team, no concurrent analytical load
+
+Fails here because:
+1. Grafana queries every 30 sec = continuous load
+2. PostgreSQL already handling OLTP — analytical queries compete
+3. Full table scan every 30 sec = CPU spikes = order placement slows
+
+ClickHouse justification:
+- Dedicated machine = zero OLTP impact
+- Pre-aggregated rows = <10ms vs seconds on PostgreSQL
+- Cost: $50/month — justified by reliability
+
+Recommendation: start with PostgreSQL if GB scale and low frequency.
+Switch to ClickHouse when dashboard refresh < 1 min or team grows.
+```
+
+---
+
+### Scenario 2 — GB + Real-time + ML
+
+**Q1. How would you design a real-time delivery time prediction system alongside order processing?**
+```
+Two parallel paths:
+
+Path 1 — OLTP:
+App → PostgreSQL → Debezium → Kafka → Payment/Driver services
+
+Path 2 — ML Inference (parallel HTTP call):
+App → ML Inference Service → reads Redis → runs model → returns prediction
+
+Feature Store feeds Redis via Lambda Architecture:
+- Flink (stream): active_orders, driver_count → Redis every 30 sec
+- Spark (batch hourly): avg_prep_time, user_history → Redis
+
+App calls both paths simultaneously.
+Customer sees confirmed order + delivery time at the same moment.
+```
+
+**Q2. Why use Lambda Architecture? Isn't it complex?**
+```
+Batch only (Spark hourly):
+→ Features 1 hour stale → fraud pattern in 10 min not caught
+
+Stream only (Flink):
+→ Cannot compute "avg_prep_time over 3 months" in real-time
+→ Flink state too large for long historical windows
+
+Lambda combines both:
+→ Flink: what happened in last 5 minutes
+→ Spark: what happened over last 3 months
+→ Model uses both = best accuracy
+
+Alternative — Kappa Architecture (stream only):
+→ Simpler but Flink state management complex for long windows
+→ Choose Kappa if team is small and historical window < 1 day
+
+Lambda Architecture ≠ AWS Lambda (serverless functions)
+Lambda Architecture = design pattern coined by Nathan Marz 2011, named after λ
+```
+
+**Q3. Your ML model predictions are suddenly inaccurate. How do you debug?**
+```
+1. Feature freshness (most common):
+   → Is Flink writing to Redis? Check Redis TTL on keys
+   → Is Spark running? Check Airflow job status
+   → Stale features = model predicts on old data
+
+2. Feature drift:
+   → Restaurant added items → avg_prep_time changed
+   → Feature computation still uses old formula
+   → Fix: monitor feature distribution over time
+
+3. Model drift:
+   → World changed (new city, lockdown)
+   → Model trained on old patterns
+   → Fix: retrain on recent data, monitor prediction accuracy
+
+Immediate mitigation:
+→ Fall back to rule-based prediction (avg_prep_time + distance/avg_speed)
+→ Better than wrong ML prediction during debugging
+
+Long term:
+→ Feature monitoring (alert if distribution shifts)
+→ Prediction monitoring (alert if avg prediction drifts)
+→ Shadow mode: run new model alongside old before switching
+```
+
+**Q4. How do you ensure Feature Store stays consistent between Flink and Spark writes?**
+```
+Feature Store = system with 3 layers:
+  Offline Store (S3)     → historical features for training, batch access
+  Online Store (Redis)   → current features for inference, sub-ms access
+  Feature Registry       → catalog of features, ownership, update frequency
+
+Redis is ONLY the Online Store layer — not the entire Feature Store.
+
+Flink and Spark write DIFFERENT keys — no conflict:
+  Flink writes: restaurant:456:active_orders (TTL=2min, real-time)
+  Spark writes: restaurant:456:avg_prep_time (TTL=2hr, historical)
+
+Consistency risk — stale historical features:
+  Acceptable: delivery time prediction (1 hour stale avg_prep_time = minor inaccuracy)
+  NOT acceptable: fraud detection (stale txn_count = missed fraud)
+  Fix for fraud: 15-min Spark interval OR Flink computes rolling avg too
+
+TTL design is critical:
+  Real-time features: short TTL (2min) — stale data is misleading
+  Historical features: long TTL (2hr) — changes slowly, staleness acceptable
+```
+
+**Q5. PM wants prediction for 50M global users. How does design change?**
+```
+GB → PB scale. Three things change:
+
+1. Feature Store (Redis → Redis Cluster or DynamoDB):
+   → Partition features by user_id/restaurant_id across nodes
+   → DynamoDB: managed, auto-scales, 10ms reads
+
+2. ML Inference Service:
+   → Single machine → auto-scaling fleet behind load balancer
+   → Stateless (reads from Redis/DynamoDB) → easy horizontal scale
+
+3. Feature pipelines:
+   → Flink cluster (multiple machines, higher parallelism)
+   → Spark on EMR/Databricks (distributed)
+
+What stays the same:
+   → Lambda Architecture pattern
+   → CDC via Debezium
+   → Kafka as central bus
+
+Key insight: "Architecture pattern stays identical. What changes is scale configuration."
+```
+
+---
+
+### Scenario 3 — GB + Real-time + Dashboards
+
+**Q1. Design a dashboard system for ops team (live) and business team (historical).**
+```
+Two separate stacks on same Kafka:
+
+Real-time ops stack:
+Kafka → Flink (pre-aggregates every 30 sec) → ClickHouse → Grafana
+- Flink writes: { city, orders_count, avg_delivery, payment_failures }
+- ClickHouse answers in <10ms (50 pre-aggregated rows, not 25M raw events)
+- Grafana auto-refreshes every 30 sec
+
+Historical business stack:
+Kafka → S3 (raw Parquet) → Spark (hourly clean + join) → Snowflake → Tableau
+- Analysts write any SQL, explore freely
+- Snowflake answers in 3-10 sec
+
+Key: never use one tool for both.
+ClickHouse cannot answer 3-month historical queries.
+Snowflake cannot refresh every 30 sec reliably.
+```
+
+**Q2. Why not just use Snowflake for both dashboards?**
+```
+Snowflake real-time (Snowpipe) limitations:
+- Minimum 1-2 min data freshness
+- Cold query startup: 2-5 sec
+- Shared warehouse: analyst heavy queries compete with dashboard
+- Cost: per query compute billing
+
+For 30-sec refresh ops dashboard:
+- Snowflake cold query = 3-10 sec → dashboard always stale
+- During sale with analysts running queries → contention → ops team blind
+
+ClickHouse dedicated machine:
+- Always warm, fixed $50/month, zero contention
+- <10ms on pre-aggregated data
+```
+
+**Q3. Dashboard shows sudden order drop. Real issue or pipeline problem?**
+```
+Distinguish pipeline vs business issue first:
+
+Step 1 — Check Kafka: is app still producing events?
+→ No new events: app/database issue (real problem)
+→ Events exist but dashboard shows drop: pipeline issue
+
+Step 2 — Check Flink: running? consumer lag?
+→ Flink stopped: dashboard shows stale data = pipeline issue
+
+Step 3 — Check ClickHouse: when was last write?
+→ Last write 10 min ago: Flink → ClickHouse broken
+
+Step 4 — Cross-check PostgreSQL directly:
+SELECT COUNT(*) FROM orders WHERE created_at > NOW() - INTERVAL 5 MINUTES
+→ PostgreSQL shows normal: pipeline issue, not business
+→ PostgreSQL also shows drop: real business issue
+
+Always add Grafana panel: "Pipeline health: last data received X seconds ago"
+Ops team immediately knows if dashboard is stale.
+```
+
+**Q4. How would you design alerting on top of this dashboard?**
+```
+Two types of alerts:
+
+Business alerts (ClickHouse → Grafana Alert):
+→ orders_count < 100 in last 5 min during lunch peak → page oncall
+→ payment_failure_rate > 5% last 10 min → page oncall
+
+Pipeline health alerts:
+→ last_clickhouse_write > 2 min ago → "Dashboard data stale"
+→ Flink checkpoint failed → "Stream processing issue"
+→ Kafka consumer lag > 100K messages → "Processing falling behind"
+
+Alert routing:
+Business alerts → ops team Slack + PagerDuty
+Pipeline alerts → data engineering oncall
+
+Leadership insight:
+"Alert on business metrics AND pipeline health separately.
+Business alert = orders broken.
+Pipeline alert = data pipeline broken.
+Conflating both = false alarms + missed incidents."
+```
+
+**Q5. Data scientist wants to run ML experiments on live data. How do you accommodate?**
+```
+Never let data scientists query ClickHouse directly.
+ClickHouse is dedicated to ops dashboard — one heavy ML query = dashboard slows.
+
+Option 1 — Snowflake (already exists):
+→ Spark writes clean data to Snowflake hourly
+→ Data scientist uses Snowflake for experiments
+→ Zero impact on ClickHouse, 1-hour delay acceptable for experiments
+
+Option 2 — S3 + Databricks notebook:
+→ Raw data already in S3 from Kafka
+→ Data scientist reads S3 via Databricks directly
+→ No shared resources with production pipeline
+
+Governance rule:
+Ops dashboard  = ClickHouse (dedicated, no external access)
+Analysts + DS  = Snowflake or S3
+Production DB   = app only, no direct analytical access
 ```
 
 ---
