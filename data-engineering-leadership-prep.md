@@ -53,83 +53,190 @@
 ### Generic Full Architecture — All 12 GB Scenarios
 
 ```
-                          [App]
-                            │
-          ┌─────────────────┼──────────────────────────────────┐
-          │                 │                                   │
-    WRITE (always)    WRITE (always)                  REQUEST (S4, S8 — fraud sync)
-          │                 │                                   │
-   [PostgreSQL]      [PostgreSQL]                      [Fraud Service]
-   OLTP store        idempotency /                          │
-   (all S)           staging table                        READ
-          │          (S4, S8, S12)                           │
-    READ (WAL)                                         [Redis]
-          │                                        fraud features
-   [Debezium CDC]                                  (Flink writes)
-          │
-        WRITE
-          │
-       [Kafka] ──────────────────────────────── WRITE ──→ [S3]
-    (Schema Registry                                   raw Parquet
-     for S4, S8)                                  (permanent, all S)
-          │                                              │
-    ┌─────┤                                    ┌─────────┼──────────┐
-  READ   READ                                  │         │          │
-    │     │                                    │         │          │
-[Payment] [Driver]                        [Flink]  [Spark       [Spark
- Service   Service                        always   micro-batch]  nightly +
-  OLTP      OLTP                          running  every 5 min   Airflow]
-(all S)   (all S)                         S1-S4    S5-S8         S9-S12
-                                            │          │              │
-                         ┌──────────────────┤          │    ┌─────────┤
-                         │                  │          │    │         │
-                       WRITE              WRITE      WRITE WRITE    WRITE
-                         │                  │          │    │         │
-                    [ClickHouse]         [Redis]  [ClickHouse /  [Snowflake]
-                    ops analytics        Feature   Snowflake]    S9, S10, S11
-                    S1, S3               Store     S5, S7
-                         │              S2,S4,S6       │        [Model Registry]
-                       READ                │         READ        S10 (MLflow)
-                         │              READ           │
-                     [Grafana]            │         [Grafana /     [dbt]
-                     ops dashboard    [ML Svc]      Tableau]      transforms
-                     S1, S3, S5       on-demand     S5, S7, S9    S9, S11
-                                      S2             S11
-                                   [App GET]
-                                   pre-computed
-                                   S6
+                                    [App]
+                                      │
+              ┌───────────────────────┼────────────────────────────────────┐
+              │                       │                                     │
+        WRITE (all scenarios)   WRITE (all scenarios)          REQUEST — sync, blocks order
+              │                       │                         (Real-time/Near-RT + Another System)
+       [PostgreSQL]            [PostgreSQL]                              │
+       OLTP store              idempotency store /                [Fraud Service]
+       single source           staging table /                          │
+       of truth                delivery ack log                       READ
+              │                (Another System)                          │
+        READ (WAL)                                                  [Redis]
+              │                                                  fraud features
+       [Debezium CDC]                                          (pre-computed by Flink)
+              │
+            WRITE
+              │
+           [Kafka] ─────────────────────────────────── WRITE ──→ [S3]
+       (+ Schema Registry                                      raw Parquet, partitioned
+        for Another System)                                    permanent store, all scenarios
+              │                                                       │
+        ┌─────┤                                           ┌───────────┼────────────┐
+      READ   READ                                         │           │            │
+        │     │                                           │           │            │
+  [Payment] [Driver]                               [Flink]      [Spark          [Spark
+   Service   Service                               always-on    micro-batch      nightly
+    OLTP      OLTP                                 stream       every 5 min]     + Airflow]
+  all scenarios                                    Real-time    Near Real-time   Batch
+                                                     │               │               │
+                              ┌──────────────────────┤               │       ┌───────┤
+                              │                      │               │       │       │
+                            WRITE                  WRITE           WRITE   WRITE   WRITE
+                              │                      │               │       │       │
+                        [ClickHouse]             [Redis]     [ClickHouse  [Snowflake] [Snowflake]
+                        real-time OLAP           Feature      or           Analytics   Analytics
+                        ops dashboards           Store        Snowflake]   + dbt       + dbt
+                        (RT + Analytics          (RT + ML     (Near-RT     (Batch      (Batch
+                         RT + Dashboards)        Near-RT+ML)   Analytics    Analytics   Dashboards)
+                              │                      │          Dashboards)      │
+                            READ                   READ              │       [Model
+                              │                      │             READ      Registry]
+                          [Grafana]            [ML Service]          │       MLflow
+                          ops dashboard        on-demand         [Grafana /  (Batch ML)
+                          (RT Analytics        prediction         Tableau]
+                           RT Dashboards       (RT + ML)         (Near-RT
+                           Near-RT Analytics)                     Analytics
+                                           [App GET]              Dashboards)
+                                           pre-computed
+                                           prediction
+                                           (Near-RT + ML)
 
-          ─── Another System consumers (S4, S8, S12) ───
+    ─────────────── Another System consumers (speed determines HOW, not WHETHER) ───────────────
 
-          [Kafka consumers]          [DB polling]       [File Export]
-          always-on, own offset      every 5-10 min     nightly
-          S4 only                    S8 only             S12 only
-                │                        │                    │
-     ┌──────────┼─────────┐    [PostgreSQL staging]    [SFTP / S3 / API]
-     │          │         │         │                   to partner/regulator
-[Notif.]  [Inventory] [Loyalty]  [Loyalty / Partner /
- Svc        Svc        Svc        Report Svc poll]
- S4         S4         S4         S8
-
- ──── Idempotency check before every action (S4, S8) ────
- ──── DLQ for failed events (S4) ────────────────────────
+    [Always-on Kafka consumers]      [DB polling every 5-10 min]     [File export nightly]
+    Real-time + Another System       Near-RT + Another System         Batch + Another System
+    own Consumer Group per service   read PostgreSQL staging table    Spark → CSV/XML/JSON
+              │                                   │                         │
+   ┌──────────┼──────────┐           [Loyalty / Partner /           [SFTP / S3 / API]
+   │          │          │            Report Service]                partner / regulator
+[Notif.]  [Inventory] [Loyalty]
+ Svc        Svc        Svc
+   └──────────┴──────────┘
+   Idempotency check before
+   every action (all Another System)
+   DLQ for failed events (RT only)
 ```
 
-**How to read this diagram:**
+**How to read:**
 ```
-S1-S4   = Real-time scenarios     (Flink path)
-S5-S8   = Near RT scenarios       (Spark micro-batch path)
-S9-S12  = Batch scenarios         (Spark nightly + Airflow path)
+Rows = Speed tier:
+  Real-time    → Flink path (always-on, milliseconds)
+  Near RT      → Spark micro-batch path (every 5 min from S3)
+  Batch        → Spark nightly + Airflow path (once daily, full joins, dbt)
 
-Columns by use case:
-  Analytics / Dashboards → ClickHouse (real-time) or Snowflake (near RT / batch)
-  ML                     → Redis Feature Store → ML Service (S2) or App GET (S6) or Model Registry (S10)
-  Another System         → Kafka consumers (S4) or DB polling (S8) or File export (S12)
+Columns = Use case:
+  Analytics / Dashboards → ClickHouse (real-time ops) or Snowflake (near-RT/batch)
+  ML                     → Redis Feature Store (real-time/near-RT) or Model Registry (batch training)
+  Another System         → Kafka consumers (real-time) / DB polling (near-RT) / File export (batch)
 
-Always present in ALL scenarios:
-  PostgreSQL (OLTP) + Debezium + Kafka + S3
-  Payment Service + Driver Service (OLTP consumers)
-  Fraud Service via sync HTTP (S4, S8 — any scenario with Another System)
+Always in every scenario (the backbone):
+  PostgreSQL (OLTP) → Debezium → Kafka → S3
+  Payment + Driver Services (OLTP consumers)
+  Fraud Service via sync HTTP → any scenario with Another System
+```
+
+### Generic Full Architecture — All 12 TB Scenarios
+
+TB scale = 5 TB/day, ~5B rows/day. Single machines break. Everything becomes a cluster.
+
+```
+                                    [App]
+                                      │
+              ┌───────────────────────┼─────────────────────────────────────┐
+              │                       │                                      │
+        WRITE (all scenarios)   WRITE (all scenarios)           REQUEST — sync, blocks order
+              │                       │                          (Real-time/Near-RT + Another System)
+  [Cassandra / DynamoDB]       [Cassandra / DynamoDB]                    │
+  distributed OLTP             idempotency store /                [Fraud Service]
+  replicated across            staging table /                     auto-scaling fleet
+  multiple nodes               delivery ack log                         │
+  (PostgreSQL cannot           (Another System)                        READ
+   handle TB OLTP)                                                       │
+              │                                                    [Redis Cluster]
+        READ (Change log)                                          fraud features
+              │                                                 (pre-computed by Flink cluster)
+  [Debezium / DynamoDB Streams]
+  (CDC at TB scale — needs
+   parallelism, multiple connectors)
+              │
+            WRITE
+              │
+           [Kafka Cluster] ─────────────────────────── WRITE ──→ [S3]
+       100+ partitions                                         raw Parquet
+       multiple brokers                                        partitioned by
+       Schema Registry                                         date/hour/minute
+       (all scenarios)                                         all scenarios
+              │                                                       │
+        ┌─────┤                                         ┌─────────────┼─────────────┐
+      READ   READ                                       │             │             │
+        │     │                                         │             │             │
+  [Payment] [Driver]                           [Flink Cluster]  [Spark on        [Spark on
+   Service   Service                           multi-node        EMR /             EMR /
+  distributed distributed                      higher            Databricks        Databricks
+  OLTP        OLTP                             parallelism       micro-batch       nightly]
+  all scenarios                                Real-time         every 5 min]      + Airflow
+                                                  │              Near Real-time    Batch
+                              ┌───────────────────┤                  │               │
+                              │                   │                  │        ┌───────┤
+                            WRITE               WRITE              WRITE    WRITE   WRITE
+                              │                   │                  │        │       │
+                      [Druid / Pinot]        [Redis Cluster]  [Druid/Pinot  [BigQuery /   [BigQuery /
+                      TB-scale real-time     Feature Store     or BigQuery]  Redshift /    Redshift /
+                      OLAP                   (partitioned      (Near-RT       Snowflake     Snowflake
+                      multi-tenant           by key range)      Analytics      + dbt]        + dbt]
+                      (RT Analytics          (RT + ML           Dashboards)   (Batch         (Batch
+                       RT Dashboards)        Near-RT + ML)           │         Analytics      Dashboards)
+                              │                   │                READ            │
+                            READ                READ                │          [Model
+                              │                   │          [Grafana /        Registry]
+                          [Grafana]        [ML Service         Tableau]        MLflow /
+                          TB-scale ops     auto-scaling        (Near-RT        SageMaker
+                          dashboard        fleet               Analytics /     (Batch ML)
+                          (RT Analytics    (RT + ML)           Dashboards)
+                           RT Dashboards)
+                                      [App GET]
+                                      pre-computed
+                                      (Near-RT + ML)
+
+    ─────────────── Another System consumers (same pattern as GB, but distributed) ──────────────
+
+    [Always-on Kafka consumers]      [DB polling every 5-10 min]      [File export nightly]
+    Real-time + Another System       Near-RT + Another System          Batch + Another System
+    multiple instances per service   read Cassandra staging            Spark → large CSV/XML
+    auto-scaling                     (not PostgreSQL at TB scale)      partitioned files
+              │                                   │                          │
+   ┌──────────┼──────────┐        [Loyalty / Partner /             [SFTP / S3 / API]
+   │          │          │         Report Service]                  partner / regulator
+[Notif.]  [Inventory] [Loyalty]
+ Svc        Svc        Svc
+ multiple   multiple   multiple
+ instances  instances  instances
+   └──────────┴──────────┘
+   Idempotency check (all Another System)
+   DLQ (RT only)
+```
+
+**What changes GB → TB (every single component scales out):**
+```
+GB component          →   TB replacement           Why
+─────────────────────────────────────────────────────────────────────────
+PostgreSQL (1 node)   →   Cassandra / DynamoDB     Single PostgreSQL cannot handle 5B rows OLTP
+Debezium (1 instance) →   Debezium cluster /       TB of changes needs parallel CDC connectors
+                          DynamoDB Streams
+Kafka (3 brokers)     →   Kafka cluster (10+)      100+ partitions, TB/day throughput
+Flink (1 node)        →   Flink cluster            Higher parallelism, more task managers
+Spark (1 node)        →   EMR / Databricks         Distributed Spark, auto-scaling workers
+ClickHouse (1 node)   →   Druid / Pinot            Multi-tenant TB OLAP, not single-node CH
+Snowflake (small)     →   BigQuery / Redshift /    Larger compute, more concurrent queries
+                          Snowflake (large)
+Redis (1 node)        →   Redis Cluster            Partitioned across nodes by key range
+ML Service (1 node)   →   Auto-scaling fleet       1000s of concurrent inference requests
+
+What stays the same: architecture PATTERN. Kafka → Flink → OLAP. CDC. Lambda Architecture.
+What changes: every component becomes a cluster.
 ```
 
 ### Speed Pattern (what changes with processing speed)
