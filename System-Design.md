@@ -6442,14 +6442,7 @@ Problem: Each user tied to specific server
 
 **Stateless (Solution):**
 ```
-Load Balancer
-        ↓
-    ┌───┼───┬───┐
-    ↓   ↓   ↓   ↓
-Server1 Server2 Server3 Server4
-
 ---
-
 
 # CHUBB Interview Question: Design a Unique Code Generator
 
