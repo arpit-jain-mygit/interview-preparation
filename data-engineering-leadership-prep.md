@@ -578,146 +578,192 @@ Raw trip data
 
 ## GB Scale Scenarios
 
+---
+
 ### Scenario 1 — GB + Real-time + Analytics
 
-**Situation:** 5 GB/day, ~25M events/day. Need answers in seconds.
-
-**Example:** Food delivery startup — "Orders by city right now? Which restaurant is spiking? Is volume dropping suddenly?"
-
-#### Analytics Only Architecture
-
+#### Problem Statement
 ```
-[App] → [Kafka] → [Flink] → [ClickHouse] → [Grafana]
-                                ↓
-                          [S3 raw Parquet]  (parallel, for historical)
+Size:    5 GB/day, ~25M events/day
+Speed:   Real-time — answers needed in seconds
+Use:     Analytics — "Orders by city right now? Which restaurant is spiking?"
+Who:     Food delivery startup ops team
 ```
 
-#### Why No RDBMS for Analytics
-
-RDBMS is ruled out by use case, not size. At GB scale PostgreSQL handles the volume fine — but:
-- Continuous aggregation queries (every 10 sec) = full table scan = CPU spikes
-- Mixing OLTP and OLAP on same DB = analytical queries steal resources from order processing
-- ClickHouse is purpose-built for this — same query in <1 sec vs minutes on PostgreSQL
-
-#### Modified: OLTP + OLAP Together
-
-Real systems need both — save orders (OLTP) AND analyze them (OLAP).
-
-**The wrong approaches:**
-
-```
-App → Kafka directly (no PostgreSQL):
-- Kafka is not a database — 7 day retention, no random reads
-- Dual write risk: Kafka up but PostgreSQL down = payment charged, no order saved
-
-App → Kafka → PostgreSQL:
-- Async gap: customer sees "confirmed" before order actually saved
-- Consumer crash = order lost forever
-- Valid only for non-customer-facing async work
-```
-
-**The right approach: PostgreSQL → Debezium (CDC) → Kafka**
+#### Full Architecture
 
 ```
 [Customer places order]
         ↓
-[App] ──writes──→ [PostgreSQL]  ← single source of truth, synchronous commitment
-                       │
-                  WAL (automatic internal log)
-                       │
-                  [Debezium]   ← reads WAL after confirmed write, outside the app
-                       │
-                    [Kafka]    ← central event bus
-                       │
-       ┌───────────────┼───────────────┐
-       ↓               ↓               ↓
-[Payment Service] [Driver Service]  [Flink]
-OLTP consumer     OLTP consumer        │
-                                  [ClickHouse]
-                                  OLAP store
-                                       │
-                                  [Grafana]
-                                  Live dashboard
+[App] ──WRITE (HTTP)──→ [PostgreSQL]        ← saves order (OLTP)
+                               │
+                         READ (WAL)
+                               │
+                        [Debezium CDC]
+                               │
+                             WRITE
+                               │
+                           [Kafka] ──────WRITE──────→ [S3]
+                               │                  raw Parquet files
+                    READ       │       READ
+              ┌────────────────┼────────────┐
+              ↓                ↓            ↓
+        [Payment]          [Driver]      [Flink]
+         Service            Service     aggregates
+          OLTP               OLTP       every 10 sec
+                                           │
+                                         WRITE
+                                           │
+                                      [ClickHouse]
+                                      pre-aggregated rows
+                                           │
+                                         READ
+                                           │
+                                       [Grafana]
+                                      auto-refresh 10 sec
 ```
 
-#### CDC — What It Is and Why It Matters
-
-CDC = Change Data Capture. Captures every INSERT/UPDATE/DELETE from the database's own internal log.
-
+#### Quick Recap — New Concepts Introduced
 ```
-PostgreSQL WAL (Write Ahead Log) — exists automatically for crash recovery
-MySQL     → Binlog
-Oracle    → Redo Log
-```
-
-Every change PostgreSQL makes is written to WAL first. Debezium reads this log and publishes to Kafka.
-
-**CDC event example (order placed):**
-```json
-{
-  "operation": "INSERT",
-  "table": "orders",
-  "timestamp": "2024-01-15 11:32:45",
-  "new_data": { "order_id": 98765, "user_id": "USR-123", "amount": 450, "status": "placed" }
-}
+PostgreSQL  → OLTP source of truth (synchronous, ACID)
+Debezium    → CDC: reads WAL after confirmed write, no dual write risk
+Kafka       → event bus (decouples producers from consumers)
+Flink       → real-time aggregation (stateful, RAM-based)
+ClickHouse  → real-time OLAP (pre-aggregated rows, <10ms queries)
+S3          → raw Parquet storage (permanent, cheap)
 ```
 
-**What CDC gives you:**
+#### Key Design Decisions
 
-| Property | How |
-|---|---|
-| App stays simple | App only knows PostgreSQL. New consumer = zero app changes |
-| No dual write | CDC reads AFTER PostgreSQL confirms. Failed write = nothing published |
-| Guaranteed ordering | WAL is strictly ordered. Downstream always sees: placed → preparing → delivered |
-| No data loss on downtime | Kafka down 2 hours? Debezium catches up from WAL when it returns |
+**Why not App → Kafka directly?**
+```
+Dual write risk: PostgreSQL down but Kafka up → payment charged, no order saved
+Fix: App writes ONLY to PostgreSQL. Debezium reads WAL after confirmed write.
+```
+
+**Why not App → Kafka → PostgreSQL?**
+```
+Async gap: customer sees "confirmed" before order actually saved in PostgreSQL
+Consumer crash = order lost. Only valid for non-customer-facing async work.
+```
+
+**Why ClickHouse not PostgreSQL for analytics?**
+```
+Continuous aggregation every 10 sec = full table scan = CPU spikes on PostgreSQL
+PostgreSQL is already handling OLTP — analytical queries steal resources
+ClickHouse dedicated machine: <10ms on pre-aggregated rows, zero OLTP impact
+```
+
+#### CDC Deep Dive
+```
+WAL (Write Ahead Log) — PostgreSQL writes every change here automatically
+Debezium reads WAL → publishes to Kafka as events:
+{ operation: INSERT, table: orders, new_data: { order_id: 98765, amount: 450 } }
+
+CDC properties:
+  App stays simple     → writes only to PostgreSQL, zero knowledge of consumers
+  No dual write        → CDC reads AFTER confirmed write, failed write = nothing published
+  Guaranteed ordering  → WAL is strictly ordered: placed → preparing → delivered
+  No data loss         → Kafka down 2 hrs? Debezium catches up from WAL on return
+```
 
 #### Tool Summary
 
-| Tool | Role | Type |
+| Tool | Role | READ/WRITE |
 |---|---|---|
-| PostgreSQL | Stores orders, handles transactions | OLTP |
-| Debezium | Reads WAL, publishes every change to Kafka | CDC |
-| Kafka | Routes events to all consumers | Message bus |
-| Payment Service | Charges customer | OLTP consumer |
-| Driver Service | Assigns driver | OLTP consumer |
-| Flink | Aggregates events in real-time (count by city, restaurant) | Stream processor |
-| ClickHouse | Stores aggregated results, <1 sec queries | OLAP |
-| Grafana | Live dashboard, auto-refreshes every 10 sec | Visualization |
+| PostgreSQL | OLTP source of truth | App WRITEs, Debezium READs WAL |
+| Debezium | CDC connector | READs WAL, WRITEs Kafka |
+| Kafka | Event bus | Consumers READ |
+| Payment/Driver Service | OLTP consumers | READ Kafka |
+| Flink | Real-time aggregation | READs Kafka, WRITEs ClickHouse |
+| ClickHouse | Real-time OLAP store | Flink WRITEs, Grafana READs |
+| S3 | Raw storage | Kafka WRITEs |
+| Grafana | Ops dashboard | READs ClickHouse |
 
 #### GB Scale Reality
-
 ```
-PostgreSQL  → 1 medium machine   ($50/month)
-Kafka       → 1 small machine    ($30/month)
-Flink       → 1 small machine    ($50/month)
-ClickHouse  → 1 small machine    ($50/month)
+PostgreSQL  → $50/month   Kafka → $30/month
+Flink       → $50/month   ClickHouse → $50/month
 Total: ~$200/month, managed by 1 engineer part-time
 ```
 
 #### Interview Answer
-
-*"Design real-time order processing AND analytics at GB scale"*
 ```
-1. App writes orders to PostgreSQL (single source of truth)
-2. Debezium CDC captures every change from WAL → publishes to Kafka
+1. App WRITEs to PostgreSQL (single source of truth)
+2. Debezium CDC READs WAL → WRITEs to Kafka
 3. Kafka routes to: Payment Service, Driver Service, Flink
-4. Flink aggregates every 10 sec → ClickHouse
-5. Grafana queries ClickHouse → live ops dashboard
-6. Raw events also land in S3 for historical analysis
-7. Entire system runs on 4-5 small machines at GB scale
+4. Flink aggregates every 10 sec → WRITEs to ClickHouse
+5. Grafana READs ClickHouse → live ops dashboard
+6. Kafka also WRITEs raw events to S3 for historical analysis
+
+Key insight: "CDC via Debezium — app writes once, everything follows automatically."
 ```
 
-Key insight to mention: *"CDC via Debezium keeps PostgreSQL as single source of truth while feeding all downstream consumers — app writes once, everything else follows automatically."*
+#### Interview Questions
+
+**Q1. Why not write directly from app to Kafka?**
+```
+Kafka is not a database (7-day retention, no ACID). Dual write risk: if PostgreSQL
+write fails after Kafka write succeeds → payment charged, no order exists.
+CDC solves: app writes ONLY to PostgreSQL, Debezium reads WAL after confirmed write.
+```
+
+**Q2. Dashboard showing stale data — how to debug?**
+```
+1. Kafka lag growing? → app not writing OR Flink falling behind
+2. Flink running? → check job status, checkpoint, backpressure
+   Backpressure = slow ClickHouse writes signal Flink to slow down → Kafka lag grows
+3. ClickHouse last write timestamp → if old, Flink→ClickHouse connector broken
+4. Cross-check: add Grafana panel "last data received X seconds ago"
+```
+
+**Q3. How to handle 10x traffic spike during sale?**
+
+| Component | Handles 10x? | Fix | Pre-sale Action |
+|---|---|---|---|
+| App servers | No | Auto-scale (Kubernetes) | Pre-warm servers |
+| PostgreSQL | Partially | Read replicas + PgBouncer | Vertical scale |
+| Debezium | Yes (may lag) | Acceptable, catches up | Increase heap |
+| Kafka | Yes — built for this | Increase partitions + retention | Pre-provision disk |
+| Flink | Partially | Increase parallelism BEFORE sale | Scale cluster ahead |
+| ClickHouse | Yes at GB scale | Batch writes if needed | Monitor write rate |
+| S3 | Yes — infinite | Nothing needed | None |
+| Spark | Partially | More executors, run more often | Pre-scale cluster |
+
+```
+Golden Rule: cannot fix most things DURING spike. Prepare BEFORE.
+Read Replicas: Primary streams WAL to replicas (same WAL Debezium reads).
+  Async replication: 10-100ms lag. Risk: driver queries replica before order appears.
+  Fix: read-your-own-writes (route user's next read to Primary after their write).
+PgBouncer: 50 servers × 20 connections = 1000 → exceeds PostgreSQL max_connections.
+  PgBouncer multiplexes: app sees 1000 connections, PostgreSQL sees 20-50.
+
+Leadership insight: "Kafka absorbs spike downstream but upstream bottleneck is app
+servers and PostgreSQL. Flink needs pre-scaling — parallelism cannot change at runtime.
+Only truly elastic component is S3."
+```
+
+**Q4. Junior suggests PostgreSQL for analytics to reduce complexity. Response?**
+```
+Valid at GB scale IF: query runs once/day, simple queries, no concurrent load.
+Fails here: Grafana queries every 30 sec = continuous full table scan = CPU spikes
++ OLTP and OLAP compete on same machine = order placement slows during analytics.
+Start with PostgreSQL, switch to ClickHouse when refresh < 1 min or team grows.
+```
 
 ---
 
 ### Scenario 2 — GB + Real-time + ML
 
-**Situation:** 5 GB/day, ~25M events/day. ML prediction needed in milliseconds alongside order processing.
+#### Problem Statement
+```
+Size:    5 GB/day, ~25M events/day
+Speed:   Real-time — ML prediction in milliseconds
+Use:     ML Inference — "Predict delivery time before confirmation screen loads"
+Who:     Food delivery startup — prediction shown simultaneously with order confirmation
+```
 
-**Example:** Food delivery startup — customer places order → app must simultaneously save the order (OLTP) AND predict delivery time (ML) before confirmation screen loads.
-
-#### The Full Architecture
+#### Full Architecture
 
 ```
 [Customer places order]
@@ -759,82 +805,66 @@ Key insight to mention: *"CDC via Debezium keeps PostgreSQL as single source of 
               returns "28 min" → [App]
 ```
 
-#### Two Parallel Calls From App
-
+#### Quick Recap — New Concepts Introduced
 ```
-App makes 2 parallel calls simultaneously:
-
-Call 1: WRITE → PostgreSQL          (saves order, ~20ms)
-Call 2: REQUEST → ML Inference Service  (gets prediction, ~15ms)
-
-App waits for BOTH → shows:
-"Order confirmed! Arrives in 28 minutes"
+Redis          → Feature Store online layer (sub-ms point lookups)
+ML Service     → pulls from Redis on demand, runs model, responds synchronously
+Feature Store  → system with 3 layers:
+                 Offline Store (S3) — historical features for training
+                 Online Store (Redis) — current features for inference
+                 Feature Registry — catalog of features, ownership
+Lambda Architecture → Flink (recency) + Spark (history) both write to Redis
+                      model reads both at inference time
+Lambda Architecture ≠ AWS Lambda (serverless functions)
 ```
 
-App never touches Redis directly. ML Inference Service handles that internally.
+#### Key Design Decisions
 
-#### Two Feature Pipelines Feed Redis
-
-**Flink (stream, always running):**
-- READs order events from Kafka continuously
-- Maintains running state in RAM (+1 order placed, -1 order delivered)
-- WRITEs real-time features to Redis every 30 seconds
-- Features: active_orders_per_restaurant, active_drivers_per_zone, traffic_level
-
-**Spark (batch, hourly):**
-- READs raw Parquet files from S3
-- Computes historical features from weeks of data
-- WRITEs historical features to Redis
-- Features: avg_prep_time, user_order_history, restaurant_rating
-
-Both write to same Redis. ML model reads both at inference time — this is **Lambda Architecture**.
-
-#### Why Flink Does Not Slow Down
-
-Flink does NOT recount from scratch on every event. It keeps running state in RAM:
-
+**Two parallel calls from App:**
 ```
+Call 1: WRITE → PostgreSQL      (~20ms) — saves order
+Call 2: REQUEST → ML Service    (~15ms) — gets prediction
+App waits for BOTH → "Order confirmed! Arrives in 28 minutes"
+App never touches Redis directly — ML Service handles that internally.
+```
+
+**Why not Kafka for ML Inference?**
+```
+Kafka = PUSH (sends data when events arrive)
+ML Inference = PULL (needs features for specific user ON DEMAND)
+1000 concurrent orders → each needs different features for different user/restaurant
+Redis: 1000 point lookups in parallel in <1ms each
+Kafka cannot answer "give me current state for restaurant_456" on demand
+```
+
+**Why Flink does not slow down:**
+```
+Flink keeps running state in RAM — not recount from scratch:
 Event: order placed at Pizza Palace
-Flink: state["Pizza Palace"] = current + 1   ← one addition, microseconds
+Flink: state["Pizza Palace"] = current + 1  ← microseconds, not a full scan
 Writes updated value to Redis every 30 sec
+Checkpoints state to S3 every 30 sec (crash recovery)
 ```
 
-Not a full scan. Pure in-memory increment/decrement.
-
-#### ML Inference Flow
-
+**Feature Store consistency — Flink vs Spark:**
 ```
-1. App sends REQUEST to ML Inference Service
-2. ML Service READs features from Redis     (1ms)
-   - active_orders at Pizza Palace = 12     (from Flink)
-   - avg_prep_time at Pizza Palace = 18min  (from Spark)
-   - active_drivers in Zone A = 3           (from Flink)
-3. ML Model runs prediction                 (10ms)
-4. RESPONSE: "28 minutes" returned to App   (total ~15ms)
-```
+Flink writes: restaurant:456:active_orders (TTL=2min) — real-time keys
+Spark writes: restaurant:456:avg_prep_time (TTL=2hr) — historical keys
+Different keys → no conflict. No overwrite risk.
 
-#### Why Not Kafka for ML Inference
-
-```
-Kafka is PUSH based — sends data when events arrive
-ML Inference is PULL based — needs features for a specific user ON DEMAND
-
-1000 concurrent orders → 1000 inference requests → each needs
-specific features for specific user/restaurant/zone right now
-
-Redis serves all 1000 point lookups in parallel in <1ms each
-Kafka cannot answer "give me current state for Pizza Palace" on demand
+Staleness risk: historical features up to 1 hour old.
+Acceptable: delivery time prediction (minor inaccuracy)
+NOT acceptable: fraud detection → use 15-min Spark interval or Flink for those keys too
 ```
 
 #### Tool Summary
 
 | Tool | Role | READ/WRITE |
 |---|---|---|
-| PostgreSQL | Saves orders (OLTP, source of truth) | App WRITEs, Debezium READs WAL |
-| Debezium | Captures WAL changes | READs WAL, WRITEs to Kafka |
-| Kafka | Routes events to all consumers | Consumers READ from it |
-| Payment Service | Charges customer | READs from Kafka |
-| Driver Service | Assigns driver | READs from Kafka |
+| PostgreSQL | OLTP source of truth | App WRITEs, Debezium READs WAL |
+| Debezium | CDC connector | READs WAL, WRITEs Kafka |
+| Kafka | Event bus | Consumers READ |
+| Payment/Driver Service | OLTP consumers | READ Kafka |
 | S3 | Raw Parquet storage | Kafka WRITEs, Spark READs |
 | Flink | Real-time feature computation | READs Kafka, WRITEs Redis |
 | Spark | Historical feature computation | READs S3, WRITEs Redis |
@@ -842,108 +872,79 @@ Kafka cannot answer "give me current state for Pizza Palace" on demand
 | ML Inference Service | Runs model, returns prediction | READs Redis, RESPONDs to App |
 
 #### GB Scale Reality
-
 ```
-PostgreSQL          → 1 medium machine   ($50/month)
-Kafka + Debezium    → 1 small machine    ($30/month)
-Flink               → 1 small machine    ($50/month)
-Spark (on-demand)   → runs hourly        ($20/month)
-Redis               → 1 small machine    ($30/month)
-ML Inference Service→ 1 small machine    ($50/month)
-S3                  → GB scale           ($10/month)
+PostgreSQL → $50   Kafka+Debezium → $30   Flink → $50
+Redis → $30        Spark → $20            ML Service → $50   S3 → $10
 Total: ~$240/month
 ```
 
 #### Interview Answer
-
-*"Design real-time ML prediction alongside order processing at GB scale"*
 ```
-1. App makes two parallel calls:
-   - WRITE to PostgreSQL (save order)
-   - REQUEST to ML Inference Service (get prediction)
-2. Debezium CDC captures WAL → publishes to Kafka
-3. Kafka routes to: Payment Service, Driver Service, Flink
-4. Kafka also WRITEs raw events to S3
-5. Flink READs Kafka → maintains state in RAM → WRITEs real-time features to Redis
-6. Spark READs S3 hourly → WRITEs historical features to Redis
-7. ML Inference Service READs Redis → runs model → RESPONDs in ~15ms
-8. App shows "Order confirmed! Arrives in 28 minutes"
+1. App makes 2 parallel calls: WRITE to PostgreSQL + REQUEST to ML Service
+2. Debezium CDC READs WAL → WRITEs Kafka
+3. Kafka → Payment/Driver (OLTP) + Flink + S3
+4. Flink READs Kafka → state in RAM → WRITEs real-time features to Redis
+5. Spark READs S3 hourly → WRITEs historical features to Redis
+6. ML Service READs Redis → model → RESPONSE "28 min" to App
+
+Key insight: "Lambda Architecture — Flink for recency, Spark for history, Redis serves both.
+App never touches Redis. ML Service is the only Redis reader."
 ```
 
-Key insight: *"Lambda Architecture — Flink handles recency, Spark handles history, both write to Redis. ML model reads both at inference time for complete context. App never touches Redis directly."*
+#### Interview Questions
 
----
-
-#### Lambda Architecture — Important Clarification
-
-Lambda Architecture is a **data engineering design pattern**, coined by Nathan Marz in 2011. Nothing to do with AWS Lambda.
-
+**Q1. Why Lambda Architecture — isn't it complex?**
 ```
-Named after Greek letter λ — two paths merging into one:
+Batch only (Spark hourly): features 1 hour stale → fraud in 10 min not caught
+Stream only (Flink): cannot compute "avg_prep_time over 3 months" — state too large
+Lambda: Flink handles last 5 min, Spark handles last 3 months, model uses both.
 
-    Batch path  \
-                 λ  → merged result at serving layer
-    Speed path  /
+Alternative — Kappa Architecture (stream only):
+Simpler but Flink state complex for long windows. Choose if historical window < 1 day.
 ```
 
-| Term | What it is |
-|---|---|
-| Lambda Architecture | Design pattern — batch + stream pipelines merged at serving layer |
-| AWS Lambda | Amazon's serverless compute product — run functions without managing servers |
+**Q2. ML predictions suddenly inaccurate — how to debug?**
+```
+1. Feature freshness: Is Flink writing to Redis? Check Redis TTL on keys.
+   Is Spark running? Check Airflow. Stale features = bad predictions.
+2. Feature drift: restaurant added items → avg_prep_time formula outdated.
+   Fix: monitor feature distribution, alert on shifts.
+3. Model drift: world changed (new city, lockdown) → retrain on recent data.
 
-In interviews always clarify which one is being asked about.
+Immediate mitigation: fall back to rule-based prediction (distance/avg_speed).
+Long term: shadow mode — run new model alongside old before switching.
+```
+
+**Q3. Feature Store consistent between Flink and Spark writes?**
+```
+Different keys — no conflict. TTL design prevents stale data confusion.
+Real-time (Flink): TTL=2min. Historical (Spark): TTL=2hr.
+Fraud detection exception: needs 15-min Spark OR Flink computes rolling avg too.
+```
+
+**Q4. PM wants prediction for 50M global users — how does design change?**
+```
+Redis → Redis Cluster or DynamoDB (auto-scales, 10ms reads)
+ML Service → auto-scaling fleet behind load balancer (stateless, easy to scale)
+Flink → cluster with higher parallelism
+Spark → EMR/Databricks distributed
+
+Architecture pattern stays identical. Only scale configuration changes.
+```
 
 ---
 
 ### Scenario 3 — GB + Real-time + Dashboards
 
-**Quick Recap — Scenario 2 systems:**
+#### Problem Statement
 ```
-PostgreSQL  → OLTP source of truth (synchronous, ACID)
-Debezium    → CDC: reads WAL after confirmed write, publishes to Kafka (no dual write risk)
-Kafka       → event bus (decouples producers from consumers)
-Flink       → real-time features (stateful, RAM-based, fast)
-Spark       → historical features (batch, reads S3 hourly)
-Redis       → Feature Store online layer (sub-ms point lookups)
-ML Service  → pulls from Redis, runs model, responds synchronously
+Size:    5 GB/day, ~25M events/day
+Speed:   Real-time ops (30 sec refresh) + Near real-time business (15-30 min delay)
+Use:     Two dashboards — ops team watching live + business team exploring history
+Who:     Food delivery startup — sale event monitoring + weekly business reviews
 ```
 
----
-
-**Situation:** 5 GB/day, ~25M events/day. Dashboards must show live data, refresh every 30 seconds, load in under 2 seconds.
-
-**Example:** Food delivery startup ops team watching a live dashboard during a peak sale event:
-
-```
-"How many orders placed in last 5 minutes?"
-"Which city is seeing order drop right now?"
-"Is payment failure rate spiking?"
-"Average delivery time right now vs yesterday same hour?"
-```
-
-These are dashboard questions — pre-computed, fast reads, auto-refreshing. Not ad-hoc analyst queries.
-
-#### Two Types of Dashboards (Important Distinction)
-
-```
-Ops Dashboard (real-time):
-- Who: Operations team, oncall engineers
-- Question: "What is happening RIGHT NOW?"
-- Latency: must refresh every 30 sec, load in <2 sec
-- Data: last few hours only
-- Tool: ClickHouse + Grafana
-
-Business Dashboard (near real-time):
-- Who: Executives, product managers
-- Question: "How are we doing TODAY vs last week?"
-- Latency: 15-30 min delay acceptable
-- Data: days/weeks of history
-- Tool: Snowflake + Tableau/Looker
-```
-
-Both need to coexist. Same underlying data, different consumers, different tools.
-
-#### The Full Architecture
+#### Full Architecture
 
 ```
 [Customer places order]
@@ -962,12 +963,12 @@ Both need to coexist. Same underlying data, different consumers, different tools
               ┌────────────────┼────────────┐          READ
               ↓                ↓            ↓            │
         [Payment]          [Driver]      [Flink]      [Spark]
-         Service            Service     state in      reads S3
-          OLTP               OLTP        RAM           hourly
+         Service            Service     aggregates    cleans + joins
+          OLTP               OLTP       every 30 sec    hourly
                                            │               │
                                          WRITE           WRITE
-                                     aggregated       aggregated
-                                      results          results
+                                     pre-aggregated    clean fact
+                                       results          table
                                            │               │
                                            ↓               ↓
                                       [ClickHouse]    [Snowflake]
@@ -977,204 +978,364 @@ Both need to coexist. Same underlying data, different consumers, different tools
                                            │               │
                                        [Grafana]    [Tableau/Looker]
                                       Ops Dashboard  Biz Dashboard
-                                      auto-refresh   analyst queries
-                                       every 30s     on-demand
+                                      auto-refresh   on-demand
+                                       every 30s
 ```
 
-#### What Flink Writes to ClickHouse
-
-Flink does not write raw events. It writes **pre-aggregated results** every 30 seconds:
-
+#### Quick Recap — New Concepts Introduced
 ```
-{
-  window:        "last 5 minutes",
-  city:          "Mumbai",
-  orders_count:  847,
-  avg_delivery:  "32 min",
-  payment_failures: 3,
-  timestamp:     "2024-01-15 11:30:00"
-}
+ClickHouse  → real-time OLAP (ops dashboards, last few hours, <10ms)
+Snowflake   → historical OLAP (business dashboards, weeks of data, 3-10 sec)
+Grafana     → ops visualization (auto-refresh, time-series panels, engineers)
+Tableau     → business visualization (drag-drop exploration, executives)
+Two stacks  → Speed Stack (Kafka+Flink+ClickHouse) and Scale Stack (S3+Spark+Snowflake)
 ```
 
-Grafana reads these pre-computed rows — no aggregation at query time. That is why it loads in <2 seconds.
+#### Key Design Decisions
 
-#### What Spark Writes to Snowflake
-
-Spark runs hourly, reads S3, cleans and joins data:
-
+**Two dashboard types — never use one tool for both:**
 ```
-Reads:  raw order events from S3
-Joins:  with user table, restaurant table, driver table
-Writes: clean fact table to Snowflake
+Ops Dashboard (ClickHouse + Grafana):
+  Who: ops team, oncall engineers
+  Q: "What is happening RIGHT NOW?"
+  Refresh: every 30 sec, load in <2 sec
+  Data: last few hours only
 
-Result: analysts can run any SQL without worrying about data quality
-```
-
-#### Why No Redis Between ClickHouse and Grafana
-
-**Primary reason — wrong access pattern:**
-```
-Redis = key-value store. Every operation: GET <key> → one value
-Redis has no concept of time ranges, aggregations, GROUP BY, WHERE
-
-Grafana needs:
-SELECT city, COUNT(*), AVG(delivery_time)
-FROM events
-WHERE timestamp > NOW() - 5 MINUTES
-GROUP BY city
-
-Redis architecturally cannot execute this. Not what it is built for.
+Business Dashboard (Snowflake + Tableau):
+  Who: executives, product managers
+  Q: "How are we doing TODAY vs last week?"
+  Delay: 15-30 min acceptable
+  Data: weeks/months of history
 ```
 
-**Secondary reason — query volume is low:**
+**Why not Snowflake for ops dashboard?**
 ```
-Grafana refreshes every 30 sec = 2 queries/min = 120 queries/hour
-ClickHouse handles thousands of queries/sec
-120 queries/hour is trivial — no caching needed
-```
-
-How "load in under 2 seconds" is achieved without Redis:
-
-1. **Flink pre-aggregates before writing to ClickHouse**
-```
-Raw event (Kafka):    full order record, 20+ fields
-What Flink writes:    { city, orders_count, avg_delivery, payment_failures }
-                      50 pre-aggregated rows per window — not 25M raw events
+Cold query = 3-10 sec minimum. Shared with analysts → contention during sale.
+Cost: per-query compute billing × 120 queries/hour = expensive.
+ClickHouse: always warm, fixed $50/month, zero contention, <10ms.
 ```
 
-2. **ClickHouse answers in <10ms** — 50 rows fits entirely in RAM
-
-3. **Grafana renders in <500ms** — no heavy computation, just displays numbers
-
+**Why not ClickHouse for business dashboard?**
 ```
-Total: ClickHouse query (10ms) + network (50ms) + render (500ms) = well under 2 sec
+Holds only last few hours. No joins across user/restaurant/driver tables.
+Cannot answer: "revenue by category, last 4 weeks, broken down by city"
+Snowflake: holds months of clean joined data, answers in 5-8 sec.
 ```
 
-**Important — Redis is a cache, not a query engine:**
+**Why no Redis between ClickHouse and Grafana?**
 ```
-Redis does NOT run aggregation queries on ClickHouse.
+Primary reason — wrong access pattern:
+  Redis = key-value. No time ranges, no aggregations, no GROUP BY.
+  Grafana needs: SELECT city, COUNT(*) WHERE timestamp > NOW()-5MIN GROUP BY city
+  Redis cannot execute this. Not what it is built for.
 
-The pattern when Redis IS used (e.g. homepage "Trending Now"):
-  Backend service queries ClickHouse once every 2 min (aggregation)
-  → stores entire result as single blob in Redis:
-    SET "trending_products" = "[product_A, product_B, ...]"
-  → 10,000 users/sec all do: GET "trending_products" from Redis
-  → ClickHouse gets 1 query per 2 min instead of 10,000/sec
+Secondary reason — low query volume:
+  Grafana: 120 queries/hour. ClickHouse handles thousands/sec. No caching needed.
 
-Redis here = cache of one aggregated result, served to many as single key lookup
-Redis is NOT computing the aggregation — ClickHouse does that once
-```
+How "load in 2 sec" achieved:
+  Flink writes pre-aggregated rows (50 rows, not 25M events)
+  ClickHouse reads 50 rows → <10ms
+  Grafana renders → <500ms
+  Total: well under 2 sec
 
 Add Redis between ClickHouse and consumers ONLY when:
-```
-- SAME aggregated result needed by MANY concurrent consumers (10,000 users/sec)
-- Result changes slowly (every few minutes) — caching is safe
-- Computing fresh each time would overload ClickHouse
-
-Do NOT add Redis when:
-- Each consumer needs DIFFERENT result (different filter, different time range)
-- Query volume is low (Grafana 120 queries/hour)
-- Result changes every few seconds (cache would serve stale data)
-```
-
-At GB scale with a small ops team — none of the Redis conditions apply.
-
-#### Why Not Use Snowflake for Ops Dashboard
-
-```
-Grafana queries Snowflake every 30 seconds:
-→ Snowflake cold query = 3-10 seconds minimum
-→ Dashboard always shows stale data
-→ During sale event with 100 analysts also querying = contention
-→ Cost: Snowflake charges per query compute
-
-ClickHouse:
-→ query on pre-aggregated rows = <100ms
-→ dedicated for dashboard only, no contention
-→ Cost: fixed small machine ~$50/month
-```
-
-#### Why Not Use ClickHouse for Business Dashboard
-
-```
-Business analyst query:
-"Show me revenue by restaurant category,
- compare last 4 weeks, broken down by city,
- only for orders above $500"
-
-ClickHouse: holds only last few hours of data
-→ cannot answer multi-week historical queries
-→ no joins across user/restaurant/driver tables
-
-Snowflake: holds months of clean joined data
-→ answers this in 5-8 seconds
-→ purpose built for this
-```
-
-#### Grafana vs Tableau — Key Difference
-
-```
-Grafana:
-- Connects to ClickHouse
-- Pre-built time-series panels
-- Auto-refreshes automatically
-- Used by: engineers, ops team
-- Good for: "is something broken right now?"
-
-Tableau/Looker:
-- Connects to Snowflake
-- Drag and drop exploration
-- Manual refresh, on-demand
-- Used by: business teams, executives
-- Good for: "why did revenue drop last Tuesday?"
+  SAME result needed by MANY concurrent users (10,000 users/sec homepage)
+  Result changes slowly (cache is safe)
+  Redis stores the aggregated result as a BLOB, not a query result
+  → SET "trending_products" = "[A, B, C...]" → GET by all 10,000 users
 ```
 
 #### Tool Summary
 
 | Tool | Role | READ/WRITE |
 |---|---|---|
-| PostgreSQL | Saves orders (OLTP) | App WRITEs, Debezium READs WAL |
-| Debezium | Captures WAL changes | READs WAL, WRITEs to Kafka |
-| Kafka | Routes events to all consumers | Consumers READ |
-| Payment/Driver Service | OLTP consumers | READ from Kafka |
+| PostgreSQL | OLTP source of truth | App WRITEs, Debezium READs WAL |
+| Debezium | CDC connector | READs WAL, WRITEs Kafka |
+| Kafka | Event bus | Consumers READ |
+| Payment/Driver Service | OLTP consumers | READ Kafka |
 | S3 | Raw Parquet storage | Kafka WRITEs, Spark READs |
 | Flink | Real-time aggregation | READs Kafka, WRITEs ClickHouse |
-| Spark | Historical aggregation + cleaning | READs S3, WRITEs Snowflake |
+| Spark | Historical cleaning + joining | READs S3, WRITEs Snowflake |
 | ClickHouse | Real-time dashboard store | Flink WRITEs, Grafana READs |
 | Snowflake | Historical dashboard store | Spark WRITEs, Tableau READs |
-| Grafana | Ops dashboard (auto-refresh 30s) | READs ClickHouse |
+| Grafana | Ops dashboard (auto-refresh) | READs ClickHouse |
 | Tableau/Looker | Business dashboard (on-demand) | READs Snowflake |
 
 #### GB Scale Reality
-
 ```
-PostgreSQL       → 1 medium machine   ($50/month)
-Kafka + Debezium → 1 small machine    ($30/month)
-Flink            → 1 small machine    ($50/month)
-ClickHouse       → 1 small machine    ($50/month)
-Spark (on-demand)→ runs hourly        ($20/month)
-Snowflake        → pay per query      ($50/month at GB scale)
-S3               → GB scale           ($10/month)
+PostgreSQL → $50   Kafka+Debezium → $30   Flink → $50   ClickHouse → $50
+Spark → $20        Snowflake → $50         S3 → $10
 Total: ~$260/month
 ```
 
 #### Interview Answer
-
-*"Design real-time + business dashboards alongside order processing at GB scale"*
-
 ```
 1. App WRITEs to PostgreSQL (OLTP)
-2. Debezium CDC → Kafka → Payment/Driver services
+2. Debezium CDC → Kafka → Payment/Driver (OLTP)
 3. Kafka → Flink → pre-aggregated results → ClickHouse
-4. Grafana READs ClickHouse every 30s → ops team sees live view
-5. Kafka → S3 (raw) → Spark hourly → clean joined data → Snowflake
+4. Grafana READs ClickHouse every 30s → ops team live view
+5. Kafka → S3 → Spark hourly → clean joined data → Snowflake
 6. Tableau READs Snowflake → business team explores history
-7. Two dashboards, two tools, same underlying data
+
+Key insight: "Two tools for two consumers. ClickHouse: speed, last few hours, dedicated.
+Snowflake: history, flexible SQL, shared. Never compromise either for the other."
 ```
 
-Key insight: *"Never use one tool for both dashboards. ClickHouse for real-time ops — cheap, fast, last few hours only. Snowflake for business history — flexible SQL, weeks of data. Each tool does one job well."*
+#### Interview Questions
+
+**Q1. Why not Snowflake for both dashboards?**
+```
+Cold start 3-10 sec, shared with analysts = contention during sale event.
+ClickHouse: always warm, dedicated, <10ms. Fixed cost vs per-query billing.
+```
+
+**Q2. Dashboard shows order drop — real issue or pipeline problem?**
+```
+1. Check Kafka: app still producing events? No → real business issue.
+2. Check Flink: running? consumer lag growing? Stopped → pipeline issue.
+3. Check ClickHouse: when was last write? Old → Flink→ClickHouse broken.
+4. Cross-check PostgreSQL directly:
+   SELECT COUNT(*) FROM orders WHERE created_at > NOW() - INTERVAL 5 MIN
+   PostgreSQL normal → pipeline issue. PostgreSQL also low → real issue.
+Always add panel: "Pipeline health: last data received X seconds ago"
+```
+
+**Q3. How to design alerting?**
+```
+Business alerts (ClickHouse → Grafana Alert):
+  orders_count < 100 in last 5 min during lunch → page oncall
+  payment_failure_rate > 5% last 10 min → page oncall
+
+Pipeline alerts:
+  last_clickhouse_write > 2 min → "Dashboard data stale"
+  Flink checkpoint failed → "Stream processing issue"
+  Kafka consumer lag > 100K → "Processing falling behind"
+
+Route separately: business alerts → ops Slack. Pipeline alerts → data eng oncall.
+```
+
+**Q4. Data scientist wants to run ML experiments on live data?**
+```
+Never give direct ClickHouse access — one heavy query = dashboard breaks during sale.
+Option 1: Snowflake (already exists, 1-hour delay acceptable for experiments)
+Option 2: S3 + Databricks notebook (reads raw data, no shared production resources)
+Governance: ClickHouse = dedicated ops. Snowflake/S3 = DS/analysts. DB = app only.
+```
 
 ---
+
+### Scenario 4 — GB + Real-time + Another System
+
+#### Problem Statement
+```
+Size:    5 GB/day, ~25M events/day
+Speed:   Real-time — milliseconds to seconds
+Use:     Another System consuming our events (notification, inventory, fraud, loyalty)
+Who:     Food delivery startup — order placed → multiple downstream systems must react
+```
+
+#### Full Architecture
+
+```
+[Customer places order]
+        ↓
+[App] ──1. WRITE (HTTP)──────→ [PostgreSQL]        ← saves order (OLTP)
+  │                                   │
+  │                             READ (WAL)
+  │                                   │
+  │                            [Debezium CDC]
+  │                                   │
+  │                                 WRITE
+  │                                   │
+  │                               [Kafka]
+  │                            (Schema Registry validates all messages)
+  │                                   │
+  │         READ (own offset)         │        READ (own offset)
+  │   ┌───────────────────────────────┼──────────────────────┐
+  │   ↓                               ↓                      ↓
+  │ [Notification Service]   [Inventory Service]   [Loyalty Service]
+  │   READs Kafka                READs Kafka          READs Kafka
+  │   idempotency check          decrements stock     adds points
+  │   WRITEs to PostgreSQL             │
+  │   (notification_sent table)        ↓
+  │         │                 [Inventory DB]
+  │         ↓
+  │   [Push Notification]
+  │   sent to user
+  │
+  │
+  └──2. REQUEST (HTTP)──→ [Fraud Service]   ← synchronous, BEFORE order confirmed
+                                │
+                              READ
+                                │
+                           [Redis — fraud features]
+                           (pre-computed by Flink)
+                                │
+                          RESPONSE: score
+                                │
+              If score > 0.8 → reject. Else → confirm order → Debezium picks up
+```
+
+#### Quick Recap — New Concepts Introduced
+```
+Schema Registry    → validates Kafka message schemas, prevents breaking changes
+Consumer Groups    → each system has own offset, fully independent read pace
+Idempotency Check  → prevents duplicate notifications on Kafka replay
+DLQ                → Dead Letter Queue, stores failed events for retry
+Exactly-Once       → Kafka default = at-least-once. Idempotency = exactly-once behavior
+Fraud Service      → synchronous HTTP (not Kafka) — must respond BEFORE order confirmed
+```
+
+#### Key Design Decisions
+
+**Fraud detection is synchronous HTTP, not Kafka:**
+```
+Kafka = async. You publish event and move on. No way to wait for a response.
+Fraud must BLOCK order confirmation — cannot proceed without a score.
+Pattern: App → HTTP → Fraud Service → Redis features → score → RESPOND in <200ms
+Order enters Kafka pipeline ONLY after fraud check passes.
+```
+
+**Exactly-once delivery (Kafka gives at-least-once by default):**
+```
+Problem: Notification Service crashes after sending push notification,
+         before committing Kafka offset. Kafka replays event. Duplicate push sent.
+
+Fix — Idempotency Check:
+1. CHECK PostgreSQL: SELECT * FROM notifications_sent WHERE order_id=98765
+   → exists? → skip (already sent)
+   → not exists? → send → INSERT record
+2. Commit Kafka offset
+
+Even if crash replays event → check catches it → no duplicate
+```
+
+**Schema Registry prevents silent breaking changes:**
+```
+Producer registers schema → Consumer validates schema version ID in each message
+Adding optional field   → backward compatible → allowed
+Renaming field          → breaking change    → blocked until consumers updated
+Process: notify consumers → deploy consumers handling both → deploy producer → cleanup
+```
+
+**Consumer Group isolation:**
+```
+Notification Service offset: Partition 0: 1,523  Partition 1: 987
+Inventory Service offset:    Partition 0: 1,521  Partition 1: 990
+
+Completely independent. Notification slow → does not block Inventory.
+Inventory crashes → does not affect Notification.
+```
+
+**Dead Letter Queue (DLQ):**
+```
+Push notification service is down → event processing fails
+Main consumer: moves failed event to "order-events-dlq" topic
+DLQ consumer: retries with exponential backoff (1min → 5min → 30min → 2hr)
+After 5 failures → alert data engineering team
+Main consumer: unblocked, continues processing new events
+```
+
+#### Tool Summary
+
+| Tool | Role | READ/WRITE |
+|---|---|---|
+| PostgreSQL | OLTP + idempotency store | App WRITEs, Debezium READs WAL, Services WRITE idempotency |
+| Debezium | CDC connector | READs WAL, WRITEs Kafka |
+| Kafka | Event bus with consumer isolation | Each service READs own offset |
+| Schema Registry | Schema validation | Producers WRITE schema, consumers READ/validate |
+| Notification Service | Sends push notifications | READs Kafka, WRITEs idempotency to PostgreSQL |
+| Inventory Service | Decrements stock | READs Kafka, WRITEs inventory DB |
+| Loyalty Service | Adds points | READs Kafka, WRITEs loyalty DB |
+| Fraud Service | Scores transactions synchronously | READs Redis, RESPONDs to App |
+| Redis | Fraud features (pre-computed by Flink) | Flink WRITEs, Fraud Service READs |
+| DLQ | Failed event retry store | Kafka WRITEs failed events, DLQ consumer READs |
+
+#### GB Scale Reality
+```
+PostgreSQL → $50   Kafka+Debezium+Schema Registry → $30
+Notification/Inventory/Loyalty Services → $30 each
+Fraud Service → $50   Redis → $30
+Total: ~$220/month
+```
+
+#### Interview Answer
+```
+1. App WRITEs to PostgreSQL (OLTP, synchronous)
+2. App makes parallel REQUEST to Fraud Service (synchronous HTTP, <200ms)
+   → Fraud READs Redis features → scores → RESPONDs
+   → Fraud > 0.8: reject. Clean: proceed.
+3. Debezium CDC READs WAL → WRITEs Kafka
+4. Multiple consumer groups READ Kafka independently:
+   → Notification: idempotency check → send push → WRITE record to PostgreSQL
+   → Inventory: decrement stock
+   → Loyalty: add points
+5. Schema Registry validates all messages
+6. DLQ handles failures with exponential backoff
+
+Key insight: "Fraud is synchronous HTTP — must respond before order confirmed.
+Everything else is async Kafka. Idempotency = exactly-once behavior from at-least-once system."
+```
+
+#### Interview Questions
+
+**Q1. How to ensure no duplicate notifications?**
+```
+Idempotency check pattern:
+Before processing: SELECT * FROM notifications_sent WHERE order_id=X AND type=Y
+→ exists → skip. Not exists → send → INSERT → commit Kafka offset.
+
+Even if service crashes and Kafka replays → check catches duplicate.
+This converts Kafka's at-least-once into exactly-once behavior.
+```
+
+**Q2. New team wants to consume order events — how to onboard?**
+```
+1. Create new consumer group — completely isolated from existing consumers
+2. Register with Schema Registry — get notified of schema changes
+3. Set up DLQ for their service
+4. Start consuming from earliest offset if they need historical catchup
+5. They never touch Kafka topic configuration — isolated by design
+
+No impact on Notification, Inventory, or Loyalty Services whatsoever.
+```
+
+**Q3. How to handle 10x traffic spike?**
+
+| Component | Handles 10x? | Fix | Pre-event Action |
+|---|---|---|---|
+| App servers | No | Auto-scale (Kubernetes) | Pre-warm |
+| PostgreSQL | Partially | Read replicas + PgBouncer | Vertical scale |
+| Debezium | Yes (may lag) | Catches up from WAL | Increase heap |
+| Kafka | Yes — built for this | Increase partitions | Pre-provision disk |
+| Schema Registry | Yes | Stateless, cache locally | Pre-scale |
+| Notification Service | No | Scale horizontally (stateless) | Pre-scale |
+| Fraud Service | No | Scale + Redis cluster | Pre-scale Redis |
+| Redis | Partially | Redis Cluster or ElastiCache | Pre-scale |
+| DLQ | Yes | More partitions if needed | Pre-provision |
+
+```
+Golden Rule: Kafka absorbs spike downstream. Upstream bottleneck = App + PostgreSQL + Fraud.
+Redis single machine is risk — pre-cluster before sale.
+Fraud Service response time must stay <200ms even at 10x — scale it aggressively.
+All consumer services are stateless → easy horizontal scaling.
+
+Leadership insight: "Most consumers are stateless and trivially auto-scale.
+Real risks are Fraud latency SLA and Redis. Both must be pre-scaled before event."
+```
+
+**Q4. Team argues Kafka alone is enough — no need for PostgreSQL as OLTP source?**
+```
+Kafka is NOT a database:
+- 7-day retention → can't query order placed 30 days ago
+- No random reads by order_id
+- No transactions — if Kafka write succeeds but downstream fails, no rollback
+- Dual write risk: if app writes to Kafka and PostgreSQL separately → one can fail
+
+CDC pattern: app writes ONLY to PostgreSQL (ACID guaranteed).
+Debezium reads WAL AFTER confirmed write → no dual write.
+PostgreSQL = source of truth. Kafka = event bus. Never conflate the two.
+```
 
 ---
 
