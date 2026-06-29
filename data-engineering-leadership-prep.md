@@ -50,6 +50,88 @@
 | 11 | GB + Batch + Dashboards | Fixed executive KPI dashboard loads instantly once daily | dbt builds daily_kpi_summary (1 row/day, 6 KPIs). Dashboard reads 1 row = instant load. Pre-aggregate everything — never query raw table at dashboard open time. | daily_kpi_summary dbt model | ClickHouse, real-time pipeline | [diagram](#scenario-11--gb--batch--dashboards) |
 | 12 | GB + Batch + Another System | External partners/regulators expect scheduled FILE transfers (CSV/XML), not events | Spark generates formatted files → validate (row count, checksum, schema) → deliver via SFTP/S3/API → track acknowledgement in PostgreSQL. File schema is a contract. | File export Spark job, SFTP delivery, delivery ack log | Kafka consumers, Redis, real-time components | [diagram](#scenario-12--gb--batch--another-system) |
 
+### Generic Full Architecture — All 12 GB Scenarios
+
+```
+                          [App]
+                            │
+          ┌─────────────────┼──────────────────────────────────┐
+          │                 │                                   │
+    WRITE (always)    WRITE (always)                  REQUEST (S4, S8 — fraud sync)
+          │                 │                                   │
+   [PostgreSQL]      [PostgreSQL]                      [Fraud Service]
+   OLTP store        idempotency /                          │
+   (all S)           staging table                        READ
+          │          (S4, S8, S12)                           │
+    READ (WAL)                                         [Redis]
+          │                                        fraud features
+   [Debezium CDC]                                  (Flink writes)
+          │
+        WRITE
+          │
+       [Kafka] ──────────────────────────────── WRITE ──→ [S3]
+    (Schema Registry                                   raw Parquet
+     for S4, S8)                                  (permanent, all S)
+          │                                              │
+    ┌─────┤                                    ┌─────────┼──────────┐
+  READ   READ                                  │         │          │
+    │     │                                    │         │          │
+[Payment] [Driver]                        [Flink]  [Spark       [Spark
+ Service   Service                        always   micro-batch]  nightly +
+  OLTP      OLTP                          running  every 5 min   Airflow]
+(all S)   (all S)                         S1-S4    S5-S8         S9-S12
+                                            │          │              │
+                         ┌──────────────────┤          │    ┌─────────┤
+                         │                  │          │    │         │
+                       WRITE              WRITE      WRITE WRITE    WRITE
+                         │                  │          │    │         │
+                    [ClickHouse]         [Redis]  [ClickHouse /  [Snowflake]
+                    ops analytics        Feature   Snowflake]    S9, S10, S11
+                    S1, S3               Store     S5, S7
+                         │              S2,S4,S6       │        [Model Registry]
+                       READ                │         READ        S10 (MLflow)
+                         │              READ           │
+                     [Grafana]            │         [Grafana /     [dbt]
+                     ops dashboard    [ML Svc]      Tableau]      transforms
+                     S1, S3, S5       on-demand     S5, S7, S9    S9, S11
+                                      S2             S11
+                                   [App GET]
+                                   pre-computed
+                                   S6
+
+          ─── Another System consumers (S4, S8, S12) ───
+
+          [Kafka consumers]          [DB polling]       [File Export]
+          always-on, own offset      every 5-10 min     nightly
+          S4 only                    S8 only             S12 only
+                │                        │                    │
+     ┌──────────┼─────────┐    [PostgreSQL staging]    [SFTP / S3 / API]
+     │          │         │         │                   to partner/regulator
+[Notif.]  [Inventory] [Loyalty]  [Loyalty / Partner /
+ Svc        Svc        Svc        Report Svc poll]
+ S4         S4         S4         S8
+
+ ──── Idempotency check before every action (S4, S8) ────
+ ──── DLQ for failed events (S4) ────────────────────────
+```
+
+**How to read this diagram:**
+```
+S1-S4   = Real-time scenarios     (Flink path)
+S5-S8   = Near RT scenarios       (Spark micro-batch path)
+S9-S12  = Batch scenarios         (Spark nightly + Airflow path)
+
+Columns by use case:
+  Analytics / Dashboards → ClickHouse (real-time) or Snowflake (near RT / batch)
+  ML                     → Redis Feature Store → ML Service (S2) or App GET (S6) or Model Registry (S10)
+  Another System         → Kafka consumers (S4) or DB polling (S8) or File export (S12)
+
+Always present in ALL scenarios:
+  PostgreSQL (OLTP) + Debezium + Kafka + S3
+  Payment Service + Driver Service (OLTP consumers)
+  Fraud Service via sync HTTP (S4, S8 — any scenario with Another System)
+```
+
 ### Speed Pattern (what changes with processing speed)
 
 | Speed | SLA | Key Tool | Why |
