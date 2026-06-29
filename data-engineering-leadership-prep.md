@@ -33,6 +33,25 @@
 
 ---
 
+## Scenario Quick Reference — Last Minute Revision
+
+| # | Scenario | Unique Requirement | Key Design Choice | Added vs Previous | Dropped vs Previous | Architecture |
+|---|---|---|---|---|---|---|
+| 1 | GB + Real-time + Analytics | Aggregate across all events in seconds. OLTP must not slow down | Flink pre-aggregates in RAM → ClickHouse (dedicated). CDC via Debezium keeps PostgreSQL as single source | PostgreSQL, Debezium, Kafka, Flink, ClickHouse, S3, Grafana | — (baseline) | [diagram](#scenario-1--gb--real-time--analytics) |
+| 2 | GB + Real-time + ML | Per-order prediction must return in <200ms alongside order confirmation | App makes 2 parallel HTTP calls. Redis as online Feature Store. Lambda Architecture: Flink (real-time features) + Spark (historical features) | Redis, ML Inference Service, Spark | ClickHouse, Grafana | [diagram](#scenario-2--gb--real-time--ml) |
+| 3 | GB + Real-time + Dashboards | Two audiences: ops (seconds) + business (historical). One tool cannot serve both | Speed Stack: Flink→ClickHouse→Grafana. Scale Stack: S3→Spark→Snowflake→Tableau. Same Kafka feeds both | ClickHouse, Grafana, Snowflake, Tableau | Redis, ML Service | [diagram](#scenario-3--gb--real-time--dashboards) |
+| 4 | GB + Real-time + Another System | Downstream machines take ACTIONS. Duplicate = real damage. Fraud must block order | Schema Registry (schema stability). Consumer Groups (isolation). Idempotency (exactly-once). DLQ (retry). Fraud = sync HTTP, not Kafka | Schema Registry, Consumer Groups, Idempotency store, DLQ, Fraud Service | ClickHouse, Snowflake, Grafana, Tableau | [diagram](#scenario-4--gb--real-time--another-system) |
+| 5 | GB + Near RT + Analytics | Same analytics as S1 but 5-15 min delay acceptable | Flink → Spark micro-batch (every 5 min from S3). $50/month cheaper. Backfill is free | Spark Structured Streaming | Flink | [diagram](#scenario-5--gb--near-real-time--analytics) |
+| 6 | GB + Near RT + ML | — | — | — | — | coming soon |
+| 7 | GB + Near RT + Dashboards | — | — | — | — | coming soon |
+| 8 | GB + Near RT + Another System | — | — | — | — | coming soon |
+| 9 | GB + Batch + Analytics | — | — | — | — | coming soon |
+| 10 | GB + Batch + ML | — | — | — | — | coming soon |
+| 11 | GB + Batch + Dashboards | — | — | — | — | coming soon |
+| 12 | GB + Batch + Another System | — | — | — | — | coming soon |
+
+---
+
 ## The 3 Fundamental Questions (Always Ask These First)
 
 When dealing with large data volumes, every solution starts with:
