@@ -1139,7 +1139,7 @@ Who:     Food delivery startup — order placed → multiple downstream systems 
 ```
 [Customer places order]
         ↓
-[App] ──1. WRITE (HTTP)──────→ [PostgreSQL]        ← saves order (OLTP)
+[App] ──1. WRITE (HTTP)──────→ [PostgreSQL]        ← saves order status="pending" (OLTP)
   │                                   │
   │                             READ (WAL)
   │                                   │
@@ -1147,33 +1147,45 @@ Who:     Food delivery startup — order placed → multiple downstream systems 
   │                                   │
   │                                 WRITE
   │                                   │
-  │                               [Kafka]
-  │                            (Schema Registry validates all messages)
-  │                                   │
-  │         READ (own offset)         │        READ (own offset)
-  │   ┌───────────────────────────────┼──────────────────────┐
-  │   ↓                               ↓                      ↓
-  │ [Notification Service]   [Inventory Service]   [Loyalty Service]
-  │   READs Kafka                READs Kafka          READs Kafka
-  │   idempotency check          decrements stock     adds points
-  │   WRITEs to PostgreSQL             │
-  │   (notification_sent table)        ↓
-  │         │                 [Inventory DB]
-  │         ↓
-  │   [Push Notification]
-  │   sent to user
-  │
-  │
-  └──2. REQUEST (HTTP)──→ [Fraud Service]   ← synchronous, BEFORE order confirmed
-                                │
-                              READ
-                                │
-                           [Redis — fraud features]
-                           (pre-computed by Flink)
-                                │
-                          RESPONSE: score
-                                │
-              If score > 0.8 → reject. Else → confirm order → Debezium picks up
+  │                               [Kafka] ◄─────────────────────────────────────────┐
+  │                            (Schema Registry)                                     │
+  │                                   │                                              │
+  │              READ (own offset)    │    READ (own offset)    READ (own offset)    │
+  │   ┌───────────────────────────────┼──────────────────┬──────────────────────┐   │
+  │   ↓                               ↓                  ↓                      ↓   │
+  │ [Notification]            [Inventory Svc]      [Loyalty Svc]            [Flink]  │
+  │   Service                  decrements           adds points             state    │
+  │   idempotency check         stock                                       in RAM   │
+  │   WRITEs PostgreSQL           │                                           │      │
+  │   (notification_sent)         ↓                                    WRITE every  │
+  │         │                [Inventory DB]                              30 seconds  │
+  │         ↓                                                                 │      │
+  │   [Push Notification]                                                     ↓      │
+  │   sent to user                                              [Redis — fraud features]
+  │                                                             user:USR-123:order_velocity
+  │                                                             user:USR-123:avg_order_amount
+  │                                                             device:DEV-789:flagged
+  │                                                                           │
+  │                                                                         READ
+  │                                                                           │
+  └──2. REQUEST (HTTP)──────────────────────────→ [Fraud Service]  ◄─────────┘
+                                                    runs ML model
+                                                    (~15ms total)
+                                                         │
+                              ┌──────────────────────────┴──────────────────────────┐
+                        score > 0.8                                           score < 0.8
+                              │                                                      │
+                        REJECT order                                         APPROVE order
+                     UPDATE PostgreSQL                                    UPDATE PostgreSQL
+                     status = "rejected"                                  status = "confirmed"
+                     show user error                                      show user "Confirmed!"
+                                                                                     │
+                                                                          Debezium picks up
+                                                                          confirmed event
+                                                                          → Kafka pipeline
+                                                                          → Notification,
+                                                                            Inventory,
+                                                                            Loyalty react
 ```
 
 #### Quick Recap — New Concepts Introduced
