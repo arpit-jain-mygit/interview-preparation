@@ -657,7 +657,38 @@ Image processing happens in background
 
 ---
 
-## Complete Architecture
+## Complete Architecture: Scalable Web Application (Social Media Example)
+
+### System Type
+
+This is a **general-purpose web application architecture** designed to scale from 1,000 to 1 million+ daily active users. The example focuses on a social media platform with:
+
+- **User authentication & session management** — track who's logged in
+- **Post creation/publishing** — write-heavy operations with validation
+- **Feed loading & caching** — read-heavy operations with hot data
+- **Asynchronous media processing** — upload images without blocking user
+- **Geographic distribution** — serve users worldwide with low latency
+
+### Real-World Examples
+
+This pattern is used by:
+- ✅ **Facebook, Twitter, Instagram** — user feeds + post creation
+- ✅ **Reddit, Hacker News** — community feeds + ranking algorithms
+- ✅ **Medium, Substack** — content creation + recommendation
+- ✅ **YouTube, TikTok** — media feeds + recommendation engines
+- ✅ **Slack, Discord** — messaging + notification systems
+- ✅ **Uber, Lyft** — ride-sharing feeds + driver/passenger matching
+
+### Key Characteristics
+
+| Aspect | Pattern |
+|--------|---------|
+| **Web Servers** | Stateless (can scale horizontally) |
+| **Cache Layer** | Handles read amplification (1000x speedup) |
+| **Database** | Master-slave replication (read replicas) |
+| **Async Processing** | Decouples slow operations (image, email) |
+| **Geographic** | CDN for static content + multi-region setup |
+| **Bottlenecks Addressed** | CPU, memory, disk I/O, network bandwidth |
 
 ### Final System Design
 
@@ -718,18 +749,54 @@ Image processing happens in background
 
 ---
 
+## When to Use This Architecture
+
+**✓ Good For:**
+- Social media platforms (feeds, posts, comments)
+- Content sharing platforms (images, videos, documents)
+- Community-driven applications (forums, Q&A)
+- User-generated content systems
+- Real-time messaging applications
+- Rapid growth from 1K to 1M+ users
+
+**✗ NOT Good For:**
+- Real-time analytics (use stream processing instead)
+- Payment systems (use specialized payment platforms)
+- High-frequency trading (need sub-millisecond latency)
+- IoT sensor data (use time-series databases)
+- Machine learning training (use data warehouses)
+
+---
+
 ## Key Takeaways
 
+### Scaling Principles
 ```
-✓ Start simple, scale incrementally
-✓ Add components based on bottlenecks
-✓ Separate concerns (web, cache, database)
-✓ Use multiple servers (horizontal scaling)
-✓ Replicate data for reliability
-✓ Distribute geographically for latency
-✓ Decouple services with message queues
-✓ Keep state external for stateless servers
-✓ Monitor and measure everything
+✓ Start simple (single server), scale incrementally
+✓ Add components based on bottlenecks (measure first!)
+✓ Separate concerns (web, cache, database, queue)
+✓ Scale horizontally (more servers) not vertically (bigger servers)
+✓ Replicate data for reliability (master-slave)
+✓ Distribute geographically for latency (CDN + multi-region)
+```
+
+### Architecture Decisions
+```
+✓ Keep web servers STATELESS → can add/remove servers anytime
+✓ Cache EVERYTHING that's read frequently → 1000x speedup
+✓ Use read replicas → distribute query load
+✓ Decouple with message queues → prevent cascading failures
+✓ Async processing → unblock user-facing requests
+✓ Monitor and measure → know where bottlenecks are
+```
+
+### Common Mistakes to Avoid
+```
+✗ Premature optimization — don't add complexity you don't need
+✗ Storing state in servers — kills horizontal scaling
+✗ Single point of failure — replicate everything
+✗ No monitoring — you can't improve what you don't measure
+✗ Ignoring CAP theorem — understand consistency vs availability tradeoffs
 ```
 
 ---
