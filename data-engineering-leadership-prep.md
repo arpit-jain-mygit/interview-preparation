@@ -507,6 +507,524 @@ Grafana Dashboard: "Show NYC metrics" → 0.2s response
 
 ---
 
+## **Snowflake: Batch Analytics Data Warehouse**
+
+### **What is Snowflake? (Simple)**
+
+Snowflake is a **cloud data warehouse** that stores cleaned, transformed, historical data and answers analytical questions fast (seconds to minutes).
+
+**Key Difference from ClickHouse:**
+- **ClickHouse:** Real-time (1s latency), always-on, live dashboards
+- **Snowflake:** Batch (nightly), settled historical data, business intelligence
+
+### **How Data Flows: Spark → Snowflake → Analytics**
+
+```
+UPSTREAM: Batch Processing (Nightly)
+┌──────────────────────────────────┐
+│ Object Storage (S3/GCS)          │
+│ Raw Parquet files (daily)        │
+└──────────────┬───────────────────┘
+               ↓
+        ┌──────────────────────────┐
+        │ SPARK (Batch Processing) │
+        │                          │
+        │ • Read raw files         │
+        │ • Join multiple tables   │
+        │ • Clean & transform data │
+        │ • dbt: SQL transformations
+        │ • Output: Clean tables   │
+        └──────────────┬───────────┘
+                       ↓
+                   (WRITE)
+                       ↓
+        ┌──────────────────────────┐
+        │ SNOWFLAKE (Data Warehouse)
+        │                          │
+        │ Stores 3 types of tables:│
+        │ • fct_orders (100M rows) │
+        │ • dim_customers (10M)    │
+        │ • kpi_daily (1 row/day)  │
+        └──────────────┬───────────┘
+
+DOWNSTREAM: Analytics
+                       ↓
+        ┌──────────────────────────┐
+        │ • Dashboards (Tableau)   │
+        │ • BI Reports (Looker)    │
+        │ • ML Training (features) │
+        │ • Executive KPIs         │
+        └──────────────────────────┘
+```
+
+### **What Snowflake Stores (3 Types of Tables)**
+
+**1. Fact Tables (Transactions)**
+```
+fct_orders (100M rows):
+├─ order_id, customer_id, restaurant_id
+├─ order_date, amount, status
+└─ Updated nightly by Spark
+
+fct_events (1B rows):
+├─ event_id, user_id, event_type
+├─ timestamp, properties
+└─ Updated daily from Message Bus
+```
+
+**2. Dimension Tables (Reference Data)**
+```
+dim_customers (10M rows):
+├─ customer_id, name, segment, city
+├─ lifetime_value, signup_date
+└─ Updated weekly
+
+dim_products (1M rows):
+├─ product_id, name, category, price
+└─ Static (rarely changes)
+
+dim_dates (15 years):
+├─ date, day_of_week, month, quarter
+└─ Reference for time-based queries
+```
+
+**3. Summary Tables (Pre-aggregated)**
+```
+kpi_daily (10K rows - 1 per day):
+├─ total_revenue, order_count, avg_order_value
+└─ Updated nightly
+
+cohort_analysis (monthly):
+├─ cohort, retention_week_1, retention_week_4
+└─ Updated weekly
+```
+
+### **Real Business Examples: How Analytics Use Snowflake**
+
+**Example 1: Dashboard - "Revenue Today?"**
+```sql
+-- Query runs every 5 minutes
+SELECT * FROM kpi_daily WHERE date = CURRENT_DATE()
+-- Returns: $2.3M revenue, 23,000 orders
+-- Response time: 0.1 seconds (pre-computed)
+```
+
+**Example 2: Report - "Revenue by Customer Segment?"**
+```sql
+-- Analyst asks this question (runs once)
+SELECT 
+  c.segment,
+  COUNT(DISTINCT c.customer_id) as customers,
+  SUM(f.amount) as total_revenue
+FROM fct_orders f
+JOIN dim_customers c ON f.customer_id = c.customer_id
+WHERE f.date >= DATE_SUB(day, 30, CURRENT_DATE())
+GROUP BY c.segment
+ORDER BY total_revenue DESC
+
+-- Returns 5 rows (Premium, VIP, Regular, etc.)
+-- Response time: 1 second
+```
+
+**Example 3: ML Training Data**
+```sql
+-- Data scientist builds churn model
+SELECT 
+  customer_id,
+  lifetime_value,
+  days_since_last_order,
+  order_count_last_30_days,
+  has_churned (target)
+FROM dim_customers
+WHERE created_date >= '2023-01-01'
+
+-- Returns 5M rows
+-- Response time: 5 seconds
+-- Exported to ML framework for training
+```
+
+### **Snowflake vs ClickHouse: When to Use Each**
+
+| Dimension | ClickHouse | Snowflake |
+|-----------|-----------|-----------|
+| **Freshness** | Real-time (1s) | Batch (nightly) |
+| **Updates** | Continuous | Daily/hourly |
+| **Latency** | <1 second | 1-30 seconds |
+| **Data volume** | 100s GB → TB | 100s TB → PB |
+| **Typical question** | "Orders NOW?" | "Revenue YESTERDAY?" |
+| **Typical user** | Operations team | Business analysts |
+| **Cost model** | Storage-based | Compute + storage |
+| **Best for** | Live dashboards | BI reports, ML training |
+
+---
+
+## **Fact & Dimension Tables: Star Schema Pattern**
+
+### **Simple Analogy: Receipt Book + Customer File**
+
+Imagine Joe's Pizza keeps two separate folders:
+
+**Folder 1: Receipt Book (Fact Table)**
+```
+Receipt 1001: Customer 5432, Restaurant 101, $45.50
+Receipt 1002: Customer 5433, Restaurant 102, $32.00
+Receipt 1003: Customer 5434, Restaurant 101, $28.75
+Receipt 1004: Customer 5432, Restaurant 103, $55.25
+...
+Receipt 1000000: Customer 9999, Restaurant 999, $78.99
+
+(1M receipts, just IDs and numbers)
+```
+
+**Folder 2: Customer File (Dimension Table)**
+```
+Customer 5432: Alice, Premium, NYC
+Customer 5433: Bob, Regular, LA
+Customer 5434: Carol, VIP, Chicago
+Customer 5435: David, Regular, NYC
+...
+Customer 9999: Zara, Premium, Boston
+
+(10K customers, detailed info)
+```
+
+### **How They Work Together**
+
+**Question: "How much did Premium customers spend?"**
+
+```
+Step 1: Find Premium in Customer File
+  → Alice (5432), Carol (5434), Zara (9999), etc.
+
+Step 2: Find their receipts in Receipt Book
+  → 5432, 5434, 9999, ...
+
+Step 3: Sum their spending
+  → Alice: $100.75
+  → Carol: $84.00
+  → Zara: $250.50
+
+Answer: Zara spent the most ✓
+```
+
+### **Why Separate Tables? (The KEY Difference)**
+
+**Bad Way: One Big Table (Denormalized)**
+```
+Order_ID │ Customer_Name │ Segment  │ Restaurant_Name │ Amount
+─────────┼───────────────┼──────────┼─────────────────┼────────
+1001     │ Alice         │ Premium  │ Joe's Pizza     │ $45.50
+1002     │ Bob           │ Regular  │ Pho King Good   │ $32.00
+1003     │ Carol         │ VIP      │ Joe's Pizza     │ $28.75
+1004     │ Alice         │ Premium  │ Taco Bell       │ $55.25
+
+Problems:
+❌ "Alice" appears 2 times (redundant)
+❌ Large storage (100M rows × many columns)
+❌ Slow queries (reading lots of text)
+❌ If Alice moves, update 2 rows (consistency issues)
+```
+
+**Good Way: Two Separate Tables (Star Schema)**
+```
+FACT TABLE (100M rows):          DIMENSION TABLE (10K rows):
+Order_ID │ Customer_ID │ Amount  Customer_ID │ Name  │ Segment │ City
+─────────┼─────────────┼────────  ────────────┼───────┼─────────┼──────
+1001     │ 5432        │ $45.50   5432        │ Alice │ Premium │ NYC
+1002     │ 5433        │ $32.00   5433        │ Bob   │ Regular │ LA
+1003     │ 5434        │ $28.75   5434        │ Carol │ VIP     │ Chi
+1004     │ 5432        │ $55.25   5435        │ David │ Regular │ NYC
+
+Benefits:
+✓ Fact table is small (just IDs and numbers)
+✓ "Alice" appears once (no duplication)
+✓ If Alice moves, update one place
+✓ Queries are fast (joining small dimension)
+✓ Storage is efficient
+```
+
+### **Real Food Delivery Example: Complete Star Schema**
+
+```
+3 DIMENSION TABLES (small, reference):
+├─ dim_customers (10M rows, 20 columns)
+│  └─ customer_id, name, segment, city, lifetime_value
+├─ dim_restaurants (50K rows, 15 columns)
+│  └─ restaurant_id, name, cuisine, city, rating
+└─ dim_drivers (100K rows, 10 columns)
+   └─ driver_id, name, vehicle, rating, join_date
+
+1 FACT TABLE (large, transactions):
+└─ fct_orders (100M rows, 5 columns)
+   └─ order_id, customer_id, restaurant_id, driver_id, amount
+```
+
+### **Business Questions Using Star Schema**
+
+**Q1: "Which restaurants in NYC made the most revenue?"**
+```sql
+SELECT 
+  r.name, r.cuisine,
+  SUM(o.amount) as revenue,
+  COUNT(*) as orders
+FROM fct_orders o
+JOIN dim_restaurants r ON o.restaurant_id = r.restaurant_id
+WHERE r.city = 'NYC'
+GROUP BY r.name, r.cuisine
+ORDER BY revenue DESC
+LIMIT 10
+
+-- Result: Joe's Pizza ($2.3M), Pho King Good ($1.8M), etc.
+```
+
+**Q2: "Which Premium customers ordered Italian food?"**
+```sql
+SELECT 
+  c.name, r.name as restaurant,
+  o.amount, o.order_date
+FROM fct_orders o
+JOIN dim_customers c ON o.customer_id = c.customer_id
+JOIN dim_restaurants r ON o.restaurant_id = r.restaurant_id
+WHERE c.segment = 'Premium' AND r.cuisine = 'Italian'
+ORDER BY o.amount DESC
+
+-- Result: Alice from Joe's Pizza ($185.99), Carol from Mama Mia ($156.50), etc.
+```
+
+**Q3: "Driver performance - who's the best?"**
+```sql
+SELECT 
+  d.name,
+  COUNT(*) as orders_completed,
+  AVG(o.delivery_time_minutes) as avg_time,
+  AVG(o.rating) as avg_rating,
+  SUM(o.amount) as revenue_delivered
+FROM fct_orders o
+JOIN dim_drivers d ON o.driver_id = d.driver_id
+GROUP BY d.name
+ORDER BY avg_rating DESC
+LIMIT 10
+
+-- Result: Raj (5K orders, 4.9 rating), Maria (4.8 rating), etc.
+```
+
+### **Key Insight**
+
+**This IS the foreign key concept from OLTP databases, BUT:**
+
+- **OLTP** (app database): Many normalized tables, optimized for writes
+- **Star Schema** (warehouse): Few denormalized tables, optimized for reads
+
+The pattern isn't special because of foreign keys (that's basic), it's special because it's **optimized for analytics**.
+
+---
+
+## **Scheduled SQL Queries in Snowflake**
+
+### **Three Ways to Answer Questions**
+
+#### **1. Scheduled Queries (Automated, run on schedule)**
+
+These run automatically to pre-compute answers for dashboards.
+
+```sql
+-- Runs nightly at 2 AM
+-- Purpose: Pre-calculate daily KPIs
+
+CREATE OR REPLACE TABLE kpi_daily AS
+SELECT 
+  CURRENT_DATE() as date,
+  SUM(amount) as total_revenue,
+  COUNT(*) as order_count,
+  AVG(amount) as avg_order_value,
+  COUNT(DISTINCT customer_id) as unique_customers
+FROM fct_orders
+WHERE DATE(order_date) = CURRENT_DATE() - 1;
+
+-- Result: 1 row (today's summary)
+-- Dashboard queries this: instant (0.1 seconds)
+```
+
+**When to use:**
+- Reports that run every day
+- Dashboards that need instant response
+- KPIs that don't change throughout the day
+
+#### **2. On-Demand Queries (Manual, run when user asks)**
+
+These run when an analyst clicks a button or dashboard updates.
+
+```sql
+-- Analyst clicks "Run Report"
+-- Purpose: Show revenue by customer segment (right now)
+
+SELECT 
+  c.segment,
+  COUNT(DISTINCT c.customer_id) as customers,
+  SUM(f.amount) as revenue,
+  AVG(f.amount) as avg_order_value
+FROM fct_orders f
+JOIN dim_customers c ON f.customer_id = c.customer_id
+WHERE f.date_id >= DATE_ADD(day, -30, CURRENT_DATE())
+GROUP BY c.segment
+ORDER BY revenue DESC
+
+-- Result: 5 rows (Premium, VIP, Regular, etc.)
+-- Response time: 1 second
+```
+
+**When to use:**
+- Exploratory analysis by analysts
+- Interactive dashboards
+- Ad-hoc reports
+
+#### **3. Materialized Views (Pre-computed tables, refreshed on schedule)**
+
+These are **scheduled queries that become tables** - auto-updated.
+
+```sql
+-- Like a scheduled query that stores results
+-- Refreshes every hour automatically
+
+CREATE OR REPLACE MATERIALIZED VIEW revenue_by_segment AS
+SELECT 
+  c.segment,
+  DATE_TRUNC('hour', f.order_date) as hour,
+  COUNT(*) as orders,
+  SUM(f.amount) as revenue
+FROM fct_orders f
+JOIN dim_customers c ON f.customer_id = c.customer_id
+GROUP BY c.segment, DATE_TRUNC('hour', f.order_date);
+
+-- Dashboard queries this: instant (0.1 seconds)
+-- Data is max 1 hour old
+```
+
+**When to use:**
+- Complex queries that are run frequently
+- Need instant dashboard response
+- Can tolerate 1-hour delay in freshness
+
+### **Real Dashboard Example: Three Widgets**
+
+```
+┌─────────────────────────────────────────────┐
+│ LIVE DASHBOARD (updates every 5 min)        │
+├─────────────────────────────────────────────┤
+│ 1. Total Revenue Today: $2.3M               │ ← Scheduled query
+│ 2. Orders by Segment (chart)                │ ← Materialized view
+│ 3. Top 10 Restaurants (drilldown)           │ ← On-demand query
+└─────────────────────────────────────────────┘
+```
+
+**Widget 1: Total Revenue (Scheduled Query)**
+```sql
+-- Runs automatically every 6 hours (2 AM, 8 AM, 2 PM, 8 PM)
+CREATE OR REPLACE TABLE dashboard_revenue_today AS
+SELECT 
+  SUM(amount) as total_revenue,
+  COUNT(*) as order_count
+FROM fct_orders
+WHERE DATE(order_date) = CURRENT_DATE();
+
+-- Dashboard: SELECT * FROM dashboard_revenue_today
+-- Takes: 0.01 seconds (1 row lookup)
+```
+
+**Widget 2: Orders by Segment (Materialized View)**
+```sql
+-- Refreshes every hour automatically
+CREATE OR REPLACE MATERIALIZED VIEW dashboard_orders_by_segment AS
+SELECT 
+  c.segment,
+  COUNT(*) as orders,
+  SUM(f.amount) as revenue
+FROM fct_orders f
+JOIN dim_customers c ON f.customer_id = c.customer_id
+WHERE DATE(f.order_date) = CURRENT_DATE()
+GROUP BY c.segment;
+
+-- Dashboard: SELECT * FROM dashboard_orders_by_segment
+-- Takes: 0.1 seconds (pre-computed, 1 hour old max)
+```
+
+**Widget 3: Top Restaurants (On-Demand Query)**
+```sql
+-- Runs when user clicks dropdown
+SELECT TOP 10
+  r.name, r.cuisine,
+  COUNT(*) as orders,
+  SUM(f.amount) as revenue
+FROM fct_orders f
+JOIN dim_restaurants r ON f.restaurant_id = r.restaurant_id
+WHERE DATE(f.order_date) = CURRENT_DATE()
+GROUP BY r.name, r.cuisine, r.restaurant_id
+ORDER BY revenue DESC
+
+-- Takes: 0.5 seconds (user can wait for this)
+```
+
+### **Decision Table: When to Use Each**
+
+| Question | Approach | Why | Latency |
+|----------|----------|-----|---------|
+| "Revenue today?" | Scheduled query | Needed every morning | 0.1s |
+| "Orders by hour?" | Materialized view | Needed hourly for dashboard | 0.1s |
+| "Which customers churned?" | On-demand | Asked occasionally | 1s |
+| "Top 10 products?" | Materialized view | Frequently asked | 0.1s |
+| "Deep dive into restaurant #42?" | On-demand | Deep analysis, user can wait | 1s |
+
+### **Complete Data Pipeline**
+
+```
+┌──────────────────────────────────────┐
+│ BATCH PROCESSING (Nightly)           │
+│ Spark → dbt → Snowflake tables loaded│
+└──────────┬───────────────────────────┘
+           ↓
+┌──────────────────────────────────────┐
+│ SCHEDULED QUERIES (Run on schedule)  │
+│                                       │
+│ 2 AM: Calculate kpi_daily (1 row)   │
+│ 3 AM: Create revenue_by_segment (24)│
+│ Every hour: Refresh materialized     │
+│ Every 6 hours: Update dashboard cache│
+└──────────┬───────────────────────────┘
+           ↓
+┌──────────────────────────────────────┐
+│ DASHBOARDS (Query pre-computed)      │
+│                                       │
+│ User opens dashboard 3 PM:           │
+│ ├─ "Revenue?" → kpi_daily (instant) │
+│ ├─ "Orders?" → Mat view (instant)   │
+│ └─ "Details?" → Live query (0.5s)   │
+└──────────────────────────────────────┘
+```
+
+### **Your Role as Architect**
+
+**You decide which approach for each metric:**
+
+```
+Requirement: "Show revenue and top restaurants in real-time"
+
+Decision 1: Revenue freshness?
+├─ Schedule every 6 hours? → Instant + light load
+├─ Materialize every hour? → Instant + more fresh
+└─ Query on-demand? → Always current, but slower
+
+Decision 2: Top restaurants?
+├─ Materialize every hour? → Instant
+└─ Query on-demand? → Always current, but slower
+
+Final Design:
+├─ Revenue: Scheduled (update 4x/day)
+├─ Top restaurants: Materialized (update hourly)
+└─ Deep drill-down: On-demand (user waits 1s)
+```
+
+---
+
 ## **Architecture Invariants & Golden Rules**
 
 **What NEVER Changes (identical across all 36):**
