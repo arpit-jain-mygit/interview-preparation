@@ -2295,6 +2295,96 @@ Acceptable: delivery time prediction (minor inaccuracy)
 NOT acceptable: fraud detection → use 15-min Spark interval or Flink for those keys too
 ```
 
+**Why Flink → Redis (NOT Flink → ClickHouse → Redis)?**
+
+This is a critical architectural decision. Let me explain why ClickHouse is wrong here:
+
+```
+WRONG APPROACH: Flink → ClickHouse → Redis → ML Service
+├─ Flink aggregates: restaurant:456:active_orders = 42
+├─ Writes to ClickHouse (columnar analytics DB)
+├─ ML Service: "GET feature for restaurant:456"
+├─ ClickHouse: full scan of aggregations, filters, returns value
+└─ Problem: Takes 50-100ms (TOO SLOW for ML inference)
+
+RIGHT APPROACH: Flink → Redis → ML Service
+├─ Flink aggregates: restaurant:456:active_orders = 42
+├─ Writes directly to Redis (key-value store)
+├─ ML Service: "GET restaurant:456:active_orders"
+├─ Redis: O(1) lookup, returns value in <1ms
+└─ Works: Takes 1-2ms (PERFECT for inference)
+```
+
+**Why the difference?**
+
+ClickHouse is optimized for:
+- "SUM(amount) GROUP BY city for last 100M rows"
+- "Top 10 restaurants by revenue"
+- One query scans billions of rows, returns aggregated answer
+
+Redis is optimized for:
+- "GET restaurant:456:active_orders" (single key, single value)
+- "GET customer:789:fraud_score" (point lookup)
+- Millions of parallel lookups, each in <1ms
+
+ClickHouse query = 50-100ms (wrong for inference)
+Redis query = 1-2ms (perfect for inference)
+
+**How to Decide in General:**
+
+```
+ASK YOURSELF: What is the query pattern?
+
+┌─ Aggregation ("sum all events by city for analytics dashboard")
+│  → ClickHouse or Snowflake (columnar, optimized for aggregations)
+│  Latency OK: 100-500ms is fine for dashboards
+│
+├─ Point Lookup ("get current feature value for user:123")
+│  → Redis or DynamoDB (key-value, optimized for single lookups)
+│  Latency critical: <5ms required for inference
+│
+├─ Mixed ("need both aggregations AND point lookups")
+│  → Lambda Architecture: Both Flink→Redis AND Flink→ClickHouse
+│  Flink writes to both Redis (inference) + ClickHouse (analytics)
+│
+└─ Time-series ("store 1M metrics per second, query last 24 hours")
+   → TimescaleDB or InfluxDB (time-series optimized)
+   Latency: 10-50ms OK
+```
+
+**Real Decision Matrix:**
+
+| Use Case | Query | Tool | Why | Latency |
+|---|---|---|---|---|
+| ML Inference | GET user:123:score | Redis | Point lookup | <2ms |
+| Dashboard | SUM revenue by city | ClickHouse | Aggregation scan | 100ms |
+| Time-series metrics | Query last 24 hours | TimescaleDB | Time-series optimized | 50ms |
+| Document lookup | GET order:456 details | Elasticsearch | Full-text + structure | 20ms |
+| Fraud detection | GET user:123 risk_score | Redis | Real-time point lookup | <2ms |
+| Executive report | Month-over-month comparison | Snowflake | Complex aggregation | 30s OK |
+
+**Rule of Thumb:**
+
+- Need <10ms latency? → Redis/DynamoDB (key-value)
+- Need <500ms latency? → ClickHouse/Pinot (columnar analytics)
+- Need <30 sec latency? → Snowflake/BigQuery (data warehouse)
+- Need <5 min latency? → S3 + Spark (data lake batch)
+
+**Scenario 2 Specific Decision:**
+
+```
+ML Inference latency requirement: <200ms for customer waiting
+Real path: App (100ms) → ML Service (15ms) → Redis (2ms) → Model (50ms)
+Total: ~167ms ← PASS ✓
+
+If used ClickHouse instead of Redis:
+Real path: App (100ms) → ML Service (15ms) → ClickHouse (100ms) → Model (50ms)
+Total: ~265ms ← FAIL ✗ (exceeds 200ms budget)
+
+ClickHouse is 50-100x slower than Redis for point lookups.
+Cannot use ClickHouse for inference serving layer.
+```
+
 #### Tool Summary
 
 | Tool | Role | READ/WRITE |
