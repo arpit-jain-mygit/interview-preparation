@@ -3211,6 +3211,174 @@ Assumptions documented:
   • Simple feed (reverse chronological)
 ```
 
+---
+
+### **STEP 1.5: Back-of-Envelope Calculations (5 min)**
+
+**What is "Back-of-Envelope"?**
+
+Imagine you're at a coffee shop with the interviewer and you want to do rough math on a napkin (or the back of an envelope). You DON'T need exact numbers—just order-of-magnitude estimates to understand if your design will work.
+
+**Why do it?**
+- Verify your design can handle the load
+- Find bottlenecks early
+- Make database/server/cache decisions based on DATA, not guessing
+
+---
+
+### **EXAMPLE: Instagram with 100M DAU**
+
+#### **Step 1: Start with the Requirement**
+```
+Given: 100M Daily Active Users (DAU)
+Question: How much traffic? How much storage? How many servers?
+```
+
+#### **Step 2: Estimate DAU → Requests Per Second (RPS/QPS)**
+
+**Basic math:**
+```
+100M users per day ÷ 86,400 seconds/day = ~1,157 users/second (average)
+
+But traffic is NOT evenly distributed!
+Peak traffic = 2-5× average (usually 2-3×)
+
+Peak: 1,157 × 2.5 = ~2,900 users/second peak
+
+Each user does ~1 action per minute average:
+  - View feed: 10 sec
+  - Like: 2 sec
+  - Comment: 30 sec
+  - Scroll: 20 sec
+  = ~1 request every 10-15 seconds = ~4-6 requests/minute
+
+So: 2,900 users/sec × 5 requests/min = 2,900 × (5/60) = ~240 requests/second average
+Peak: 240 × 2.5 = ~600 requests/second
+
+Actually, let's be more conservative:
+100M DAU × (5 requests/day) = 500M requests/day
+500M ÷ 86,400 = ~5,787 requests/second average
+Peak: 5,787 × 2.5 = ~14K requests/second peak
+```
+
+#### **Step 3: How Many Servers Needed?**
+
+```
+1 server can handle: ~1,000-10,000 QPS (depends on complexity)
+Instagram feed is complex (join with user, like, comment data)
+Realistic: 1 server = ~1,000 QPS
+
+For peak 14K QPS:
+14,000 QPS ÷ 1,000 QPS/server = 14 servers minimum
+
+With redundancy (1 server fails, others handle it):
+14 × 2 = ~28 servers (14 for traffic, 14 for failover)
+Actually, better to say: 20-30 servers across datacenters
+```
+
+#### **Step 4: How Much Storage for Photos?**
+
+```
+100M DAU — but how many upload photos per day?
+Instagram: maybe 5-10% of users upload per day
+= 100M × 0.1 = 10M photos/day
+
+Average photo size: 2-5 MB (compressed)
+Use 3 MB
+
+10M photos × 3 MB = 30M MB = 30TB/day
+
+For 10 years (requirement):
+30TB × 365 days = ~11 PB (petabytes)
+
+With redundancy (keep 3 copies for reliability):
+11 PB × 3 = ~33 PB total storage needed
+```
+
+#### **Step 5: How Much Database Storage?**
+
+```
+Metadata (NOT photos, just data about them):
+  • Photo ID: 8 bytes
+  • User ID: 8 bytes
+  • Timestamp: 8 bytes
+  • Like count: 4 bytes
+  • Comment count: 4 bytes
+  = ~32 bytes per photo metadata
+
+10M photos/day × 32 bytes = 320 MB/day metadata
+For 10 years: 320 MB × 365 = ~116 GB/year
+
+For 10 years: 116 GB × 10 = ~1.2 TB metadata
+
+Database easily handles 1-2 TB (that's small)
+But with millions of queries/day, you NEED:
+  - Read replicas (scale reads)
+  - Cache layer (Redis, memcached)
+```
+
+#### **Step 6: How Much Cache Storage?**
+
+```
+What gets cached?
+  • User profiles (100M users × 1KB = 100GB)
+  • Hot feeds (top 1M users' feeds = 1M × 5MB = 5TB)
+  • Hot photos (top 1M photos = 1M × 3MB = 3TB)
+  = ~8TB total
+
+Redis in-memory cache:
+  • Typical server: 256GB-512GB RAM
+  • 8TB ÷ 256GB = 32 servers
+
+With redundancy: ~64 Redis servers
+```
+
+---
+
+### **PUTTING IT ALL TOGETHER:**
+
+```
+Requirement: 100M DAU Instagram
+
+Back-of-Envelope Results:
+  ├─ Peak Traffic: ~14K QPS
+  ├─ Web Servers Needed: 20-30 servers
+  ├─ Database: 1-2 TB (but needs replicas + cache)
+  ├─ Read Replicas: 3-5 servers
+  ├─ Cache (Redis): 60-100 servers (8TB distributed)
+  ├─ Photo Storage: 30 PB (with redundancy)
+  ├─ Metadata Storage: 1.2 TB
+  └─ Total: ~150-200 servers + massive storage
+
+Decision checkpoints:
+  ✓ 14K QPS—can we handle it? YES (20-30 servers × 1K QPS each)
+  ✓ 30 PB storage—can we afford it? YES (S3 = $0.023/GB = ~$700K/year)
+  ✓ Response time—cache working? NEED TO VERIFY (50% of requests should hit cache)
+  ✓ Database queries—how many? BOTTLENECK if not cached well
+```
+
+---
+
+### **KEY FORMULA TO MEMORIZE:**
+
+```
+Users → DAU → QPS → Servers → Storage
+
+DAU to QPS:
+  (DAU × requests_per_user_per_day) ÷ 86,400 seconds = average QPS
+  Peak QPS = average QPS × 2.5 (typical peak factor)
+
+QPS to Servers:
+  QPS ÷ (requests_per_server) = minimum servers needed
+
+DAU to Storage:
+  (DAU × upload_percentage) × average_file_size = daily storage
+  Daily × 365 days × years = total storage
+  Total × redundancy_factor = total needed
+```
+
+---
+
 **Step 2: High-Level Design (12 min)**
 ```
 Candidate draws:
@@ -3233,10 +3401,12 @@ Upload Service  Feed Service  Search Service  Auth Service
                        ↓
                Object Storage (S3)
 
-Candidate: "Back-of-envelope: 100M DAU doing ~1 action/min
-           = ~1.6M actions/second peak
-           = ~20 servers at 100K QPS each
-           = ~50TB storage for 1 day of photos"
+Candidate explains the back-of-envelope findings:
+  "100M DAU = 14K QPS peak
+   Need 20-30 web servers (each handles 1K QPS)
+   Cache MUST work (80% hit rate reduces DB load)
+   30 PB photo storage (S3 is most cost-effective)
+   This design handles the load."
 ```
 
 **Step 3: Deep Dive (20 min)**
