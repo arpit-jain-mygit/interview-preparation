@@ -389,20 +389,22 @@ Hourly partition    →  Minute partition      →  Second partition
   ── + Schema Registry ──                                           PB: partitioned by second
   (Another System, all scales)                                          + column pruning
                 │                                                         + data skipping
-          ┌─────┤                                          ┌──────────────┼──────────────┐
-        READ   READ                                        │              │              │
-          │     │                                  ── REAL-TIME ──  ── NEAR RT ──  ── BATCH ──
-  [Payment] [Driver]                                       │              │              │
-   Service   Service                            GB: [Flink]     GB: [Spark        GB: [Spark
-  GB: 1 inst   GB: 1 inst                      TB: [Flink        micro-batch]      nightly]
-  TB: cluster  TB: cluster                         Cluster]     TB: [Spark         TB: [Spark on
-  PB: global   PB: global                      PB: [Flink        EMR/               EMR /
-      fleet        fleet                           Global         Databricks]        Databricks]
-  ── OLTP consumers ──                             Cluster /     PB: [Spark on      PB: [Spark on
-  all 36 scenarios                                 Apache          Dataproc /         Dataproc /
-                                                   Beam]           Databricks         Databricks]
-                                                always-on          every 5 min        + Airflow /
-                                                ms latency         Near RT            Cloud Composer
+          ┌─────┼────────────────────────────────┐
+        READ   READ                              │
+          │     │                    ┌───────────┴───────────────────┐
+  [Payment] [Driver]                ── REAL-TIME ── NEAR RT ── BATCH ──
+   Service   Service                            │              │              │
+  GB: 1 inst   GB: 1 inst                       │              │              │
+  TB: cluster  TB: cluster          GB: [Flink]     GB: [Spark        GB: [Spark
+  PB: global   PB: global           TB: [Flink        micro-batch]      nightly]
+      fleet        fleet             Cluster]     TB: [Spark         TB: [Spark on
+  ── OLTP consumers ──              PB: [Flink        EMR/               EMR /
+  all 36 scenarios                     Global         Databricks]        Databricks]
+                                     Cluster /     PB: [Spark on      PB: [Spark on
+                                     Apache          Dataproc /         Dataproc /
+                                     Beam]           Databricks         Databricks]
+                                   always-on          every 5 min        + Airflow /
+                                   ms latency         Near RT            Cloud Composer
                                                     │                   │                  │
                               ┌─────────────────────┤                   │          ┌───────┤
                               │                     │                   │          │       │
