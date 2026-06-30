@@ -2012,6 +2012,20 @@ ClickHouse  → real-time OLAP (pre-aggregated rows, <10ms queries)
 S3          → raw Parquet storage (permanent, cheap)
 ```
 
+**🎯 Approach Used: APPROACH 1 (Query On-Demand from ClickHouse)**
+```
+Pattern: Flink → ClickHouse (pull model)
+├─ Flink pre-computes aggregations in RAM
+├─ Writes to ClickHouse for analytics storage
+├─ Dashboard queries ClickHouse on-demand
+└─ Latency: 50-100ms OK (dashboards refresh every 30 sec)
+
+Why this approach:
+├─ One-to-many query (one aggregation, many dashboard users)
+├─ Async consumption (dashboard refresh delay acceptable)
+└─ Optimized for: "What's the trend?" not "What's happening NOW?"
+```
+
 #### Key Design Decisions
 
 **Why not App → Kafka directly?**
@@ -2630,6 +2644,24 @@ Tableau     → business visualization (drag-drop exploration, executives)
 Two stacks  → Speed Stack (Kafka+Flink+ClickHouse) and Scale Stack (S3+Spark+Snowflake)
 ```
 
+**🎯 Approaches Used: HYBRID (Approach 1 + Pull Model)**
+```
+Speed Stack (Ops Dashboard):
+├─ Pattern: Flink → ClickHouse (pull model)
+├─ Latency: 50-100ms OK (dashboard refreshes every 30 sec)
+└─ Query: "Orders by city in last 5 min" — GROUP BY, aggregation
+
+Scale Stack (Business Dashboard):
+├─ Pattern: S3 → Spark → Snowflake (batch + pull model)
+├─ Latency: 3-10 sec OK (business team reviews, not real-time critical)
+└─ Query: "Revenue trend last 4 weeks" — full historical analysis
+
+Why two stacks:
+├─ Different audiences (ops vs business)
+├─ Different data depth (hours vs weeks)
+└─ Different query patterns (aggregation vs historical trend)
+```
+
 #### Key Design Decisions
 
 **Two dashboard types — never use one tool for both:**
@@ -2870,6 +2902,21 @@ Exactly-Once       → Kafka default = at-least-once. Idempotency = exactly-once
 Fraud Service      → synchronous HTTP (not Kafka) — must respond BEFORE order confirmed
 ```
 
+**🎯 Approach Used: APPROACH 2 (Flink → Redis Direct Push for Fraud)**
+```
+Pattern: Flink → Redis (real-time push) + Kafka Consumer Groups (push model)
+├─ Flink computes fraud features → pushes to Redis continuously
+├─ Fraud Service reads Redis features synchronously
+├─ Multiple downstream systems consume Kafka events independently
+└─ Each has idempotency check to prevent duplicate actions
+
+Why this approach:
+├─ Fraud features needed in milliseconds (sub-200ms SLA)
+├─ Downstream systems must act independently without blocking each other
+├─ Exactly-once semantics required (idempotency key prevents duplicates)
+└─ Schema Registry ensures consumers don't break on updates
+```
+
 #### Key Design Decisions
 
 **Fraud detection is synchronous HTTP, not Kafka:**
@@ -3099,6 +3146,22 @@ Architecture change that solves it:
                     GET prediction:order_id
                     → "Your order arrives in 19 min"
                     (refreshes every 5 min)
+```
+
+**🎯 Approach Used: APPROACH 3 (Batch Push from Spark to Redis)**
+```
+Pattern: Spark micro-batch → Redis (push model, pre-computed)
+├─ Spark runs every 5 minutes (not continuous like Flink)
+├─ Pre-computes predictions for ALL active orders
+├─ Pushes results to Redis (prediction:order_id → "19 min")
+├─ App just READs from Redis (1-2ms)
+└─ Latency: <2ms for read, but features are 5-min stale (acceptable)
+
+Why this approach:
+├─ Predictions don't need to be real-time (5-min SLA acceptable)
+├─ Easier to operate than ML Service (no live model running)
+├─ Pre-compute cost split across 1000s of predictions every 5 min
+├─ App just reads pre-computed value (very cheap at request time)
 ```
 
 #### Key Design Decisions
