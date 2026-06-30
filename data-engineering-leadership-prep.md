@@ -145,11 +145,11 @@ Simplified single-scale diagram showing the core pattern for small-to-medium sys
                 │                                            ┌────────────┘
               WRITE
                 │
-           [Message Bus]            ────────────────── WRITE ──→ [Object Storage]
-            (Kafka)                                        (S3/GCS)
-     + Schema Registry                         hourly partitions
-                │
-        ┌───────┼───────────────────────────────────────────┐
+           [Message Bus]  ──┬────────────────── WRITE ──→ [Object Storage]
+            (Kafka)         │                                (S3/GCS)
+     + Schema Registry      │                   hourly partitions
+                │           │
+        ┌───────┼───────────┴──────────────────────────────┐
         │       │                                           │
       READ    READ                                        SPLIT
         │       │                                           │
@@ -159,11 +159,11 @@ Simplified single-scale diagram showing the core pattern for small-to-medium sys
                                               │             │             │
                                        [Stream Proc]  [Spark         [Spark
                                         (Flink)      micro-batch]    nightly]
-                                 │              │            │
-                               WRITE          WRITE        WRITE
-                                 │              │            │
-                            [Real-time OLAP]  [OLAP]    [Data Warehouse]
-                            (ClickHouse)     (Pinot)     (Snowflake)
+                                              │             │             │
+                                            WRITE        WRITE        WRITE
+                                              │             │             │
+                                         [Real-time OLAP]  [OLAP]      [Data Warehouse]
+                                         (ClickHouse)    (Pinot)      (Snowflake)
                                  │              │            │
                                  └──────┬───────┴────────────┘
                                         │
