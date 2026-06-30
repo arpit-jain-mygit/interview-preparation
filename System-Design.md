@@ -853,19 +853,34 @@ Useful:
 2^30 = 1,024M ≈ 1GB
 ```
 
-### **Bytes Conversions**
+### **Powers of 10 (Million, Billion, Trillion)**
+
+```
+10^3 = 1 Thousand (K)
+10^6 = 1 Million (M)
+10^9 = 1 Billion (B)
+10^12 = 1 Trillion (T)
+10^15 = 1 Quadrillion (Q)
+
+Counts:
+1 Million = 10^6 = 1,000,000
+1 Billion = 10^9 = 1,000,000,000
+1 Trillion = 10^12 = 1,000,000,000,000
+```
+
+### **Bytes Conversions (10^x)**
 
 ```
 1 KB = 10^3 bytes = 1,000 bytes
-1 MB = 10^6 bytes = 1,000,000 bytes
-1 GB = 10^9 bytes = 1,000,000,000 bytes
-1 TB = 10^12 bytes = 1,000,000,000,000 bytes
-1 PB = 10^15 bytes = 1,000,000,000,000,000 bytes
+1 MB = 10^6 bytes = 1 Million bytes = 1,000,000 bytes
+1 GB = 10^9 bytes = 1 Billion bytes = 1,000,000,000 bytes
+1 TB = 10^12 bytes = 1 Trillion bytes = 1,000,000,000,000 bytes
+1 PB = 10^15 bytes = 1 Quadrillion bytes = 1,000,000,000,000,000 bytes
 
-Memory:
-1 M (million) = 10^6
-1 B (billion) = 10^9
-1 T (trillion) = 10^12
+Quick Reference:
+1 M = 10^6 (Million)
+1 B = 10^9 (Billion)
+1 T = 10^12 (Trillion)
 ```
 
 ### **Time Calculations**
@@ -896,8 +911,8 @@ MINUTES IN A YEAR:
 
 ```
 QPS (Queries Per Second):
-  Twitter/Facebook: ~100K QPS
-  Google Search: ~100K QPS
+  Twitter/Facebook: ~100K QPS = 100 × 10^3
+  Google Search: ~100K QPS = 100 × 10^3
   Typical startup: 100-1K QPS
   
 Throughput:
@@ -905,10 +920,17 @@ Throughput:
   Disk: 1-10 MB/s (mechanical), 100+ MB/s (SSD)
   Memory: 10+ GB/s
   
-Users:
-  Daily Active Users (DAU) = (Monthly Active Users) / 2-3
+Users & Scale:
+  1M MAU (Monthly Active Users) = 1 × 10^6
+  1B DAU (Daily Active Users) = 1 × 10^9
   Peak QPS = (Daily requests) / (86,400 seconds) × (peak factor)
   Peak factor: 2-5x average
+  
+Data Examples:
+  1M records = ~1 GB (if 1KB per record)
+  1B records = ~1 TB (if 1KB per record)
+  Typical API response: 1-10 KB
+  Image: 100 KB - 5 MB
 ```
 
 ---
