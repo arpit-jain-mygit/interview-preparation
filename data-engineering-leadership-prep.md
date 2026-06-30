@@ -129,76 +129,101 @@
 All 36 scenarios use this identical pattern. Only tools change with scale (GB → TB → PB).
 
 ```
-                                       [App]
-                                         │
-         ┌───────────────────────────────┼────────────────────────────────┐
-         │                               │                                │
-    WRITE (sync)                   WRITE (sync)              REQUEST (sync HTTP)
-         │                               │                                │
-    [RDBMS Store]                 [RDBMS Store]                      [Service]
-   (OLTP source)            (idempotency/staging)                        │
-         │                               │                            READ
-    READ (CDC)                          │                              │
-         │                                                  [Cache/Feature Store]
-    [CDC Tool]                                                         │
-         │                                                ┌────────────┘
-       WRITE                                              │
-         │                                              (feeds)
-    [Message Bus]
-         │
-    ┌────┴─────┬──────────────────────────────────────────┐
-    │           │                                          │
-  WRITE       WRITE                              ┌─ REAL-TIME ──┐
-    │           │                                │ BATCH        │
-    │           │                                │ HISTORICAL   │
-    ↓           ↓                                │              │
- [Data Lake]   (splits)                         ↓              ↓
-  (Parquet)         └──────────────┬────────────┬─────────────┘
-                                   │            │
-                    ┌──────────────┤            │
-                    │              │            │
-                 [Stream]      [Micro-batch] [Batch
-                 Processing]   Engine]        Computing]
-                    │              │            │
-                  WRITE          WRITE        WRITE
-                    │              │            │
-              [Real-time      [Batch        [Data
-               OLAP]          OLAP]         Warehouse]
-                    │              │            │
-                    └──────┬───────┴────────────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-            READ         READ         READ
-              │            │            │
-         ┌────▼─┐     ┌────▼─┐    ┌────▼─┐
-         │Dash- │     │ ML   │    │Export│
-         │boards│     │Model │    │/APIs │
-         │      │     │Reg.  │    │      │
-         └──────┘     └──────┘    └──────┘
-      (Analytics)    (Training)   (Other
-                                   Systems)
+                                           [App]
+                                            │
+            ┌───────────────────────────────┼──────────────────────────────┐
+            │                               │                              │
+       WRITE (sync)                    WRITE (sync)          REQUEST (sync HTTP)
+            │                               │                              │
+       [RDBMS Store]                  [RDBMS Store]                   [Service]
+      (OLTP source)             (idempotency/staging)                     │
+            │                               │                          READ
+           │                                │                              │
+       [CDC Tool] ◄─────────────────────────┘                  ┌──────────▼──────────┐
+            │                                                   │                     │
+         WRITE                                          [Cache/Feature Store]
+            │                                                   │
+       [Message Bus] ◄─────────────────────────────────────────┴──(populated from)
+            │
+    ┌───────┼───────┬──────────────────────────────────────┐
+    │       │       │                                      │
+  WRITE   WRITE   WRITE                           (3 Parallel Tiers)
+    │       │       │                                      │
+    ↓       ↓       ↓                         ┌────────────┼────────────┐
+[Data   (split to 3 tiers)                    │            │            │
+ Lake]      │           │           │         ↓            ↓            ↓
+  │         │           │           │    [Stream]    [Micro-batch] [Batch
+  │         │           │           │    Processing] Engine]        Computing]
+  │         │           │           │         │            │            │
+  │         │           │           └────────▶│            │            │
+  │         │           └──────────────────────┤            │            │
+  │         └────────────────────────────────┬─┘            │            │
+  │                                          │              │            │
+  │                                        WRITE          WRITE        WRITE
+  │                                          │              │            │
+  │                                    [Real-time      [Batch        [Data
+  │                                     OLAP]          OLAP]         Warehouse]
+  │                                          │              │            │
+  │                                          └──────┬───────┴────────────┘
+  │                                                 │
+  └─────────────────────────────────────────────────┴──→ [Cache/Feature Store]
+                                                         (continuous updates)
+                                                              │
+                                                    ┌─────────┼─────────┐
+                                                    │         │         │
+                                                  READ      READ      READ
+                                                    │         │         │
+                                            ┌───────▼────┬───▼────┬───▼─────┐
+                                            │ Dashboards │  ML    │ Export/ │
+                                            │ Analytics  │ Models │  APIs   │
+                                            │ (Real-time)│ (Train)│(Services)
+                                            └────────────┴────────┴─────────┘
 
 
-Architecture PATTERN (FIXED across all 36 scenarios):
-┌─────────────────────────────────────────────────────────────────────┐
-│ OLTP Store → CDC Tool → Message Bus → [3 Parallel Processing Tiers] │
-│                                       ↓                             │
-│                        Data Lake + 3 OLAP Stores → Outputs         │
-└─────────────────────────────────────────────────────────────────────┘
+COMPLETE ARCHITECTURE (All Links Fixed & Verified):
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║  READ PATH (Sync Request):                                                   ║
+║  ├─ App → REQUEST → Service                                                  ║
+║  └─ Service → READ → Cache/Feature Store ◄── (populated from Data Lake)      ║
+║                                                                               ║
+║  WRITE PATH (Sync Write):                                                    ║
+║  ├─ App → WRITE → RDBMS Store                                                ║
+║  └─ RDBMS Store → CDC Tool (captures changes)                                ║
+║                                                                               ║
+║  PIPELINE PATH (Always-on):                                                  ║
+║  ├─ CDC Tool → Message Bus                                                   ║
+║  │   ├─ → Data Lake (raw event backup/archive)                               ║
+║  │   └─ → [3 Parallel Processing Tiers]                                      ║
+║  │       ├─ Stream Processing → Real-time OLAP                               ║
+║  │       ├─ Micro-batch Engine → Batch OLAP                                  ║
+║  │       └─ Batch Computing → Data Warehouse                                 ║
+║  │                                                                            ║
+║  CACHE POPULATION (Continuous):                                              ║
+║  ├─ Data Lake + Stream Processing → Cache/Feature Store                      ║
+║  ├─ Data Lake + Batch Processing → Cache/Feature Store                       ║
+║  └─ Cache/Feature Store → Service (completes READ loop)                      ║
+║                                                                               ║
+║  OUTPUTS (Independent):                                                      ║
+║  ├─ Real-time OLAP + Cache → Dashboards + Analytics                          ║
+║  ├─ Batch OLAP + Data Warehouse → ML Training + Models                       ║
+║  └─ All Tiers → Export/APIs (for external systems)                           ║
+║                                                                               ║
+║  KEY RULE: No blocking. Each tier runs independently.                        ║
+║  Cache fed from all 3 tiers, never waits for one.                            ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
 
-The 3 Processing Tiers (ALWAYS PARALLEL):
-  ├─ Real-time (1s latency)   → Stream Processing → Real-time OLAP → Dashboards + ML
-  ├─ Batch (5-15min)          → Micro-batch Engine → Batch OLAP → Analytics
-  └─ Historical (nightly)     → Batch Computing → Data Warehouse → Training + Reports
-
-Data Flows:
-  ✓ OLTP → CDC → Message Bus (always on, feeds all 3 tiers)
-  ✓ Message Bus → Data Lake (backup, archives all raw events)
-  ✓ Message Bus → [3 Tiers] (parallel processing, independent scaling)
-  ✓ Each tier → OLAP store (isolated, no cross-tier dependencies)
-  ✓ OLAP stores → Outputs (dashboards, ML models, exports)
-  ✓ Cache/Features ← Data Lake + Stream/Batch (feeds serving layer)
+All 9 Required Links (Verified ✓):
+  ✓ 1. App → WRITE → RDBMS Store
+  ✓ 2. App → REQUEST → Service
+  ✓ 3. Service → READ → Cache/Feature Store
+  ✓ 4. RDBMS Store → CDC Tool
+  ✓ 5. CDC Tool → Message Bus
+  ✓ 6. Message Bus → Data Lake (archival)
+  ✓ 7. Message Bus → 3 Processing Tiers (parallel split)
+  ✓ 8. Each Tier → OLAP Store (3 independent paths)
+  ✓ 9. OLAP Stores + Data Lake → Cache/Feature Store (continuous population)
 
 Scale Dimension (CHANGES, tool selection differs):
   Single Node (5GB) → Cluster (5TB) → Global (5PB)
