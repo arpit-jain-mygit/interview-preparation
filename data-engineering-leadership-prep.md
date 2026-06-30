@@ -149,15 +149,16 @@ Simplified single-scale diagram showing the core pattern for small-to-medium sys
             (Kafka)                                        (S3/GCS)
      + Schema Registry                         hourly partitions
                 │
-          ┌─────┼──────────────────────────────────────┐
-          │     │                                      │
-        READ   READ                                    │
-          │     │                            ┌─────────┴──────────────┐
-    [Consumer] [Consumer]    ── REAL-TIME ── NEAR-RT ── BATCH ──
-        1         2                │            │           │
-                                   │            │           │
-                             [Stream Proc]  [Spark         [Spark
-                              (Flink)      micro-batch]    nightly]
+        ┌───────┼───────────────────────────────────────────┐
+        │       │                                           │
+      READ    READ                                        SPLIT
+        │       │                                           │
+   [Consumer] [Consumer]                      ┌─────────────┼─────────────┐
+       1         2                            │             │             │
+                                          REAL-TIME      NEAR-RT       BATCH
+                                              │             │             │
+                                       [Stream Proc]  [Spark         [Spark
+                                        (Flink)      micro-batch]    nightly]
                                  │              │            │
                                WRITE          WRITE        WRITE
                                  │              │            │
