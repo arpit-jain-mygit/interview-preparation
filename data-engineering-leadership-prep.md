@@ -267,11 +267,6 @@ Backbone in ALL 36 scenarios:
   Service via sync HTTP (never async)
 ```
 
-Scale Dimension (CHANGES, tool selection differs):
-  Single Node (5GB) → Cluster (5TB) → Global (5PB)
-  Pattern stays identical; every component scales independently.
-```
-
 ---
 
 ## **Abstraction Mapping**
