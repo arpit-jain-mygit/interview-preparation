@@ -832,6 +832,85 @@ This is **original content**: summaries, explanations, and real-world examples c
 
 ---
 
+## 🎯 QUICK CHEAT SHEET (Memorize These!)
+
+Print this, memorize it, write it down at the start of your interview.
+
+### **Powers of 2 (Most Important)**
+
+```
+2^10 = 1 KB            (kilobyte)
+2^20 = 1 MB            (megabyte)
+2^30 = 1 GB            (gigabyte)
+2^40 = 1 TB            (terabyte)
+2^50 = 1 PB            (petabyte)
+
+Useful:
+2^10 = 1,024 ≈ 1K
+2^20 = 1,024K ≈ 1M
+2^30 = 1,024M ≈ 1GB
+```
+
+### **Bytes Conversions**
+
+```
+1 KB = 10^3 bytes = 1,000 bytes
+1 MB = 10^6 bytes = 1,000,000 bytes
+1 GB = 10^9 bytes = 1,000,000,000 bytes
+1 TB = 10^12 bytes = 1,000,000,000,000 bytes
+1 PB = 10^15 bytes = 1,000,000,000,000,000 bytes
+
+Memory:
+1 M (million) = 10^6
+1 B (billion) = 10^9
+1 T (trillion) = 10^12
+```
+
+### **Time Calculations**
+
+```
+SECONDS IN A DAY:
+  24 hours × 60 min/hour × 60 sec/min = 86,400 seconds/day ≈ 100K seconds
+  
+SECONDS IN A YEAR:
+  365 days × 86,400 sec/day = 31,536,000 seconds ≈ 32M seconds
+
+MINUTES IN A YEAR:
+  365 days × 24 hours × 60 min = 525,600 minutes/year
+  
+(Use 100K for a day, 32M for a year - easy to remember)
+```
+
+### **Uptime to Downtime (Memorize!)**
+
+```
+99% uptime:      5,256 minutes/year  = 87.6 hours     = 3.65 days
+99.9% uptime:      526 minutes/year  = 8.76 hours     = 365 min/month
+99.99% uptime:     52.6 minutes/year = ~53 min/year   = 4 min/month
+99.999% uptime:    5.26 minutes/year = ~5 min/year    = 25 sec/month
+```
+
+### **Common Numbers to Know**
+
+```
+QPS (Queries Per Second):
+  Twitter/Facebook: ~100K QPS
+  Google Search: ~100K QPS
+  Typical startup: 100-1K QPS
+  
+Throughput:
+  Network: 1 Gbps = 125 MB/s
+  Disk: 1-10 MB/s (mechanical), 100+ MB/s (SSD)
+  Memory: 10+ GB/s
+  
+Users:
+  Daily Active Users (DAU) = (Monthly Active Users) / 2-3
+  Peak QPS = (Daily requests) / (86,400 seconds) × (peak factor)
+  Peak factor: 2-5x average
+```
+
+---
+
 ## Executive Summary
 
 **Back-of-the-Envelope Estimation** = Rough calculations to understand system requirements using common performance numbers and basic math.
