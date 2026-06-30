@@ -2297,23 +2297,58 @@ NOT acceptable: fraud detection → use 15-min Spark interval or Flink for those
 
 **Why Flink → Redis (NOT Flink → ClickHouse → Redis)?**
 
-This is a critical architectural decision. Let me explain why ClickHouse is wrong here:
+This is a critical architectural decision. The key is: **WHAT architecture are you building for?**
 
 ```
-WRONG APPROACH: Flink → ClickHouse → Redis → ML Service
-├─ Flink aggregates: restaurant:456:active_orders = 42
-├─ Writes to ClickHouse (columnar analytics DB)
-├─ ML Service: "GET feature for restaurant:456"
-├─ ClickHouse: full scan of aggregations, filters, returns value
-└─ Problem: Takes 50-100ms (TOO SLOW for ML inference)
+THREE POSSIBLE APPROACHES:
 
-RIGHT APPROACH: Flink → Redis → ML Service
-├─ Flink aggregates: restaurant:456:active_orders = 42
-├─ Writes directly to Redis (key-value store)
-├─ ML Service: "GET restaurant:456:active_orders"
-├─ Redis: O(1) lookup, returns value in <1ms
-└─ Works: Takes 1-2ms (PERFECT for inference)
+APPROACH 1: Flink → ClickHouse (query on-demand)
+├─ Flink writes aggregations to ClickHouse
+├─ ML Service: queries ClickHouse for latest value
+├─ ClickHouse: filters/aggregates to find value
+└─ Latency: 50-100ms ✗ TOO SLOW for inference (<200ms budget exhausted)
+
+APPROACH 2: Flink → Redis (direct push, real-time)
+├─ Flink writes pre-aggregated features directly to Redis
+├─ ML Service: GET key:value from Redis (O(1) lookup)
+├─ Redis: returns value instantly
+└─ Latency: 1-2ms ✓ PERFECT for inference
+│
+└─ BEST FOR: Features that change frequently (active_orders, current_driver_count)
+│            Need freshness in seconds, not minutes
+
+APPROACH 3: ClickHouse → Redis (batch push, offline pre-compute)
+├─ Flink writes to ClickHouse (for analytics)
+├─ ClickHouse pre-computes periodically (every 5-15 min)
+├─ ClickHouse PUSHES results to Redis (batch update)
+├─ ML Service: GET key:value from Redis
+└─ Latency: 1-2ms for lookup ✓, but features are 5-15 min stale ⚠
+│
+└─ BEST FOR: Features that DON'T change constantly (avg_rating, historical_avg)
+             Can tolerate 5-15 min staleness
 ```
+
+**So which is right for Scenario 2?**
+
+Scenario 2 answer: **HYBRID (Approach 2 + 3)**
+```
+Real-time features (change every second):
+├─ active_orders_at_restaurant = 42 (from Flink → Redis directly)
+├─ driver_count_in_zone = 8
+└─ current_traffic_level = high
+
+Historical features (change every 1-2 hours):
+├─ restaurant_avg_prep_time = 15 min (from Spark → Redis directly)
+├─ restaurant_avg_rating = 4.7
+└─ customer_lifetime_orders = 23
+
+BOTH go to Redis. ML Service reads from Redis. Done in 2ms.
+```
+
+**NOT using Approach 1 (ClickHouse query on-demand):**
+- ClickHouse query: 50-100ms
+- But we COULD use it if we didn't have Flink already
+- For <10ms latency requirement, always skip the query phase
 
 **Why the difference?**
 
@@ -2330,26 +2365,75 @@ Redis is optimized for:
 ClickHouse query = 50-100ms (wrong for inference)
 Redis query = 1-2ms (perfect for inference)
 
+**When to Use Each Approach (Decision Framework):**
+
+```
+APPROACH 1 (ClickHouse query on-demand):
+├─ Use when: Building analytics dashboards (query latency 50-100ms OK)
+├─ Don't use for: ML inference, real-time serving
+└─ Example: Scenario 1 (dashboard) ✓, Scenario 2 (inference) ✗
+
+APPROACH 2 (Flink → Redis direct push):
+├─ Use when: Need <2ms latency AND features change every 1-10 seconds
+├─ Real-time features: active_orders, current_traffic, fraud_score
+└─ Example: Scenario 2 (ML inference) ✓
+
+APPROACH 3 (ClickHouse/Spark → Redis batch push):
+├─ Use when: Features pre-computed every 5-60 minutes, don't need realtime
+├─ Historical features: avg_rating, historical_avg, user_segment
+├─ Pushes results to Redis after batch computation
+└─ Example: Scenario 5-8 (Spark every 5 min) ✓
+
+APPROACH 1 + 2 + 3 (HYBRID - Most common in production):
+├─ Flink → Redis (real-time features, <2ms)
+├─ Spark → Redis (historical features, 5-60 min batch)
+├─ Flink → ClickHouse (for ops dashboards, 100ms OK)
+└─ Example: Most real scenarios use all three ✓✓✓
+```
+
 **How to Decide in General:**
 
 ```
-ASK YOURSELF: What is the query pattern?
+ASK YOURSELF: What is the access pattern + latency need?
 
-┌─ Aggregation ("sum all events by city for analytics dashboard")
-│  → ClickHouse or Snowflake (columnar, optimized for aggregations)
-│  Latency OK: 100-500ms is fine for dashboards
+┌─ Aggregation + dashboard (<500ms OK)
+│  → Query ClickHouse/Snowflake on demand
+│  Example: "sum revenue by city" for dashboard refresh every 30 sec
 │
-├─ Point Lookup ("get current feature value for user:123")
-│  → Redis or DynamoDB (key-value, optimized for single lookups)
-│  Latency critical: <5ms required for inference
+├─ Point lookup + real-time inference (<2ms required)
+│  → Redis/DynamoDB (pre-computed, push model)
+│  Example: "get feature for user:123" for ML inference
 │
 ├─ Mixed ("need both aggregations AND point lookups")
-│  → Lambda Architecture: Both Flink→Redis AND Flink→ClickHouse
-│  Flink writes to both Redis (inference) + ClickHouse (analytics)
+│  → Use BOTH: ClickHouse for analytics + Redis for inference
+│  Push model: Flink/Spark pre-compute → Redis
+│  Pull model: Dashboard queries ClickHouse on demand
 │
-└─ Time-series ("store 1M metrics per second, query last 24 hours")
-   → TimescaleDB or InfluxDB (time-series optimized)
-   Latency: 10-50ms OK
+├─ Time-series ("store 1M metrics per second, query last 24 hours")
+│  → TimescaleDB or InfluxDB (time-series optimized)
+│  Latency: 10-50ms OK
+│
+└─ Fast-changing real-time (<1s)
+   → Flink → Redis direct (state in RAM, push immediately)
+   → Not through any intermediate storage
+```
+
+**Key Insight: It's Not "ClickHouse vs Redis", It's "Push vs Pull"**
+
+```
+PULL Model (query on-demand):
+  ClickHouse/Snowflake ← you ask for data ← fast to query but slow to respond
+  Good for: Dashboards (run query every 30 sec)
+  Latency: 50-500ms
+
+PUSH Model (pre-compute and send):
+  Redis ← Flink/Spark pushes data continuously ← fast to read, slow to compute
+  Good for: Inference (need <2ms per request)
+  Latency: 1-2ms read + X ms compute (depends on frequency)
+
+Production systems use BOTH:
+  ├─ Push to Redis for inference (real-time paths)
+  └─ Pull from ClickHouse for analytics (dashboards)
 ```
 
 **Real Decision Matrix:**
