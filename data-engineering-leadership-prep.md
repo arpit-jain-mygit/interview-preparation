@@ -2386,47 +2386,32 @@ Architecture change that solves it:
   ClickHouse and Grafana from Scenario 1 are DROPPED (use case changed from dashboard to ML)
 ```
 
-#### Full Architecture
+#### Full Architecture — Sequential Data Flow
 
-```
-[Customer places order]
-        ↓
-[App] ──1. WRITE (HTTP)──→ [PostgreSQL]        ← saves order (OLTP)
-  │                               │
-  │                         READ (WAL)
-  │                               │
-  │                        [Debezium CDC]
-  │                               │
-  │                             WRITE
-  │                               │
-  │                           [Kafka] ──────WRITE──────→ [S3]
-  │                               │                  raw Parquet files
-  │                    READ       │       READ              │
-  │              ┌────────────────┼────────────┐          READ
-  │              ↓                ↓            ↓            │
-  │        [Payment]          [Driver]      [Flink]      [Spark]
-  │         Service            Service     state in      reads S3
-  │          OLTP               OLTP        RAM           hourly
-  │                                           │               │
-  │                                         WRITE           WRITE
-  │                                     real-time        historical
-  │                                      features         features
-  │                                           │               │
-  │                                           ↓               ↓
-  │                                    [Redis — Feature Store]
-  │                                               │
-  │                                             READ
-  │                                               │
-  └──2. REQUEST (HTTP)──→ [ML Inference Service]──┘
-                                    │
-                                  runs
-                                    │
-                               [ML Model]
-                                    │
-                   RESPONSE ←───────┘
-                       │
-              returns "28 min" → [App]
-```
+| Step | From | To | Action | Latency | Importance | Why |
+|------|------|-----|--------|---------|-----------|-----|
+| 1a | App | PostgreSQL | WRITE order record | ~20ms | HIGH | OLTP source of truth |
+| 1b | App | ML Service | REQUEST prediction | ~5ms | **CRITICAL** | Must respond before confirmation shows |
+| 2 | PostgreSQL | Debezium CDC | Writes change to WAL | <1ms | MEDIUM | Async, not on critical path |
+| 3 | Debezium CDC | Kafka | WRITE order event | ~50ms | MEDIUM | Event bus, not on critical inference path |
+| 4a | Kafka | S3 | WRITE raw Parquet | ~100ms | LOW | Optional backup |
+| 4b | Kafka | Payment Service | READ + process | ~10ms | MEDIUM | Business op, not ML-critical |
+| 4c | Kafka | Driver Service | READ + assign | ~10ms | MEDIUM | Business op, not ML-critical |
+| 4d | Kafka | Flink | READ events | ~10ms | **CRITICAL** | Real-time feature computation |
+| 4e | S3 | Spark | READ (hourly) | ~100ms | HIGH | Historical features for inference |
+| 5 | Flink | Flink (RAM) | Compute real-time features | <1ms | **CRITICAL** | Active orders, driver count, traffic |
+| 6 | Spark | Spark (dist) | Compute historical features | ~1sec | HIGH | Avg prep time, ratings (stale OK) |
+| 7a | Flink | Redis | WRITE real-time features | ~50ms | **CRITICAL** | Sub-2ms lookup required |
+| 7b | Spark | Redis | WRITE historical features | ~50ms | HIGH | Pre-computed, refreshed hourly |
+| 8 | ML Service | Redis | READ features (GET) | <2ms | **CRITICAL** | Fastest possible lookup |
+| 9 | ML Service | ML Model | RUN inference | ~50ms | **CRITICAL** | Model execution |
+| 10 | ML Model | ML Service | RETURN prediction | <1ms | **CRITICAL** | "28 min" delivery time |
+| 11 | ML Service | App | RESPOND (HTTP) | <1ms | **CRITICAL** | Must respond in <200ms total |
+| 12 | App | User | Display confirmation | ~100ms | HIGH | Shows prediction on screen |
+
+**Legend:** *1a & 1b parallel* | *4a-4e parallel* | **CRITICAL** = On inference SLA path | **HIGH/MEDIUM/LOW** = Support roles
+
+**Critical Path:** `App REQUEST → ML Service → Redis (2ms) → Model (50ms) → App (~70ms total)`
 
 #### Quick Recap — New Concepts Introduced
 ```
@@ -2770,40 +2755,48 @@ Architecture change that solves it:
 
 #### Full Architecture
 
+#### Full Architecture — Sequential Data Flow (Two Parallel Stacks)
+
+**SPEED STACK (Ops Dashboard — Real-time)**
+
+| Step | From | To | Action | Latency | Importance | Why |
+|------|------|-----|--------|---------|-----------|-----|
+| 1 | Customer | App | Places order | ~500ms | MEDIUM | Initiates pipeline |
+| 2 | App | PostgreSQL | WRITE order | ~20ms | HIGH | OLTP source |
+| 3 | PostgreSQL | Debezium CDC | Writes WAL | <1ms | MEDIUM | Async capture |
+| 4 | Debezium CDC | Kafka | WRITE event | ~50ms | **CRITICAL** | Decouples OLTP from OLAP |
+| 5a | Kafka | S3 | WRITE backup | ~100ms | LOW | Optional archive |
+| 5b | Kafka | Payment | READ + process | ~10ms | MEDIUM | Business op |
+| 5c | Kafka | Driver | READ + assign | ~10ms | MEDIUM | Business op |
+| 5d | Kafka | Flink | READ events | ~10ms | **CRITICAL** | Real-time aggregation |
+| 6 | Flink | Flink (RAM) | Pre-aggregate | <1ms | **CRITICAL** | Solves slow scan |
+| 7 | Flink | ClickHouse | WRITE agg rows | ~50ms | **CRITICAL** | Fast ops queries |
+| 8 | ClickHouse | Grafana | READ aggs | ~10ms | **CRITICAL** | <100ms dashboard load |
+| 9 | Grafana | Ops Team | Display dashboard | <2sec | HIGH | Auto-refresh every 30sec |
+
+**SCALE STACK (Business Dashboard — Batch)**
+
+| Step | From | To | Action | Latency | Importance | Why |
+|------|------|-----|--------|---------|-----------|-----|
+| S1 | S3 (from Kafka) | Spark | READ raw data | ~100ms | HIGH | Historical events |
+| S2 | Spark | Spark (distributed) | CLEAN + JOIN | ~1-2sec | **CRITICAL** | Business logic layer |
+| S3 | Spark | Snowflake | WRITE fact tables | ~50ms | **CRITICAL** | Historical storage |
+| S4 | Snowflake | Tableau/Looker | READ queries | 3-10sec | **CRITICAL** | Executive dashboards |
+| S5 | Tableau | Business Team | On-demand exploration | N/A | HIGH | Ad-hoc analysis |
+
+**Legend:**
+- *Steps 5a-5c run in parallel (Kafka consumers)*
+- *Two stacks run independently in parallel*
+- **CRITICAL** = Required for dashboard SLA
+- **HIGH/MEDIUM/LOW** = Support roles
+
+**Two Stacks, Two Audiences:**
 ```
-[Customer places order]
-        ↓
-[App] ──WRITE (HTTP)──→ [PostgreSQL]        ← saves order (OLTP)
-                               │
-                         READ (WAL)
-                               │
-                        [Debezium CDC]
-                               │
-                             WRITE
-                               │
-                           [Kafka] ──────WRITE──────→ [S3]
-                               │                  raw Parquet files
-                    READ       │       READ              │
-              ┌────────────────┼────────────┐          READ
-              ↓                ↓            ↓            │
-        [Payment]          [Driver]      [Flink]      [Spark]
-         Service            Service     aggregates    cleans + joins
-          OLTP               OLTP       every 30 sec    hourly
-                                           │               │
-                                         WRITE           WRITE
-                                     pre-aggregated    clean fact
-                                       results          table
-                                           │               │
-                                           ↓               ↓
-                                      [ClickHouse]    [Snowflake]
-                                      last few hrs    weeks/months
-                                           │               │
-                                         READ            READ
-                                           │               │
-                                       [Grafana]    [Tableau/Looker]
-                                      Ops Dashboard  Biz Dashboard
-                                      auto-refresh   on-demand
-                                       every 30s
+Ops Team (live monitoring):     Speed Stack: Kafka → Flink → ClickHouse → Grafana
+                               (30-second refresh, <100ms queries)
+
+Business Team (strategic):       Scale Stack: S3 → Spark → Snowflake → Tableau
+                               (hourly refresh, 3-10 sec queries, full history)
 ```
 
 #### Quick Recap — New Concepts Introduced
@@ -3009,58 +3002,57 @@ Architecture change that solves it:
   ClickHouse and Snowflake from Scenario 3 are DROPPED (use case changed)
 ```
 
-#### Full Architecture
+#### Full Architecture — Sequential Data Flow
 
+| Step | From | To | Action | Latency | Importance | Why |
+|------|------|-----|--------|---------|-----------|-----|
+| 1a | Customer | App | Places order | ~500ms | MEDIUM | Initiates flow |
+| 1b | App | PostgreSQL | WRITE pending order | ~20ms | **CRITICAL** | Must save before fraud check |
+| 2a | PostgreSQL | Debezium CDC | Writes WAL | <1ms | MEDIUM | Async capture |
+| 2b | App | Fraud Service | REQUEST fraud check | ~5ms | **CRITICAL** | Blocks order confirmation |
+| 3 | Debezium CDC | Kafka | WRITE event | ~50ms | MEDIUM | Event bus |
+| 4a | Kafka | S3 | WRITE backup | ~100ms | LOW | Optional |
+| 4b | Kafka | Notification Svc | READ (own offset) | ~10ms | **CRITICAL** | Send push immediately |
+| 4c | Kafka | Inventory Svc | READ (own offset) | ~10ms | **CRITICAL** | Decrement stock |
+| 4d | Kafka | Loyalty Svc | READ (own offset) | ~10ms | MEDIUM | Add points (can retry) |
+| 4e | Kafka | Flink | READ events | ~10ms | **CRITICAL** | Real-time fraud features |
+| 5 | Flink | Flink (RAM) | Compute fraud features | <1ms | **CRITICAL** | Order velocity, amounts |
+| 6 | Flink | Redis | WRITE features | ~50ms | **CRITICAL** | Sub-2ms lookup required |
+| 7 | Fraud Service | Redis | READ features (GET) | <2ms | **CRITICAL** | Instant feature lookup |
+| 8 | Fraud Service | ML Model | RUN inference | ~50ms | **CRITICAL** | Fraud score |
+| 9 | ML Model | Fraud Service | Return score | <1ms | **CRITICAL** | Block/approve decision |
+| 10a | Fraud Service | App | RESPOND to fraud check | <1ms | **CRITICAL** | If score < 0.8: approve |
+| 10b | App | PostgreSQL | UPDATE status=confirmed | ~20ms | **CRITICAL** | If approved, save confirmation |
+| 10c | App | User | Show confirmation | <100ms | HIGH | "Order confirmed!" |
+| 11 | PostgreSQL → CDC | Kafka | WRITE confirmed event | ~50ms | MEDIUM | Triggers downstream |
+| 12a | Kafka | Notification | Send push | ~2sec | **CRITICAL** | Idempotency prevents duplicates |
+| 12b | Kafka | Inventory | Decrement stock | ~2sec | **CRITICAL** | Idempotency prevents double-decrement |
+| 12c | Kafka | Loyalty | Add points | ~5sec | MEDIUM | Can handle retries |
+
+**Legend:**
+- *Steps 4a-4e run in parallel (Kafka consumers with own offsets, independently)*
+- *Fraud check (2b + 7-10a) is BLOCKING — must complete before step 10b*
+- *Schema Registry validates all Kafka schemas for breaking changes*
+- **CRITICAL** = Required for order flow SLA
+- **HIGH/MEDIUM/LOW** = Support roles
+
+**Critical Path (Order Confirmation):**
 ```
-[Customer places order]
-        ↓
-[App] ──1. WRITE (HTTP)──────→ [PostgreSQL]        ← saves order status="pending" (OLTP)
-  │                                   │
-  │                             READ (WAL)
-  │                                   │
-  │                            [Debezium CDC]
-  │                                   │
-  │                                 WRITE
-  │                                   │
-  │                               [Kafka] ◄─────────────────────────────────────────┐
-  │                            (Schema Registry)                                     │
-  │                                   │                                              │
-  │              READ (own offset)    │    READ (own offset)    READ (own offset)    │
-  │   ┌───────────────────────────────┼──────────────────┬──────────────────────┐   │
-  │   ↓                               ↓                  ↓                      ↓   │
-  │ [Notification]            [Inventory Svc]      [Loyalty Svc]            [Flink]  │
-  │   Service                  decrements           adds points             state    │
-  │   idempotency check         stock                                       in RAM   │
-  │   WRITEs PostgreSQL           │                                           │      │
-  │   (notification_sent)         ↓                                    WRITE every  │
-  │         │                [Inventory DB]                              30 seconds  │
-  │         ↓                                                                 │      │
-  │   [Push Notification]                                                     ↓      │
-  │   sent to user                                              [Redis — fraud features]
-  │                                                             user:USR-123:order_velocity
-  │                                                             user:USR-123:avg_order_amount
-  │                                                             device:DEV-789:flagged
-  │                                                                           │
-  │                                                                         READ
-  │                                                                           │
-  └──2. REQUEST (HTTP)──────────────────────────→ [Fraud Service]  ◄─────────┘
-                                                    runs ML model
-                                                    (~15ms total)
-                                                         │
-                              ┌──────────────────────────┴──────────────────────────┐
-                        score > 0.8                                           score < 0.8
-                              │                                                      │
-                        REJECT order                                         APPROVE order
-                     UPDATE PostgreSQL                                    UPDATE PostgreSQL
-                     status = "rejected"                                  status = "confirmed"
-                     show user error                                      show user "Confirmed!"
-                                                                                     │
-                                                                          Debezium picks up
-                                                                          confirmed event
-                                                                          → Kafka pipeline
-                                                                          → Notification,
-                                                                            Inventory,
-                                                                            Loyalty react
+1. App WRITE order to PostgreSQL (20ms)
+2. App REQUEST fraud (5ms)
+3. Fraud Service reads Redis features (2ms)
+4. Fraud Service runs model (50ms)
+5. If score < 0.8: APPROVE, UPDATE PostgreSQL (20ms)
+6. Total time: ~97ms (✓ fits <200ms budget)
+
+AFTER order confirmed:
+7. Debezium picks up confirmed event
+8. Kafka → Notification (with idempotency check)
+9. Kafka → Inventory (with idempotency check)
+10. Kafka → Loyalty (can fail, will retry via DLQ)
+
+Fraud is ALWAYS synchronous and blocks.
+Each downstream consumer is independent (own offset, can fail separately).
 ```
 
 #### Quick Recap — New Concepts Introduced
