@@ -8,7 +8,7 @@ A comprehensive guide covering foundational system design concepts and detailed 
 
 ### **⭐ START HERE - QUICK REFERENCES**
 
-#### [🎯 QUICK CHEAT SHEET (Print & Memorize!)](#-quick-cheat-sheet-memorize-these-printer-friendly-3-column-layout)
+#### [🎯 QUICK CHEAT SHEET (Print & Memorize!)](#quick-cheat-sheet-memorize-these-printer-friendly-3-column)
 - Powers & Time (100K, 32M)
 - Latency Reference (Redis 2ms, DB 100ms)
 - Availability SLA mapping
