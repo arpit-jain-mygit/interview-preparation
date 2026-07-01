@@ -852,6 +852,42 @@ This is **original content**: summaries, explanations, and real-world examples c
 
 ---
 
+## 🔥 PEAK-ADJUSTED QPS FORMULA - Universal for Any System
+
+```
+╔════════════════════════════════════════════════════════╗
+║ PEAK-ADJUSTED QPS FORMULA                              ║
+╠════════════════════════════════════════════════════════╣
+║                                                        ║
+║ INPUTS:                                                ║
+║  DAU = Daily Active Users                             ║
+║  R = Requests per user per day                        ║
+║  P = Peak multiplier (2X, 4X, 5X, etc.)              ║
+║  Peak_hrs = Hours at peak rate (typical: 2-5 hours)  ║
+║  Avg_hrs = Hours at average rate (24 - Peak_hrs)     ║
+║                                                        ║
+║ STEP 1: Calculate Off-Peak QPS                        ║
+║  Off-peak QPS = (DAU × R) ÷ 86,400                   ║
+║                                                        ║
+║ STEP 2: Calculate Peak QPS                            ║
+║  Peak QPS = Off-peak QPS × P                         ║
+║                                                        ║
+║ STEP 3: Calculate Total Daily Requests                ║
+║  Total = (Off-peak × 3,600 × Avg_hrs) +              ║
+║          (Peak × 3,600 × Peak_hrs)                    ║
+║                                                        ║
+║ STEP 4: Calculate Servers Needed                      ║
+║  Off-peak servers = Off-peak QPS ÷ Server_capacity   ║
+║  Peak servers = Peak QPS ÷ Server_capacity           ║
+║  With redundancy: Multiply by 2-3X                    ║
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
+```
+
+**Works for:** Twitter, Instagram, Uber, Netflix, Stripe, or ANY system with users making requests.
+
+**Key Insight:** Peak and average QPS are NOT added together. Peak is a multiplier (4X-5X) that occurs for only part of the day (2-5 hours typically).
+
 ---
 
 ## Executive Summary
