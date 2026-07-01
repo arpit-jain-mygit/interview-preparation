@@ -3501,6 +3501,104 @@ This is a step-by-step framework you can apply to **ANY** system design intervie
 
 ---
 
+## 🎯 TECHNICAL APPROACHES: When to Use Each (Purpose-Based Guide)
+
+### **ARCHITECTURE PATTERNS (STEP 1)**
+
+| Approach | Purpose | When to Use | Trade-offs |
+|----------|---------|------------|-----------|
+| **Monolithic** | Single unified codebase | MVP, small teams (<10 people) | Hard to scale, tight coupling |
+| **Microservices** | Independent services | 100M+ DAU, multiple teams, different tech stacks | Complex operations, distributed tracing needed |
+| **Event-Driven** | Loose coupling via events | Real-time updates, async processing | Eventual consistency, harder to debug |
+| **API Gateway** | Central entry point | Rate limiting, auth, versioning | Single point of failure (needs failover) |
+
+---
+
+### **SCALING & REPLICATION (STEP 2)**
+
+| Approach | Purpose | When to Use | Trade-offs |
+|----------|---------|------------|-----------|
+| **Master-Slave** | Read scaling | Read-heavy (9:1 ratio) e.g., Instagram feed | Slave lag (eventual consistency) |
+| **Master-Master** | Multi-region writes | Global apps, disaster recovery | Conflict resolution complexity |
+| **Range Sharding** | Partition by ID range | Time-based data, continuous ranges | Uneven distribution (hot shards) |
+| **Hash Sharding** | Distribute uniformly | Even distribution needed | Rebalancing cost when adding shards |
+| **Geospatial (PostGIS)** | Location-based queries | Uber (nearby drivers), Maps, Yelp | Slower than numeric indexes |
+| **SQL vs NoSQL** | Data model choice | SQL: structured + transactions<br>NoSQL: flexible schema + scale | SQL: harder to scale<br>NoSQL: eventual consistency |
+
+---
+
+### **CORE COMPONENTS (STEP 3)**
+
+| Component | Purpose | When to Use | Trade-offs |
+|-----------|---------|------------|-----------|
+| **Round-Robin LB** | Simple distribution | Stateless services, equal load | Doesn't account for server capacity |
+| **Consistent Hashing LB** | Smart routing | Caching, sessions, stateful | More complex implementation |
+| **Redis** | In-memory cache | Hot data, sessions, leaderboards, real-time | Expensive (memory cost), data loss on crash |
+| **Memcached** | Distributed cache | Cheaper caching, simple key-value | No persistence, no replication |
+| **Master-Slave DB** | Read scaling | 90:10 read-write ratio | Slave lag |
+| **Read Replicas** | Scale read load | 100K+ QPS reads | Data consistency delays |
+| **Kafka** | High-throughput queue | Event streaming, log aggregation (1000s msgs/sec) | Complex to operate, overkill for small queue |
+| **RabbitMQ** | Reliable queue | Task queues, guarantees delivery | Lower throughput than Kafka |
+| **Elasticsearch** | Full-text search | Search features, analytics | Memory intensive, complexity |
+| **Algolia** | Managed search | Need instant results, don't want to operate Elasticsearch | Cost ($$$) |
+
+---
+
+### **SPECIALIZED COMPONENTS (STEP 4)**
+
+| Component | Purpose | When to Use | Trade-offs |
+|-----------|---------|------------|-----------|
+| **WebSocket** | Real-time updates | Chat, live notifications, live feed | Stateful connections, harder to scale |
+| **gRPC** | Low-latency RPC | Microservices communication, mobile | Not HTTP, harder debugging |
+| **PostGIS** | Geospatial queries | "Find drivers within 5km", location search | Slower than standard indexes |
+| **InfluxDB** | Time-series data | Metrics, logs, analytics | Not suitable for relational data |
+| **Neo4j** | Graph relationships | Social networks, recommendations, knowledge graphs | Overkill for non-graph data |
+| **Service Mesh (Istio)** | Microservices management | 50+ services, need observability | Complex to deploy and debug |
+| **Kong API Gateway** | API management | Multi-tenant, versioning, rate limiting | Adds latency (middleware) |
+
+---
+
+### **SCALING TACTICS (STEP 5)**
+
+| Tactic | Purpose | When to Use | Trade-offs |
+|--------|---------|------------|-----------|
+| **Horizontal Scaling** | Add more servers | Most scenarios, cloud-native | Need stateless design |
+| **Vertical Scaling** | Bigger server | Quick fix, limited by hardware | Max capacity reached faster |
+| **Auto-Scaling** | Dynamic scaling | Traffic spikes, cost optimization | Lag time (takes minutes to scale) |
+| **Database Sharding** | Scale writes | Write-heavy (100K+ QPS writes) | Complex queries across shards |
+| **Read Replicas** | Scale reads | Read-heavy workloads | Replication lag |
+| **Write Sharding** | Distribute writes | Multiple independent writes | Complex consistency |
+
+---
+
+### **RESILIENCE & OPERATIONS (STEP 6)**
+
+| Pattern | Purpose | When to Use | Trade-offs |
+|---------|---------|------------|-----------|
+| **Circuit Breaker** | Prevent cascading failures | Calling external services, prevent thundering herd | Extra latency on circuit open |
+| **Bulkhead** | Resource isolation | Prevent one service killing others | More memory usage |
+| **Retry with Backoff** | Handle transient failures | Network timeouts, temporary failures | Slow recovery, retries can amplify load |
+| **Failover** | Automatic backup | Master DB dies, need instant recovery | Complex to coordinate |
+| **Jaeger (Distributed Tracing)** | Debug production issues | 100+ microservices, slow requests | Overhead, storage cost |
+| **Prometheus + Grafana** | Monitor metrics | Alert on CPU, Memory, Latency | Need alerting rules expertise |
+| **ELK (Elasticsearch-Logstash-Kibana)** | Centralized logging | Debug issues across services | Storage intensive (logs take space) |
+| **Event Sourcing** | Event-based history | Need full audit trail, temporal queries | Complex to implement, eventual consistency |
+| **CQRS** | Separate reads/writes | Very different read/write models | Eventually consistent |
+
+---
+
+### **DEPLOYMENT & VALIDATION (STEP 7)**
+
+| Strategy | Purpose | When to Use | Trade-offs |
+|----------|---------|------------|-----------|
+| **Canary Deployment** | Risk mitigation | Roll out to 5% users first | Slow rollout (1-2 hours) |
+| **Blue-Green** | Zero-downtime deploy | Need instant fallback | 2X infrastructure cost |
+| **Rolling Update** | No downtime | Stateless services | Temporary mixed versions |
+| **Load Testing** | Capacity planning | Verify system can handle peak | Requires production-like data |
+| **Chaos Engineering** | Find failure modes | 99.99% availability needed | Can cause real outages if not careful |
+
+---
+
 ## 📖 DETAILED GUIDE (Read below for deeper understanding & examples)
 
 ---
