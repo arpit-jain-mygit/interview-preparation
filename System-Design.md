@@ -3599,73 +3599,124 @@ Q: Is data consistency critical?
 
 ---
 
-## **STEP 3: Generic Blueprint (High-Level Design)**
+## **STEP 3: Generic Blueprint (High-Level Design) - With Technical Approaches**
 
-**Use this standard blueprint as your starting point:**
+**Use this standard blueprint with technologies as your starting point:**
 
 ```
-┌─────────────────────────────────────────────┐
-│          CLIENT LAYER                       │
-│  (Mobile App / Web Browser)                 │
-└──────────────┬──────────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────────┐
-│          EDGE LAYER                         │
-│  CDN (for static content)                   │
-│  API Gateway (rate limiting, auth)          │
-└──────────────┬──────────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────────┐
-│          LOAD BALANCING                     │
-│  Distribute traffic across servers          │
-└──────────────┬──────────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────────┐
-│          APPLICATION LAYER                  │
-│  Multiple independent services:             │
-│  • Auth Service                             │
-│  • Feed Service                             │
-│  • Upload Service                           │
-│  • Search Service                           │
-│  • etc.                                     │
-└──────────────┬──────────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────────┐
-│          CACHING LAYER                      │
-│  Redis / Memcached (hot data)               │
-│  CDN cache (static files)                   │
-└──────────────┬──────────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────────┐
-│          DATABASE LAYER                     │
-│  Master-Slave Replication                   │
-│  Read Replicas for scaling                  │
-│  Sharding if needed                         │
-└──────────────┬──────────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────────┐
-│          STORAGE LAYER                      │
-│  Object Storage (S3 for photos/videos)      │
-│  Message Queue (Kafka for async)            │
-│  Search Index (Elasticsearch)               │
-└─────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                    CLIENT LAYER                            │
+│  iOS App  │  Android App  │  Web Browser                   │
+│  (HTTP/HTTPS)                                              │
+└──────────────────────┬─────────────────────────────────────┘
+                       │
+                       ↓
+┌────────────────────────────────────────────────────────────┐
+│                   EDGE LAYER                               │
+│  CDN (CloudFront, Cloudflare)  →  Static assets            │
+│  API Gateway (Kong, AWS API Gateway) → Rate limiting, Auth │
+└──────────────────────┬─────────────────────────────────────┘
+                       │
+                       ↓
+┌────────────────────────────────────────────────────────────┐
+│            LOAD BALANCING LAYER                            │
+│  Algorithm: Round-robin / Consistent Hashing              │
+│  Tech: Nginx, HAProxy, AWS ELB                            │
+│  Health checks every 10 sec                               │
+└──────────────────────┬─────────────────────────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         ↓             ↓             ↓
+    [Region 1]   [Region 2]   [Region 3]
+         │             │             │
+         ↓             ↓             ↓
+┌─────────────────────────────────────────────────────────────┐
+│         APPLICATION LAYER (Microservices)                  │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │ Auth Service │  │ Feed Service │  │Upload Service│    │
+│  │ (JWT tokens) │  │(Timeline gen)│  │(Image proc) │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │Search Service│  │PaymentService│  │NotifService │    │
+│  │(Elasticsearch)  │(Stripe)      │  │(WebSocket)  │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                             │
+│  Pattern: Event-driven, API Gateway, Circuit breaker      │
+└─────────────────────┬─────────────────────────────────────┘
+                      │
+      ┌───────────────┼───────────────┐
+      ↓               ↓               ↓
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  CACHE       │ │  MONITORING  │ │  MESSAGE    │
+│              │ │              │ │  QUEUE      │
+│ Redis        │ │ Prometheus   │ │ Kafka       │
+│ 2ms latency  │ │ + Grafana    │ │ RabbitMQ    │
+│ 80%+ hit     │ │              │ │ Async jobs  │
+│              │ │ Distributed  │ │             │
+│ Memcached    │ │ Tracing:     │ │ Decouple    │
+│ Hot data     │ │ Jaeger       │ │ services    │
+└──────────────┘ └──────────────┘ └──────────────┘
+      │
+      ↓
+┌─────────────────────────────────────────────────────────────┐
+│                DATABASE LAYER                               │
+│                                                             │
+│  Read-Heavy Workload:           Write-Heavy Workload:      │
+│  Master (1 node) → Read Replicas │ Sharding by user_id    │
+│  MySQL                          │ or hash partition        │
+│  PostgreSQL                     │ Multiple DB instances    │
+│                                 │                          │
+│  Replication Strategy:          │ Sharding Strategy:       │
+│  Master-Slave (async)           │ Range-based              │
+│  Master-Master (conflict mgmt)  │ Hash-based               │
+│                                 │ Geospatial (PostGIS)    │
+│                                 │                          │
+│  Consistency: Strong or Eventual (based on requirements)  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+    ┌─────────────────┼─────────────────┐
+    ↓                 ↓                 ↓
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ OBJECT       │ │ SEARCH       │ │ TIME-SERIES  │
+│ STORAGE      │ │ INDEX        │ │ DATABASE     │
+│              │ │              │ │              │
+│ AWS S3       │ │ Elasticsearch│ │ InfluxDB     │
+│ GCS          │ │ Algolia      │ │ TimescaleDB  │
+│ Azure Blob   │ │              │ │              │
+│              │ │ Full-text    │ │ Metrics,     │
+│ Photos,      │ │ search       │ │ Logs, Events │
+│ Videos,      │ │              │ │              │
+│ Documents    │ │ Geospatial   │ │ Analytics    │
+│              │ │ queries      │ │              │
+└──────────────┘ └──────────────┘ └──────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│         SUPPORTING INFRASTRUCTURE                           │
+│                                                             │
+│  Deployment:                  Operations:                  │
+│  • Canary deployment          • Health checks              │
+│  • Blue-green deployment      • Auto-scaling               │
+│  • Rolling updates            • Circuit breaker            │
+│  • Kubernetes orchestration   • Bulkhead pattern           │
+│  • Docker containers          • Retry with backoff         │
+│                               • Service mesh (Istio)       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Standard components in every design:**
+**Technical Approaches by Layer:**
 ```
-✓ Load Balancer (distribute traffic)
-✓ Web Servers (stateless, scalable)
-✓ Cache Layer (improve read performance)
-✓ Database (persistent storage)
-✓ Object Storage (for large files)
-✓ Message Queue (decouple services)
-✓ CDN (fast content delivery)
+✓ CLIENT → EDGE: CDN (CloudFront), API Gateway (Kong)
+✓ EDGE → LB: Round-robin or Consistent hashing
+✓ LB → SERVICES: Microservices, Event-driven architecture
+✓ SERVICES → CACHE: Redis (in-memory), Memcached (distributed)
+✓ CACHE → DATABASE: Master-Slave or Master-Master replication
+✓ DATABASE → STORAGE: Sharding, Read replicas, Object storage
+✓ QUEUE: Kafka (high-throughput), RabbitMQ (reliability)
+✓ SEARCH: Elasticsearch (full-text), Algolia (real-time)
+✓ MONITORING: Prometheus + Grafana, Jaeger (distributed tracing)
+✓ RESILIENCE: Circuit breaker, Bulkhead, Retry logic, Failover
 ```
 
 ---
