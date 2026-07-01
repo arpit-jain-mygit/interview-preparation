@@ -4,76 +4,6 @@ A comprehensive guide covering foundational system design concepts and detailed 
 
 ---
 
-## Table of Contents
-
-### **⭐ START HERE - QUICK REFERENCES**
-
-#### [🎯 QUICK CHEAT SHEET (Print & Memorize!)](#quick-cheat-sheet-memorize-these-printer-friendly-3-column)
-- Powers & Time (100K, 32M)
-- Latency Reference (Redis 2ms, DB 100ms)
-- Availability SLA mapping
-- Scale Numbers & Critical Formulas
-
-#### [7-STEP UNIVERSAL FRAMEWORK (Use for Any Problem!)](#chapter-35-the-universal-system-design-framework) ⭐
-- Step-by-step approach with timing
-- Technical approaches for each step
-- Generic blueprint diagram
-- Worked example (Uber design)
-
----
-
-### **Part 1: Foundation & Framework**
-
-#### [Chapter 1: Scale from Zero to Millions of Users](#chapter-1-scale-from-zero-to-millions-of-users)
-- Single server setup
-- Scaling web tier
-- Database replication
-- Caching strategies
-- CDN for static content
-- Stateless architecture
-- Multi-datacenter setup
-
-#### [Chapter 2: Back-of-the-Envelope Estimation](#chapter-2-back-of-the-envelope-estimation)
-- **🎯 Quick Cheat Sheet (Memorize!)** ← START HERE
-- Power of two reference
-- Latency numbers
-- Availability and SLA
-- Estimation techniques
-- Real-world examples
-
-#### [Chapter 3: A Framework for System Design Interviews](#chapter-3-a-framework-for-system-design-interviews)
-- The 4-step framework
-- What interviewers look for
-- Clarification questions
-- High-level design
-- Deep dive strategies
-- Time management
-- Dos and Don'ts
-
-#### [Chapter 3.5: The Universal System Design Framework](#chapter-35-the-universal-system-design-framework) ⭐ USE THIS FOR ANY PROBLEM
-- Step 1: Functional Requirements
-- Step 2: Scale & Non-Functional Requirements
-- Step 3: Generic Blueprint
-- Step 4: Customize for Your System
-- Step 5: Back-of-Envelope Estimation
-- Step 6: Design Deep-Dives (Resilience, Monitoring, Trade-offs)
-- Step 7: Growth & Constraints Verification
-
-### **Part 2: Case Studies**
-
-#### [Chapter 8: Design a URL Shortener](#chapter-8-design-a-url-shortener)
-- Problem statement
-- Hash-based vs base 62
-- Architecture and scaling
-- Real-world examples
-
-#### [CHUBB Interview Question - Design a Unique Code Generator](#chubb-interview-question-design-a-unique-code-generator)
-- Problem and bottlenecks
-- RDBMS approach (why it fails)
-- Pre-generation + queue solution
-- Performance comparison
-
----
 
 # Chapter 1: Scale from Zero to Millions of Users
 
@@ -86,17 +16,6 @@ This is **original content**: summaries, explanations, and real-world examples c
 
 ---
 
-## Table of Contents
-1. [Executive Summary](#executive-summary)
-2. [Single Server Setup](#single-server-setup)
-3. [Scaling Web Tier](#scaling-web-tier)
-4. [Scaling Database Tier](#scaling-database-tier)
-5. [Adding Cache Layer](#adding-cache-layer)
-6. [Content Delivery Network (CDN)](#content-delivery-network-cdn)
-7. [Stateless vs Stateful Architecture](#stateless-vs-stateful-architecture)
-8. [Multiple Data Centers](#multiple-data-centers)
-9. [Message Queue](#message-queue)
-10. [Complete Architecture](#complete-architecture-scalable-web-application-social-media-example)
 
 ---
 
@@ -840,14 +759,6 @@ This is **original content**: summaries, explanations, and real-world examples c
 
 ---
 
-## Table of Contents
-0. [🎯 Quick Cheat Sheet (Print & Memorize!)](#quick-cheat-sheet-memorize-these-printer-friendly-3-column) ← START HERE
-1. [Executive Summary](#executive-summary)
-2. [Power of Two](#power-of-two)
-3. [Latency Numbers](#latency-numbers-every-programmer-should-know)
-4. [Availability Numbers](#availability-numbers)
-5. [Estimation Techniques](#estimation-techniques)
-6. [Tips for Estimation](#tips-for-estimation)
 
 ---
 
@@ -6232,17 +6143,6 @@ CLIENT SIDE:
 
 
 
-## Table of Contents
-1. [Executive Summary](#executive-summary)
-2. [Problem Statement](#problem-statement)
-3. [Why URL Shortening Matters](#why-url-shortening-matters)
-4. [Back of Envelope Estimation](#back-of-envelope-estimation)
-5. [High-Level Design](#high-level-design)
-6. [Hash Functions & Algorithms](#hash-functions-algorithms)
-7. [Algorithm Decision Matrix](#algorithm-decision-matrix)
-8. [Deep Dive Design](#deep-dive-design)
-9. [Architecture Decisions](#architecture-decisions)
-10. [Interview Q&A](#interview-qa)
 
 ---
 
