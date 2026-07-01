@@ -6,6 +6,22 @@ A comprehensive guide covering foundational system design concepts and detailed 
 
 ## Table of Contents
 
+### **⭐ START HERE - QUICK REFERENCES**
+
+#### [🎯 QUICK CHEAT SHEET (Print & Memorize!)](#-quick-cheat-sheet-memorize-these-printer-friendly-3-column-layout)
+- Powers & Time (100K, 32M)
+- Latency Reference (Redis 2ms, DB 100ms)
+- Availability SLA mapping
+- Scale Numbers & Critical Formulas
+
+#### [7-STEP UNIVERSAL FRAMEWORK (Use for Any Problem!)](#chapter-35-the-universal-system-design-framework)
+- Step-by-step approach with timing
+- Technical approaches for each step
+- Generic blueprint diagram
+- Worked example (Uber design)
+
+---
+
 ### **Part 1: Foundation & Framework**
 
 #### [Chapter 1: Scale from Zero to Millions of Users](#chapter-1-scale-from-zero-to-millions-of-users)
