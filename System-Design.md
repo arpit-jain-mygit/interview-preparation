@@ -28,7 +28,8 @@ A comprehensive guide covering foundational system design concepts and detailed 
 5. [Availability Numbers](#availability-numbers)
 6. [Estimation Techniques](#estimation-techniques)
 7. [Real-World Example: Twitter](#real-world-example-twitter)
-8. [Tips for Estimation](#tips-for-estimation)
+8. [Peak-Adjusted QPS Formula](#peak-adjusted-qps-formula) ⭐
+9. [Tips for Estimation](#tips-for-estimation)
 
 ### Chapter 3: A Framework for System Design Interviews
 *(Note: Chapter 3.5 below is the primary framework)*
@@ -2275,6 +2276,152 @@ Storage for 5 years:
   
 This shows why video storage is expensive!
 Solution: Use CDN, compress, tiered storage
+```
+
+---
+
+## Peak-Adjusted QPS Formula
+
+**Official Name:** Peak-Adjusted QPS Formula (also called "Daily Load Distribution Model")
+
+A universal formula to calculate system requirements for any service with users making requests. Works for social media, APIs, payments, streaming, ride-sharing, or any system where you can estimate user activity patterns.
+
+### The Formula
+
+```
+╔════════════════════════════════════════════════════════╗
+║ PEAK-ADJUSTED QPS FORMULA                              ║
+╠════════════════════════════════════════════════════════╣
+║                                                        ║
+║ INPUTS:                                                ║
+║  DAU = Daily Active Users                             ║
+║  R = Requests per user per day                        ║
+║  P = Peak multiplier (2X, 4X, 5X, etc.)              ║
+║  Peak_hrs = Hours at peak rate (typical: 2-5 hours)  ║
+║  Avg_hrs = Hours at average rate (24 - Peak_hrs)     ║
+║                                                        ║
+║ STEP 1: Calculate Off-Peak QPS                        ║
+║  Off-peak QPS = (DAU × R) ÷ 86,400                   ║
+║                                                        ║
+║ STEP 2: Calculate Peak QPS                            ║
+║  Peak QPS = Off-peak QPS × P                         ║
+║                                                        ║
+║ STEP 3: Calculate Total Daily Requests                ║
+║  Total = (Off-peak × 3,600 × Avg_hrs) +              ║
+║          (Peak × 3,600 × Peak_hrs)                    ║
+║                                                        ║
+║ STEP 4: Calculate Servers Needed                      ║
+║  Off-peak servers = Off-peak QPS ÷ Server_capacity   ║
+║  Peak servers = Peak QPS ÷ Server_capacity           ║
+║  With redundancy: Multiply by 2-3X                    ║
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
+```
+
+### Real Example: Twitter
+
+```
+Given:
+  DAU = 300 million
+  Requests per user = 20 per day
+  Peak multiplier = 4X
+  Peak hours = 5 (6-11 PM)
+  Average hours = 19
+  Server capacity = 500 QPS per server
+
+Calculation:
+
+Step 1: Off-peak QPS
+  (300M × 20) ÷ 86,400 = 69,444 QPS
+
+Step 2: Peak QPS
+  69,444 × 4 = 277,776 QPS
+
+Step 3: Total daily requests
+  (69,444 × 3,600 × 19) + (277,776 × 3,600 × 5)
+  = 4,719,600,000 + 4,968,000,000
+  = 9,687,600,000 requests/day
+
+Step 4: Servers needed
+  Off-peak: 69,444 ÷ 500 = 139 servers
+  Peak: 277,776 ÷ 500 = 556 servers
+  With 2X redundancy: 278 base, 1,112 peak
+  Auto-scale: +834 servers during peak hours
+```
+
+### Applications by System Type
+
+| System | DAU | Requests/User | Peak Factor | Peak Hours | Example |
+|--------|-----|---------------|-----------  |------------|---------|
+| Twitter | 300M | 20 | 4X | 5 | 556 servers peak |
+| Instagram | 500M | 30 | 4X | 5 | 926 servers peak |
+| Uber | 10M | 2 | 5X | 3 | 116 servers peak |
+| Netflix | 300M | 5 | 3X | 4 | 52 servers peak |
+| Stripe API | 100K | 500 | 2X | 2 | 1,157 servers peak |
+
+### Key Insights
+
+**1. Peak duration matters heavily**
+```
+Same peak QPS (276K), different peak durations:
+
+2 peak hours → 158 avg servers needed
+5 peak hours → 184 avg servers needed
+10 peak hours → 236 avg servers needed
+
+Conclusion: Longer peaks require more infrastructure!
+```
+
+**2. Peak and average QPS are NOT added**
+```
+Off-peak:  69,444 QPS  (occurs 19 hours/day)
+Peak:      277,776 QPS (occurs 5 hours/day)
+
+WRONG: 69,444 + 277,776 = 347,220 total
+RIGHT: Peak is 4X multiplication, not addition
+```
+
+**3. This formula applies to ANY request-based system**
+```
+✓ Works for: Social media, APIs, payments, video, messaging, commerce
+✓ Key requirement: Can estimate R (requests per user per day)
+✓ Adjust P (peak multiplier) based on traffic patterns
+✓ Peak_hrs depends on timezone + user behavior
+```
+
+### How to Choose Peak Hours and Multiplier
+
+```
+Light Usage System (e.g., expense tracking app):
+  Peak hrs: 2-3 hours (lunch break, evening)
+  Peak multiplier: 2-3X
+
+Medium Usage System (e.g., Twitter, Instagram):
+  Peak hrs: 5-8 hours (evening/night globally)
+  Peak multiplier: 4-5X
+
+Heavy Usage System (e.g., gaming, messaging):
+  Peak hrs: 10-12 hours (continuous)
+  Peak multiplier: 2-3X (less extreme spikes)
+
+Global System (e.g., YouTube, Google):
+  Peak hrs: 8-12 hours (offset across timezones)
+  Peak multiplier: 2-4X (more smoothed out)
+```
+
+### When to Use This Formula
+
+```
+✓ Interview setting: Estimate infrastructure for any system
+✓ Capacity planning: Know how many servers to buy
+✓ Cost forecasting: Calculate cloud infrastructure spend
+✓ Scaling strategy: Understand when to auto-scale
+✓ Design decisions: Choose architecture based on QPS
+
+✗ Don't use if: 
+  - Traffic is completely unpredictable
+  - System has 24/7 uniform load (no peak/average split)
+  - Request patterns vary drastically by user type
 ```
 
 ---
