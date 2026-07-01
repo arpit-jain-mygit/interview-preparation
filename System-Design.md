@@ -31,10 +31,11 @@ A comprehensive guide covering foundational system design concepts and detailed 
 8. [Real-World Example: Twitter](#real-world-example-twitter)
 9. [Peak-Adjusted QPS Formula](#peak-adjusted-qps-formula) ⭐
 10. [Universal Storage Calculation Formula](#universal-storage-calculation-formula) ⭐
-11. [Bandwidth Calculation Formula](#bandwidth-calculation-formula) ⭐
-12. [Database Capacity Formula](#database-capacity-formula) ⭐
-13. [Caching Layer Formula](#caching-layer-formula) ⭐
-14. [Tips for Estimation](#tips-for-estimation)
+11. [Data Generation from QPS Formula](#data-generation-from-qps-formula-deriving-storage-from-requests) ⭐⭐ BRIDGE
+12. [Bandwidth Calculation Formula](#bandwidth-calculation-formula) ⭐
+13. [Database Capacity Formula](#database-capacity-formula) ⭐
+14. [Caching Layer Formula](#caching-layer-formula) ⭐
+15. [Tips for Estimation](#tips-for-estimation)
 
 ### Chapter 3: A Framework for System Design Interviews
 *(Note: Chapter 3.5 below is the primary framework)*
@@ -3056,6 +3057,176 @@ Financial/medical:     3.0X minimum
   - Data is compressed (video, image) - don't compress again
   - You have real metrics (use actual data!)
   - System uses deduplication (reduces storage 2-10X)
+```
+
+---
+
+## Data Generation from QPS Formula (Deriving Storage from Requests!)
+
+**Official Name:** Write-Based Data Derivation Formula
+
+**The Insight:** You don't need to guess "data per user per day" separately! You can DERIVE it from QPS by calculating how much data each WRITE operation creates. This connects the QPS formula directly to the Storage formula.
+
+### The Formula
+
+```
+╔════════════════════════════════════════════════════════╗
+║ DATA GENERATION FROM QPS FORMULA                       ║
+╠════════════════════════════════════════════════════════╣
+║                                                        ║
+║ KEY INSIGHT:                                           ║
+║  • Reads (90%) create NO storage                       ║
+║  • Writes (10%) CREATE storage                         ║
+║  • Storage = Write_QPS × Data_per_write × Seconds     ║
+║                                                        ║
+║ INPUTS:                                                ║
+║  Peak_QPS = Peak queries per second (from QPS formula)║
+║  Read_write_ratio = Read:Write ratio (e.g., 10:1)    ║
+║  Avg_data_per_write = Bytes created per write         ║
+║  DAU = Daily Active Users (for converting to /user)   ║
+║                                                        ║
+║ STEP 1: Split QPS into Read and Write                 ║
+║  Read_ratio = Ratio ÷ (Ratio + 1)                     ║
+║  Write_ratio = 1 ÷ (Ratio + 1)                        ║
+║  Write_QPS = Peak_QPS × Write_ratio                   ║
+║                                                        ║
+║ STEP 2: Calculate Data Per Second (at peak)           ║
+║  Data_per_second = Write_QPS × Avg_data_per_write    ║
+║                                                        ║
+║ STEP 3: Convert to Daily Data Per User                ║
+║  Daily_data_per_user = (Data_per_second × 86,400)    ║
+║                        ÷ DAU                           ║
+║                                                        ║
+║ STEP 4: Feed into Storage Formula                     ║
+║  (Now you have data_per_user to use in Storage!)      ║
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
+```
+
+### Real Example: Twitter
+
+```
+Given:
+  Peak_QPS = 277,776 (from QPS formula)
+  Read:Write ratio = 10:1 (90% reads, 10% writes)
+  Data per write operation:
+    • Tweet write (10% of writes) = 500 bytes
+    • Like write (50% of writes) = 100 bytes
+    • Retweet write (20% of writes) = 100 bytes
+    • Other write (20% of writes) = 50 bytes
+    Weighted avg = 0.1×500 + 0.5×100 + 0.2×100 + 0.2×50
+                 = 50 + 50 + 20 + 10 = 130 bytes/write
+  DAU = 300M
+
+Calculation:
+
+  Step 1: Split QPS
+    Write_ratio = 1 ÷ (10 + 1) = 0.0909
+    Write_QPS = 277,776 × 0.0909 = 25,252 QPS (writes only!)
+    Read_QPS = 277,776 - 25,252 = 252,524 QPS (reads only)
+
+  Step 2: Data per second at peak
+    Data/sec = 25,252 writes/sec × 130 bytes
+             = 3,282,760 bytes/sec
+             = 3.28 MB/sec
+
+  Step 3: Daily data per user
+    Daily total = 3.28 MB/sec × 86,400 sec
+               = 283 TB/day
+    Per user = 283 TB ÷ 300M users
+             = 0.94 MB/user/day
+
+  Step 4: Feed into Storage Formula
+    (This DERIVED value = 0.94 MB/user/day)
+    (Compare to our ASSUMED value = 6 MB/user/day)
+    
+    Insight: Only 0.94 MB is actual data writes!
+    The 6 MB includes overhead, metadata, indexes, etc.
+
+Result:
+  This shows writes create LESS data than we assumed!
+  Only 16% of the 6 MB is from actual write operations.
+  The other 84% is:
+    - Metadata & indexes
+    - Replication copies
+    - Cache duplicates
+    - Timeline materialization
+    - Search indexes
+```
+
+### Why This Matters
+
+```
+TRADITIONAL APPROACH (Independent):
+  ✓ Simple: Just guess "data per user"
+  ✗ Disconnected: QPS and Storage are separate
+  ✗ Easy to misalign: Over/underestimate data
+
+NEW APPROACH (Derived):
+  ✓ Connected: Storage comes from actual writes
+  ✓ Accurate: Based on system behavior
+  ✓ Validates assumptions: Can compare derived vs assumed
+  ✗ More complex: Need read:write ratio and per-operation size
+```
+
+### Comparison Table: Derived vs Assumed Data
+
+```
+System    │ Derived/Write │ Assumed/User │ Ratio │ Insight
+──────────┼───────────────┼──────────────┼───────┼─────────────────
+Twitter   │ 0.94 MB       │ 6 MB         │ 6.4X  │ Most data is metadata
+Instagram │ 2 MB          │ 7 MB         │ 3.5X  │ Images are heavy
+Uber      │ 50 KB         │ 1 MB         │ 20X   │ Simple location data
+Stripe    │ 500 B         │ 100 KB       │ 200X  │ DB records >> raw writes
+```
+
+### When to Use Each Approach
+
+```
+USE DERIVED (from QPS):
+  ✓ You know the read:write ratio
+  ✓ You know data per operation type
+  ✓ You need to validate assumptions
+  ✓ Building a system from requirements
+
+USE ASSUMED (direct estimate):
+  ✓ You have real metrics from similar systems
+  ✓ You're building from scratch (prototype)
+  ✓ You need quick estimates
+  ✓ Read-heavy systems (most data doesn't get written)
+
+USE BOTH:
+  ✓ Calculate derived value
+  ✓ Compare with assumed value
+  ✓ If they differ by 5-10X, investigate why!
+  ✓ Use the higher value for safe capacity planning
+```
+
+### Complete Flow: QPS → Data → Storage
+
+```
+INPUT: Requests per user per day = 20
+
+STEP 1: QPS FORMULA
+  (20 requests/user × 300M users) ÷ 86,400
+  = 69,444 QPS average
+  = 277,776 QPS peak (× 4)
+
+STEP 2: DATA DERIVATION (NEW!)
+  Peak_QPS = 277,776
+  Read:Write = 10:1 → Write_QPS = 25,252
+  Data/write = 130 bytes
+  Daily_data = 25,252 × 130 × 86,400 ÷ 300M
+             = 0.94 MB/user/day
+
+STEP 3: STORAGE FORMULA
+  Input the derived data_per_user = 0.94 MB
+  Retention = 5 years
+  Redundancy = 2X
+  Compression = 1.5X
+  Result: 4,380 PB total storage
+
+✓ Everything connected through one input (requests/user)!
 ```
 
 ---
