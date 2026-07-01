@@ -31,7 +31,10 @@ A comprehensive guide covering foundational system design concepts and detailed 
 8. [Real-World Example: Twitter](#real-world-example-twitter)
 9. [Peak-Adjusted QPS Formula](#peak-adjusted-qps-formula) ⭐
 10. [Universal Storage Calculation Formula](#universal-storage-calculation-formula) ⭐
-11. [Tips for Estimation](#tips-for-estimation)
+11. [Bandwidth Calculation Formula](#bandwidth-calculation-formula) ⭐
+12. [Database Capacity Formula](#database-capacity-formula) ⭐
+13. [Caching Layer Formula](#caching-layer-formula) ⭐
+14. [Tips for Estimation](#tips-for-estimation)
 
 ### Chapter 3: A Framework for System Design Interviews
 *(Note: Chapter 3.5 below is the primary framework)*
@@ -3053,6 +3056,355 @@ Financial/medical:     3.0X minimum
   - Data is compressed (video, image) - don't compress again
   - You have real metrics (use actual data!)
   - System uses deduplication (reduces storage 2-10X)
+```
+
+---
+
+## Bandwidth Calculation Formula
+
+**Official Name:** Network Bandwidth Estimation Formula
+
+Calculates the network bandwidth needed to handle peak traffic. Essential for CDN, load balancer, and network planning.
+
+### The Formula
+
+```
+╔════════════════════════════════════════════════════════╗
+║ BANDWIDTH CALCULATION FORMULA                          ║
+╠════════════════════════════════════════════════════════╣
+║                                                        ║
+║ INPUTS:                                                ║
+║  Peak_QPS = Peak queries per second (from QPS formula)║
+║  Avg_response_size = Average response size (bytes)    ║
+║  P = Peak multiplier (2-5X)                           ║
+║  B = Bandwidth multiplier (1X for load, 10X for      ║
+║      redundancy + overhead)                            ║
+║                                                        ║
+║ STEP 1: Calculate Bytes Per Second (at peak)          ║
+║  Bytes_per_sec = Peak_QPS × Avg_response_size        ║
+║                                                        ║
+║ STEP 2: Convert to Gigabits Per Second (Gbps)         ║
+║  Gbps = (Bytes_per_sec × 8 bits/byte) ÷ 10^9        ║
+║                                                        ║
+║ STEP 3: Apply Redundancy & Safety Margin              ║
+║  Required_Gbps = Gbps × B (typically 10X)             ║
+║                                                        ║
+║ STEP 4: Convert to Terabits (if > 1000 Gbps)         ║
+║  Tbps = Required_Gbps ÷ 1,000                         ║
+║                                                        ║
+║ QUICK CONVERSION:                                      ║
+║  1 Byte = 8 bits                                      ║
+║  1 Mbps = 0.125 MB/s                                  ║
+║  1 Gbps = 125 MB/s                                    ║
+║  1 Tbps = 125 GB/s                                    ║
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
+```
+
+### Real Examples
+
+**Example 1: Twitter (Same Assumptions)**
+
+```
+Given:
+  Peak QPS = 277,776 (from QPS formula)
+  Average response size = 2 KB per request
+  Redundancy multiplier = 10X (for safety + DR)
+
+Calculation:
+  Step 1: Bytes/sec = 277,776 QPS × 2 KB
+                    = 555,552 KB/sec
+                    = 555.552 MB/sec
+
+  Step 2: Gbps = (555.552 MB/sec × 8 bits) ÷ 1,000
+                = 4,444 Mbps
+                = 4.4 Gbps
+
+  Step 3: With redundancy = 4.4 Gbps × 10
+                          = 44 Gbps (peak capacity needed)
+
+  Infrastructure:
+    Primary network: 44 Gbps (10GbE cards × 5 servers)
+    Backup network: 44 Gbps (redundant path)
+    CDN capacity: 100 Gbps (handle spikes)
+    Cost: ~$1-2 million/year for this capacity
+```
+
+**Example 2: Video Streaming (Netflix-like)**
+
+```
+Given:
+  Peak QPS = 500,000 users watching simultaneously
+  Video bitrate = 5 MB/sec per user (1080p)
+  This isn't QPS, it's concurrent streams!
+
+Calculation:
+  Step 1: Bytes/sec = 500K users × 5 MB/sec
+                    = 2.5 Million MB/sec
+                    = 2.5 EB/sec (yes, exabytes!)
+
+  Step 2: Gbps = (2.5M MB/sec × 8) ÷ 1,000
+                = 20,000 Gbps
+                = 20 Tbps
+
+  Step 3: With redundancy = 20 Tbps × 3 (3 regions)
+                          = 60 Tbps total
+
+  Reality: Netflix uses ~200 Tbps globally (peak)
+  This shows why they need massive CDN network!
+```
+
+### Bandwidth by Operation Type
+
+| Operation | Response Size | Peak QPS | Bandwidth |
+|-----------|---------------|----------|-----------|
+| Read tweet | 2 KB | 250K | 4 Gbps |
+| Upload image | 500 B (ACK) | 50K | 0.2 Gbps |
+| Stream video | 1 MB/sec per user | 500K concurrent | 4 Tbps |
+| API call | 500 B | 100K | 0.4 Gbps |
+| Database sync | 10 KB | 50K | 4 Gbps |
+
+---
+
+## Database Capacity Formula
+
+**Official Name:** Database Capacity Estimation Formula
+
+Calculates total database size including indexes, replication, and overhead.
+
+### The Formula
+
+```
+╔════════════════════════════════════════════════════════╗
+║ DATABASE CAPACITY FORMULA                              ║
+╠════════════════════════════════════════════════════════╣
+║                                                        ║
+║ INPUTS:                                                ║
+║  DAU = Daily Active Users                             ║
+║  Records_per_user = Records created per user          ║
+║  Avg_record_size = Size of each record (bytes)        ║
+║  Retention = How long to keep data (days)             ║
+║  Index_overhead = Index size (typically 1.5-2X)       ║
+║  Redundancy = Replication factor (2X or 3X)           ║
+║                                                        ║
+║ STEP 1: Calculate Total Records                       ║
+║  Total_records = DAU × Records_per_user × Retention   ║
+║                                                        ║
+║ STEP 2: Calculate Raw Data Size                       ║
+║  Raw_size = Total_records × Avg_record_size           ║
+║                                                        ║
+║ STEP 3: Add Index Overhead                            ║
+║  With_indexes = Raw_size × Index_overhead             ║
+║                                                        ║
+║ STEP 4: Apply Replication                             ║
+║  Final_DB_size = With_indexes × Redundancy            ║
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
+```
+
+### Real Examples
+
+**Example 1: Twitter (Same Assumptions)**
+
+```
+Given:
+  DAU = 300 million
+  Tweets per user per day = 1 tweet
+  Retention = 5 years (1,825 days)
+  Avg tweet size = 500 bytes
+  Index overhead = 1.5X (author, timestamp, hashtags)
+  Redundancy = 2X (master-slave)
+
+Calculation:
+  Step 1: Total records = 300M × 1 × 1,825
+                        = 547.5 billion tweets
+
+  Step 2: Raw size = 547.5B tweets × 500 bytes
+                   = 273.75 TB
+
+  Step 3: With indexes = 273.75 TB × 1.5
+                       = 410.6 TB
+
+  Step 4: With redundancy = 410.6 TB × 2
+                          = 821.2 TB (main DB)
+
+  Additional tables:
+    User profiles: ~100 TB (with redundancy)
+    Interactions (likes, retweets): ~200 TB
+    Metadata & indexes: ~100 TB
+    ─────────────────────────────
+    Total DB: ~1.2 PB
+
+  With 3-way replication: 3.6 PB total
+```
+
+**Example 2: E-commerce (Purchase History)**
+
+```
+Given:
+  DAU = 50 million
+  Purchases per user per day = 0.5 (orders)
+  Retention = 10 years (3,650 days)
+  Avg order size = 1 KB (with items, shipping, etc)
+  Index overhead = 2.0X (user_id, date, product_id)
+  Redundancy = 2X
+
+Calculation:
+  Step 1: Total records = 50M × 0.5 × 3,650
+                        = 91.25 billion orders
+
+  Step 2: Raw size = 91.25B × 1 KB
+                   = 91.25 TB
+
+  Step 3: With indexes = 91.25 TB × 2.0
+                       = 182.5 TB
+
+  Step 4: With redundancy = 182.5 TB × 2
+                          = 365 TB
+
+  This fits on modern databases! (much smaller than Twitter)
+```
+
+### Database by System Type
+
+| System | Total Records | Raw Size | With Indexes | With 2X Replication |
+|--------|---------------|----------|--------------|-------------------|
+| Twitter (tweets) | 547B | 273 TB | 410 TB | 821 TB |
+| Instagram (photos) | 150B | 300 TB | 450 TB | 900 TB |
+| Uber (rides) | 100B | 100 TB | 150 TB | 300 TB |
+| Facebook (posts) | 500B | 500 TB | 750 TB | 1.5 PB |
+
+---
+
+## Caching Layer Formula
+
+**Official Name:** Caching Layer Capacity Formula
+
+Calculates cache size needed to achieve target hit rate and reduce database load.
+
+### The Formula
+
+```
+╔════════════════════════════════════════════════════════╗
+║ CACHING LAYER FORMULA                                  ║
+╠════════════════════════════════════════════════════════╣
+║                                                        ║
+║ INPUTS:                                                ║
+║  Peak_QPS = Peak queries per second                   ║
+║  Cache_hit_rate = Target hit rate (e.g., 80%)        ║
+║  Avg_response_size = Size of cached item (bytes)      ║
+║  Working_set_ratio = % of data accessed frequently    ║
+║                      (typically 20-30%)               ║
+║  Redundancy = Replication (2X for HA)                 ║
+║                                                        ║
+║ STEP 1: Calculate Cache Hits Per Second               ║
+║  Cache_hits_qps = Peak_QPS × Cache_hit_rate           ║
+║                                                        ║
+║ STEP 2: Calculate Database Hits Per Second            ║
+║  DB_hits_qps = Peak_QPS - Cache_hits_qps              ║
+║                                                        ║
+║ STEP 3: Calculate Working Set Size                    ║
+║  (What data to keep in cache)                         ║
+║  Working_set = Total_DB_size × Working_set_ratio      ║
+║                                                        ║
+║ STEP 4: Add Redundancy for Cache Cluster              ║
+║  Final_cache_size = Working_set × Redundancy          ║
+║                                                        ║
+║ SAVINGS CALCULATION:                                   ║
+║  DB_load_without_cache = Peak_QPS                     ║
+║  DB_load_with_cache = DB_hits_qps                     ║
+║  Load_reduction = 1 - (DB_hits_qps ÷ Peak_QPS)       ║
+║                 = Cache_hit_rate                      ║
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
+```
+
+### Real Examples
+
+**Example 1: Twitter (Same Assumptions)**
+
+```
+Given:
+  Peak QPS = 277,776
+  Target cache hit rate = 80% (reasonable for social media)
+  Avg response size = 2 KB per cached item
+  Working set ratio = 20% (20% of tweets are "hot")
+  DB size = 1.2 PB
+  Redundancy = 2X (for high availability)
+
+Calculation:
+  Step 1: Cache hits = 277,776 × 0.80
+                     = 222,220 QPS (served from cache)
+
+  Step 2: DB hits = 277,776 - 222,220
+                  = 55,556 QPS (hit actual database)
+
+  Step 3: Working set = 1.2 PB × 0.20
+                      = 240 PB (hot data)
+
+  Step 4: Cache size = 240 PB × 2
+                     = 480 PB (with redundancy)
+
+  Infrastructure:
+    Redis cluster: 500 servers × 1 TB each = 500 PB
+    Memcached: 100 servers × 100 GB each = 10 TB
+    Total cache layer: ~510 TB to 500 PB
+
+  Impact:
+    Without cache: 277K QPS hits DB
+    With cache: 55K QPS hits DB
+    DB load reduction: 80% ✓
+    Cost savings: ~$100M/year (fewer DB servers)
+```
+
+**Example 2: E-commerce (Shopping)**
+
+```
+Given:
+  Peak QPS = 100,000
+  Target cache hit rate = 90% (product catalog is stable)
+  Avg cached item = 10 KB (product details)
+  Working set ratio = 10% (only 10% of catalog accessed)
+  DB size = 500 TB (from Database formula)
+  Redundancy = 2X
+
+Calculation:
+  Step 1: Cache hits = 100,000 × 0.90 = 90,000 QPS
+
+  Step 2: DB hits = 100,000 - 90,000 = 10,000 QPS
+
+  Step 3: Working set = 500 TB × 0.10 = 50 TB
+
+  Step 4: Cache size = 50 TB × 2 = 100 TB
+
+  Infrastructure:
+    Redis: 5 servers × 20 TB each = 100 TB
+    Cost: ~$5M (much cheaper than DB servers)
+    
+  Result: 90% of requests served from memory (fast!)
+```
+
+### Caching Strategy by Data Type
+
+| Data Type | Hit Rate | Working Set | Cache Size | Example |
+|-----------|----------|-------------|------------|---------|
+| Product catalog | 90% | 10% | 50 TB | E-commerce |
+| User timeline | 80% | 20% | 240 PB | Twitter |
+| Trending topics | 95% | 1% | 12 PB | Trending feed |
+| User sessions | 85% | 30% | 150 TB | Login/auth |
+| Geographic data | 99% | 5% | 25 TB | Maps/location |
+
+### Cache Hit Rate Targets
+
+```
+  System Type           │ Realistic Hit Rate │ DB Load Reduction
+  ──────────────────────┼───────────────────┼──────────────────
+  Static content        │ 95-99%            │ 95-99% savings
+  User profiles         │ 80-90%            │ 80-90% savings
+  Product catalog       │ 85-95%            │ 85-95% savings
+  Timeline/feed         │ 70-80%            │ 70-80% savings
+  Search results        │ 60-70%            │ 60-70% savings
+  Real-time data        │ 40-50%            │ 40-50% savings
 ```
 
 ---
