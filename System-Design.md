@@ -843,103 +843,98 @@ This is **original content**: summaries, explanations, and real-world examples c
 
 ---
 
-## 🎯 QUICK CHEAT SHEET (Memorize These!)
+## 🎯 QUICK CHEAT SHEET (Memorize These!) - Single Page Wall Reference
 
-Print this, memorize it, write it down at the start of your interview.
+**Print this & memorize before your interview**
 
-### **Powers of 2 (Most Important)**
+### **POWERS & CONVERSIONS**
+
+| Category | Formula | Value |
+|----------|---------|-------|
+| **2^10** | 1 KB | 1,024 bytes |
+| **2^20** | 1 MB | ~1 Million |
+| **2^30** | 1 GB | ~1 Billion |
+| **2^40** | 1 TB | ~1 Trillion |
+| **2^50** | 1 PB | ~1 Petabyte |
+| **10^3** | 1K (Thousand) | 1,000 |
+| **10^6** | 1M (Million) | 1,000,000 |
+| **10^9** | 1B (Billion) | 1,000,000,000 |
+| **10^12** | 1T (Trillion) | 1,000,000,000,000 |
+
+---
+
+### **TIME CALCULATIONS (Memorize!)**
+
+| Metric | Formula | Value |
+|--------|---------|-------|
+| **Seconds/Day** | 24h × 60m × 60s | **86,400** ≈ 100K |
+| **Seconds/Year** | 365d × 86,400s | **31,536,000** ≈ 32M |
+| **Minutes/Year** | 365d × 24h × 60m | **525,600** |
+
+---
+
+### **AVAILABILITY (UPTIME → DOWNTIME)**
+
+| SLA | Downtime/Year | Downtime/Month | Max Acceptable |
+|-----|---------------|--------------------|---|
+| **99%** | 3.65 days | 7.2 hours | Simple services |
+| **99.9%** | 8.76 hours | 43 min | Most services |
+| **99.99%** | 52.6 min | 4.3 min | Critical services |
+| **99.999%** | 5.26 min | 25 sec | Bank-grade |
+
+---
+
+### **LATENCY REFERENCE (In Milliseconds)**
+
+| Operation | Time | Type |
+|-----------|------|------|
+| L1 Cache | 0.0005 ms | CPU |
+| Memory (RAM) | 0.1 ms | Memory |
+| SSD Read (1MB) | 0.25 ms | Disk |
+| Disk Seek | 10 ms | Disk |
+| Network (same DC) | 0.5 ms | Network |
+| Network (cross-US) | 150 ms | Network |
+| **Redis** | **2 ms** | **Cache** |
+| **Database Query** | **100 ms** | **DB** |
+
+---
+
+### **THROUGHPUT & CAPACITY**
+
+| Resource | Throughput | Notes |
+|----------|-----------|-------|
+| **Network** | 1 Gbps = 125 MB/s | Typical |
+| **Disk (HDD)** | 1-10 MB/s | Mechanical |
+| **Disk (SSD)** | 100+ MB/s | Flash |
+| **Memory** | 10+ GB/s | RAM bandwidth |
+| **QPS/Server** | 1K-10K | Depends on complexity |
+
+---
+
+### **COMMON SCALE NUMBERS**
+
+| Metric | Value | Example |
+|--------|-------|---------|
+| **1M Users** | 10^6 | Startup |
+| **100M Users** | 10^8 | Instagram scale |
+| **1B Users** | 10^9 | Facebook scale |
+| **Typical QPS** | 100-1K | Small service |
+| **High QPS** | 10K-100K | Twitter, Google |
+| **API Response** | 1-10 KB | Typical |
+| **Image Size** | 100 KB - 5 MB | Photo |
+| **1M Records** | ~1 GB | (1KB each) |
+| **1B Records** | ~1 TB | (1KB each) |
+
+---
+
+### **USEFUL FORMULAS (Write at Interview Start)**
 
 ```
-2^10 = 1 KB            (kilobyte)
-2^20 = 1 MB            (megabyte)
-2^30 = 1 GB            (gigabyte)
-2^40 = 1 TB            (terabyte)
-2^50 = 1 PB            (petabyte)
-
-Useful:
-2^10 = 1,024 ≈ 1K
-2^20 = 1,024K ≈ 1M
-2^30 = 1,024M ≈ 1GB
-```
-
-### **Powers of 10 (Million, Billion, Trillion)**
-
-```
-10^3 = 1 Thousand (K)
-10^6 = 1 Million (M)
-10^9 = 1 Billion (B)
-10^12 = 1 Trillion (T)
-10^15 = 1 Quadrillion (Q)
-
-Counts:
-1 Million = 10^6 = 1,000,000
-1 Billion = 10^9 = 1,000,000,000
-1 Trillion = 10^12 = 1,000,000,000,000
-```
-
-### **Bytes Conversions (10^x)**
-
-```
-1 KB = 10^3 bytes = 1,000 bytes
-1 MB = 10^6 bytes = 1 Million bytes = 1,000,000 bytes
-1 GB = 10^9 bytes = 1 Billion bytes = 1,000,000,000 bytes
-1 TB = 10^12 bytes = 1 Trillion bytes = 1,000,000,000,000 bytes
-1 PB = 10^15 bytes = 1 Quadrillion bytes = 1,000,000,000,000,000 bytes
-
-Quick Reference:
-1 M = 10^6 (Million)
-1 B = 10^9 (Billion)
-1 T = 10^12 (Trillion)
-```
-
-### **Time Calculations**
-
-```
-SECONDS IN A DAY:
-  24 hours × 60 min/hour × 60 sec/min = 86,400 seconds/day ≈ 100K seconds
-  
-SECONDS IN A YEAR:
-  365 days × 86,400 sec/day = 31,536,000 seconds ≈ 32M seconds
-
-MINUTES IN A YEAR:
-  365 days × 24 hours × 60 min = 525,600 minutes/year
-  
-(Use 100K for a day, 32M for a year - easy to remember)
-```
-
-### **Uptime to Downtime (Memorize!)**
-
-```
-99% uptime:      5,256 minutes/year  = 87.6 hours     = 3.65 days
-99.9% uptime:      526 minutes/year  = 8.76 hours     = 365 min/month
-99.99% uptime:     52.6 minutes/year = ~53 min/year   = 4 min/month
-99.999% uptime:    5.26 minutes/year = ~5 min/year    = 25 sec/month
-```
-
-### **Common Numbers to Know**
-
-```
-QPS (Queries Per Second):
-  Twitter/Facebook: ~100K QPS = 100 × 10^3
-  Google Search: ~100K QPS = 100 × 10^3
-  Typical startup: 100-1K QPS
-  
-Throughput:
-  Network: 1 Gbps = 125 MB/s
-  Disk: 1-10 MB/s (mechanical), 100+ MB/s (SSD)
-  Memory: 10+ GB/s
-  
-Users & Scale:
-  1M MAU (Monthly Active Users) = 1 × 10^6
-  1B DAU (Daily Active Users) = 1 × 10^9
-  Peak QPS = (Daily requests) / (86,400 seconds) × (peak factor)
-  Peak factor: 2-5x average
-  
-Data Examples:
-  1M records = ~1 GB (if 1KB per record)
-  1B records = ~1 TB (if 1KB per record)
-  Typical API response: 1-10 KB
-  Image: 100 KB - 5 MB
+QPS = (DAU × requests/day) ÷ 86,400
+Peak QPS = avg QPS × 2.5 (peak factor)
+Servers Needed = Peak QPS ÷ (QPS per server)
+Storage = (daily generated) × 365 × years × 3 (redundancy)
+Cache Hit Rate Goal = 80%+
 ```
 
 ---
