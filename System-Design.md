@@ -955,13 +955,13 @@ QPS Calculation:                   │  Storage Calculation:
                               QPS: THE MASTER INPUT FOR ALL FORMULAS
 ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-INPUT: Requests/user = 20/day (DAU = 300M)  →  QPS FORMULA  →  Peak QPS = 277,776
+INPUT: Requests/user = 20/day (DAU = 300M)  →  QPS FORMULA  →  Peak QPS = 240,000
 
-      SERVERS (556)           BANDWIDTH (38.4 Gbps)         CACHING (500 PB)      STORAGE (7,300 PB)      DATABASE (1.2 PB)
-      Peak/500 QPS            QPS × 2KB × 8 ÷ 10⁹ × 10X   80% hit from cache    0.94 MB × retention   Records × size
-      + 2X redundancy         = 480 MB/s × 10X            Working set 240PB      + 2X + compress       + 1.5X indexes
-      = 960 peak            = 38.4 Gbps needed            + 2X = 480 PB          = 7,300 PB total      + 2X replica
-                                                                                                         = 410 PB
+      SERVERS (480)           BANDWIDTH (38.4 Gbps)         CACHING (600 PB)      STORAGE (7,300 PB)     DATABASE (1.5 PB)
+      Peak/500 QPS            QPS × 2KB × 8 ÷ 10⁹ × 10X   80% hit from cache    10 MB × retention      Records × size
+      + 2X redundancy         = 480 MB/s × 10X            Working set 300PB      + 2X + compress        + 1.5X indexes
+      = 960 peak              = 38.4 Gbps needed          + 2X = 600 PB          = 7,300 PB total       + 2X replica
+                                                                                                          ≈ 1.5 PB
 
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -969,11 +969,11 @@ CALCULATION FLOW (Twitter Example):
 
 QPS FORMULA                               DATA DERIVATION (from Write QPS)           DEPENDENT FORMULAS
 ─────────────────────────────────────     ──────────────────────────────────────    ─────────────────────────
-(300M × 20) ÷ 86K = 60K avg QPS          Write_QPS = 240K × (1÷11) = 25K writes    Servers: 240K ÷ 500 = 556
-60K × 4 = 240K peak QPS                  Data = 25K × 130B = 2.84 MB/sec           BW: 240K × 2KB = 555MB/s
-Daily: 9.69B requests                     Daily/user: (3.28M × 86.4K) ÷ 300M        Cache: 240PB × 2 = 480PB
-                                          = 0.94 MB/user/day ← DATA METRIC           DB: 410PB (+ indexes)
-                                                                                      Storage: 4,380PB (5yr)
+(300M × 20) ÷ 100K = 60K avg QPS         Write_QPS = 240K × (1÷11) = 21.8K writes  Servers: 240K ÷ 500 = 480
+60K × 4 = 240K peak QPS                  Data = 21.8K × 130B = 2.83 MB/sec         BW: 240K × 2KB = 480MB/s
+Daily: 6B requests                        Daily/user: (2.83M × 100K) ÷ 300M         Cache: 300PB × 2 = 600PB
+                                          = 10 MB/user/day ← DATA METRIC             DB: 1.5PB (+ indexes)
+                                                                                      Storage: 7,300PB (5yr)
 
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -981,22 +981,22 @@ QUICK REFERENCE TABLE: How Each Formula Uses QPS
 
 Formula              │ Input                      │ Calculation                              │ Output
 ─────────────────────┼────────────────────────────┼──────────────────────────────────────────┼─────────────────────
-SERVERS              │ Peak QPS (240K)            │ Peak ÷ 500 QPS/server × 2 redundancy    │ 1,112 servers peak
+SERVERS              │ Peak QPS (240K)            │ Peak ÷ 500 QPS/server × 2 redundancy    │ 960 servers peak
 BANDWIDTH            │ Peak QPS × Response (2KB)  │ (240K × 2KB × 8) ÷ 10⁹ × 10X redundancy │ 38.4 Gbps
-CACHING              │ Peak QPS × Hit% × Working% │ Working_set × 2 redundancy              │ 480 PB cache
-DATA DERIVATION      │ Write_QPS × Bytes/write    │ (240K ÷ 11) × 130B × 86.4K ÷ 300M      │ 0.94 MB/user
-STORAGE              │ Data/user × Retention      │ 0.94M × 1,825 × 2 ÷ 1.5 (compress)     │ 7,300 PB total
-DATABASE             │ Records/user × Size        │ Records × 500B × 1.5 × 2                │ 410 PB main DB
+CACHING              │ Peak QPS × Hit% × Working% │ Working_set × 2 redundancy              │ 600 PB cache
+DATA DERIVATION      │ Write_QPS × Bytes/write    │ (240K ÷ 11) × 130B × 100K ÷ 300M       │ 10 MB/user
+STORAGE              │ Data/user × Retention      │ 10M × 1,825 × 2 ÷ 1.5 (compress)       │ 7,300 PB total
+DATABASE             │ Records/user × Size        │ Records × 500B × 1.5 × 2                │ 1.5 PB main DB
 
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 COMPLETE INFRASTRUCTURE (One Input → Complete System):
 
-QPS Path:        240K peak → 480 servers → 38.4 Gbps → 1,112 servers (2X) → Auto-scale +417 for 5 hours
+QPS Path:        240K peak → 480 servers → 38.4 Gbps → 960 servers (2X) → Auto-scale +360 for 5 hours
 
-Data Path:       240K → 25K writes → 0.94 MB/user → 7,300 PB storage → $85M/year
-                                                   → 410 PB main DB
-                                                   → 480 PB cache (80% hit rate saves 80% DB load)
+Data Path:       240K → 21.8K writes → 10 MB/user → 7,300 PB storage → ~$145M/year
+                                                   → 1.5 PB main DB
+                                                   → 600 PB cache (80% hit rate saves 80% DB load)
 
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
