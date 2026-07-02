@@ -24,7 +24,7 @@
 **Bandwidth Formula (Gbps):** (Peak_QPS × Response_size × 8 bits) ÷ 10^9 × bw_redundancy
 
 | System | DAU | Req | Size | R:W | Peak | Ret | Red | Cmp | QPS Calculation | Storage Calculation | Bandwidth Calculation |
-|:---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|
 | **Twitter** | 300M | 20 | 2K | 10:1 | 4×4h | 5y | 2x | 1.5x | (300M×20)÷100K=60K avg, ×4=**240K peak** | (3PB×1,825×2)÷1.5=**7.3EB** | (240K×2K×8)÷10^9×10=**38.4 Gbps** |
 | **YouTube** | 500M | 50 | 20K | 100:1 | 5×4h | 2y | 3x | 1.1x | (500M×50)÷100K=250K avg, ×5=**1.25M peak** | (50PB×730×3)÷1.1=**99.5EB** | (1.25M×20K×8)÷10^9×10=**2,000 Gbps** |
 | **Uber** | 100M | 100 | 5K | 5:1 | 3×4h | 3mo | 2x | 1.3x | (100M×100)÷100K=100K avg, ×3=**300K peak** | (5TB×90×2)÷1.3=**0.7PB** | (300K×5K×8)÷10^9×10=**120 Gbps** |
@@ -40,8 +40,9 @@
 - **Ret** = Retention (y=years, mo=months)
 - **Red** = Redundancy factor (2x or 3x)
 - **Cmp** = Compression ratio
-- **QPS** = Average → Peak queries per second
-- **Storage** = Total for entire retention period
+- **QPS** = Calculation showing average → peak QPS
+- **Storage** = Calculation showing total for entire retention period
+- **Bandwidth** = Calculation showing required Gbps capacity
 
 **Key Notes:**
 - *Stripe DAU = business accounts (not end users)
