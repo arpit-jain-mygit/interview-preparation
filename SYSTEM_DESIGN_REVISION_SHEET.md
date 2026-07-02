@@ -19,14 +19,14 @@
 
 **How to derive QPS, Storage, and Costs from base metrics:**
 
-| System | DAU | Req/Day | Resp Size | Read:Write | Peak×hrs | Retention | Redundancy | **QPS: (DAU×Req/Day)÷100K × Peak_mult** | **Storage: DAU×data/user×retention×redundancy÷compression** |
-|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Twitter** | 300M | 20 | 2 KB | 10:1 | 4×4h | 5 yrs | 2x | 60K avg → 240K peak | 3PB/day × 1,825 × 2x = **10.95 PB** |
-| **YouTube** | 500M | 50 | 20 KB | 100:1 | 5×4h | 2 yrs | 3x | 250K avg → 1.25M peak | 50PB/day × 730 × 3x = **109.5 PB** |
-| **Uber** | 100M | 100 | 5 KB | 5:1 | 3×4h | 3mo | 2x | 100K avg → 300K peak | 5TB/day × 90 × 2x = **0.9 PB** |
-| **Netflix** | 300M | 30 | 50 KB | 100:1 | 5×6h | 2 yrs | 3x | 90K avg → 450K peak | 15PB/day × 730 × 3x = **32.85 PB** |
-| **Instagram** | 500M | 100 | 10 KB | 20:1 | 4×4h | 10 yrs | 3x | 500K avg → 2M peak | 5PB/day × 3,650 × 3x = **54.75 PB** |
-| **Stripe** | 1M* | 1000 | 2 KB | 2:1 | 2×8h | 10 yrs | 3x | 100K avg → 200K peak | 10TB/day × 3,650 × 3x = **109.5 PB** |
+| System | DAU | Req/Day | Resp Size | Read:Write | Peak×hrs | Retention | Redundancy | Compression | **QPS: (DAU×Req/Day)÷100K × Peak_mult** | **Storage: DAU×data/user×retention×redundancy÷compression** |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **Twitter** | 300M | 20 | 2 KB | 10:1 | 4×4h | 5 yrs | 2x | 1.5x | 60K avg → 240K peak | (3PB × 1,825 × 2) ÷ 1.5 = **7.3 PB** |
+| **YouTube** | 500M | 50 | 20 KB | 100:1 | 5×4h | 2 yrs | 3x | 1.1x | 250K avg → 1.25M peak | (50PB × 730 × 3) ÷ 1.1 = **99.5 PB** |
+| **Uber** | 100M | 100 | 5 KB | 5:1 | 3×4h | 3mo | 2x | 1.3x | 100K avg → 300K peak | (5TB × 90 × 2) ÷ 1.3 = **0.7 PB** |
+| **Netflix** | 300M | 30 | 50 KB | 100:1 | 5×6h | 2 yrs | 3x | 1.1x | 90K avg → 450K peak | (15PB × 730 × 3) ÷ 1.1 = **29.8 PB** |
+| **Instagram** | 500M | 100 | 10 KB | 20:1 | 4×4h | 10 yrs | 3x | 1.05x | 500K avg → 2M peak | (5PB × 3,650 × 3) ÷ 1.05 = **52.1 PB** |
+| **Stripe** | 1M* | 1000 | 2 KB | 2:1 | 2×8h | 10 yrs | 3x | 1.5x | 100K avg → 200K peak | (10TB × 3,650 × 3) ÷ 1.5 = **73 PB** |
 
 **Key Notes:**
 - *Stripe DAU = business accounts (not end users)
@@ -36,6 +36,11 @@
 - Peak = multiplier × hours of peak (e.g., 4×4h = 4X traffic for 4 hours)
 - Retention = how long data kept (longer = bigger storage costs)
 - Redundancy = 2x (master-slave) for standard systems, 3x for critical systems requiring multi-region HA
+- Compression = ratio of original size ÷ compressed size (1.5x = reduces by 33%, 1.1x = reduces by 9%)
+  - Text (Twitter, Stripe): 1.5x (gzip good for JSON/text)
+  - Video (YouTube, Netflix): 1.05-1.1x (already compressed with H.264/VP9)
+  - Photos (Instagram): 1.05x (JPEG/WebP already optimized)
+  - Location data (Uber): 1.3x (structured, compresses well)
 
 **Derived Formulas:**
 - **Peak QPS** = (DAU × Req/Day) ÷ 100K × Peak_mult
