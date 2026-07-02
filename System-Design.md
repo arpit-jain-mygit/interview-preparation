@@ -1033,57 +1033,57 @@ KEY: Peak QPS drives infrastructure; Write_QPS drives storage. Both come from "r
 | Formula | Twitter Calculation |
 |---------|-------------------|
 | **Off-peak QPS** = (DAU × Requests/user) ÷ 100K | (300M × 20) ÷ 100K = **60,000 QPS** |
-| **Peak QPS** = Off-peak × Peak_multiplier | 60,000 × 4 = **240,000 QPS** |
-| **Daily Requests** = Off-peak × 3,600 × 20 + Peak × 3,600 × 4 | (60K × 72K) + (240K × 14.4K) = **7.8B requests/day** |
+| **Peak QPS** = Off-peak × Peak_mult | 60,000 × 4 = **240,000 QPS** |
+| **Daily Requests** = Off-peak × 3,600 × avg_hrs + Peak × 3,600 × peak_hrs | (60K × 3.6K × 20) + (240K × 3.6K × 4) = **7.8B requests/day** |
 | **Servers** = Peak QPS ÷ Server_capacity | 240,000 ÷ 500 = **480 servers** |
 | **With 2X Redundancy** = Servers × 2 | 480 × 2 = **960 servers** |
-| **Auto-scale** = Peak_servers - Off-peak_servers | 960 - 240 = **+720 servers for 4 hours** |
+| **Auto-scale** = Peak_servers - Off-peak_servers | 960 - 240 = **+720 servers for peak_hrs** |
 
 ### 2. STORAGE FORMULA
 
 | Formula | Twitter Calculation |
 |---------|-------------------|
-| **Daily Data** = DAU × Data_per_user_per_day | 300M × 10 MB = **3 PB/day** |
-| **Retention Total** = Daily_data × Retention_days | 3 PB × 1,825 days = **5,475 PB** |
-| **With Redundancy** = Total × Redundancy_factor | 5,475 PB × 2 = **10,950 PB** |
-| **With Compression** = With_redundancy ÷ Compression_ratio | 10,950 ÷ 1.5 = **7,300 PB final** |
-| **Tiered Storage (Hot/SSD)** = Daily × 365 × 1 year | 3 PB × 365 = **1,095 PB** @ $0.023/GB/mo |
-| **Tiered Storage (Warm/HDD)** = Daily × 365 × 4 years | 3 PB × 365 × 4 = **4,380 PB** @ $0.003/GB/mo |
+| **Daily Data** = DAU × data_per_user | 300M × 10 MB = **3 PB/day** |
+| **Retention Total** = Daily_data × retention_days | 3 PB × 1,825 = **5,475 PB** |
+| **With Redundancy** = Total × redundancy | 5,475 PB × 2 = **10,950 PB** |
+| **With Compression** = With_redundancy ÷ compression_ratio | 10,950 ÷ 1.5 = **7,300 PB final** |
+| **Tiered Storage (Hot)** = Daily × 365 × hot_years | 3 PB × 365 × 1 = **1,095 PB** @ $0.023/GB/mo |
+| **Tiered Storage (Warm)** = Daily × 365 × warm_years | 3 PB × 365 × 4 = **4,380 PB** @ $0.003/GB/mo |
 | **Total Annual Cost** | Hot: $303M + Warm: $158M = **~$462M/year** |
 
 ### 3. BANDWIDTH FORMULA
 
 | Formula | Twitter Calculation |
 |---------|-------------------|
-| **Bytes Per Second** = Peak_QPS × Response_size | 240,000 × 2 KB = **480 MB/sec** |
-| **Gbps** = (Bytes/sec × 8 bits) ÷ 10^9 | (480 × 8) ÷ 1,000 = **3.84 Gbps** |
-| **With 10X Redundancy** = Gbps × 10 | 3.84 × 10 = **38.4 Gbps** |
-| **Cost** | ~**$2M/year** for global network |
+| **Bytes Per Second** = Peak_QPS × response_size | 240K × 2 KB = **480 MB/sec** |
+| **Gbps** = (Bytes/sec × 8) ÷ 10^9 | (480 × 8) ÷ 10^9 = **3.84 Gbps** |
+| **With Redundancy** = Gbps × bw_redundancy | 3.84 × 10 = **38.4 Gbps** |
+| **Annual Cost** | Gbps × unit_cost = **~$2M/year** |
 
 ### 4. DATABASE CAPACITY FORMULA
 
 | Formula | Twitter Calculation |
 |---------|-------------------|
-| **Write QPS** = Peak_QPS × (1 ÷ Read_write_ratio) | 240,000 × (1 ÷ 11) = **21,818 writes/sec** |
-| **Records Per Day** = Write_QPS × 86,400 | 21,818 × 86,400 = **1.88B records/day** |
-| **Daily Data Volume** = Records × Record_size | 1.88B × 500 bytes = **0.94 TB/day** |
-| **5-Year Total** = Daily × 365 × 5 years | 0.94 TB × 1,825 = **1.7 PB** |
-| **With Index Overhead (1.5X)** = Total × 1.5 | 1.7 PB × 1.5 = **2.55 PB** |
-| **With Replication (2X)** = With_indexes × 2 | 2.55 PB × 2 = **5.1 PB** |
-| **Cost** | ~**$150M/year** for DB storage + replication |
+| **Write QPS** = Peak_QPS ÷ read_write_ratio | 240K ÷ 11 = **21,818 writes/sec** |
+| **Records Per Day** = Write_QPS × 86400 | 21,818 × 86,400 = **1.88B records/day** |
+| **Daily Data Volume** = Records × record_size | 1.88B × 500 B = **0.94 TB/day** |
+| **Total With Retention** = Daily × 365 × retention_yrs | 0.94 TB × 1,825 = **1.7 PB** |
+| **With Index Overhead** = Total × index_mult | 1.7 PB × 1.5 = **2.55 PB** |
+| **With Replication** = With_indexes × db_redundancy | 2.55 PB × 2 = **5.1 PB** |
+| **Annual Cost** | 5.1 PB × storage_cost = **~$150M/year** |
 
 ### 5. CACHING LAYER FORMULA
 
 | Formula | Twitter Calculation |
 |---------|-------------------|
-| **Cache Hit Rate** | **80%** (80% of requests answered from cache) |
-| **Cache Miss Rate** = 1 - Hit_rate | 1 - 0.80 = **20%** |
-| **DB Hits QPS** = Peak_QPS × Miss_rate | 240,000 × 0.20 = **48,000 QPS** (vs 240K without cache!) |
-| **Working Set** = DB_size × Hot_data_ratio | 5.1 PB × 0.20 = **1.02 PB** (20% of tweets are "hot") |
-| **Cache Size (2X Redundancy)** = Working_set × 2 | 1.02 PB × 2 = **2.04 PB** |
-| **Cache Servers** = Cache_size ÷ RAM_per_server | 2.04 PB ÷ 0.512 PB = **~4,000 servers** |
-| **DB Load Reduction** | 80% fewer requests to database |
-| **Cost Savings** | Cache ($3M/year) saves $40M in DB costs = **$37M net savings** |
+| **Cache Hit Rate** = hit_rate | **80%** of requests from cache |
+| **Cache Miss Rate** = 1 - hit_rate | 1 - 0.80 = **20%** miss rate |
+| **DB Hits QPS** = Peak_QPS × (1 - hit_rate) | 240K × 0.20 = **48K QPS** (vs 240K!) |
+| **Working Set** = DB_size × hot_data_ratio | 5.1 PB × 0.20 = **1.02 PB** |
+| **Cache Size** = Working_set × cache_redundancy | 1.02 PB × 2 = **2.04 PB** |
+| **Cache Servers** = Cache_size ÷ ram_per_server | 2.04 PB ÷ 0.512 PB = **~4K servers** |
+| **DB Load Reduction** = hit_rate | **80%** load reduction |
+| **Annual Savings** | $40M DB cost - $3M cache cost = **$37M saved** |
 
 ### 6. KEY CONSTANTS (Memorize!)
 
