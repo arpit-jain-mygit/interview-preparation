@@ -1028,6 +1028,17 @@ KEY: Peak QPS drives infrastructure; Write_QPS drives storage. Both come from "r
 
 **PRINT THIS PAGE - Perfect for Last-Minute Interview Prep!**
 
+### INPUT ASSUMPTIONS (Twitter Example)
+
+```
+├─ DAU: 300 Million
+├─ Requests/user/day: 20
+├─ Peak multiplier: 4X
+├─ Peak hours: 4 hours
+├─ Retention: 5 years
+└─ Response size: 2 KB
+```
+
 ### 1. QPS FORMULA
 
 | Formula | Twitter Calculation |

@@ -3,6 +3,19 @@
 
 ---
 
+## INPUT ASSUMPTIONS (Twitter Example)
+
+```
+├─ DAU: 300 Million
+├─ Requests/user/day: 20
+├─ Peak multiplier: 4X
+├─ Peak hours: 4 hours
+├─ Retention: 5 years
+└─ Response size: 2 KB
+```
+
+---
+
 ## 1. QPS FORMULA
 
 | Formula | Twitter Calculation |
@@ -134,35 +147,6 @@ OUTPUT: $455M/year infrastructure cost
 | How much cache? | DB_size × 20% × 2X | 5.1 PB × 20% × 2 = 2.04 PB |
 | Total infrastructure cost? | Add all components | $455M/year |
 | Will peak break us? | Peak QPS > (servers × capacity)? | 240K > 480 × 500? NO, safe |
-
----
-
-## 10. TWITTER NUMBERS AT A GLANCE
-
-```
-INPUT ASSUMPTIONS:
-├─ DAU: 300 Million
-├─ Requests/user/day: 20
-├─ Peak multiplier: 4X
-├─ Peak hours: 4 hours
-├─ Retention: 5 years
-└─ Response size: 2 KB
-
-OUTPUT METRICS:
-├─ QPS: 60K avg, 240K peak
-├─ Servers: 480 (960 with redundancy)
-├─ Bandwidth: 38.4 Gbps
-├─ Database: 5.1 PB
-├─ Cache: 2.04 PB
-└─ Cost: $455M/year
-
-KEY INSIGHTS:
-├─ Only WRITES create DB records (21.8K/sec)
-├─ 80% cache hit reduces DB load from 240K to 48K QPS
-├─ Response size matters as much as QPS for bandwidth
-├─ Redundancy 2-3X for all metrics (HA)
-└─ Peak hour planning is critical (4 hours = $2B+/year)
-```
 
 ---
 
