@@ -1060,20 +1060,20 @@ Step 2: Peak QPS (evening hours)
   = 240,000 QPS (peak)
 
 Step 3: Total Daily Requests
-  Off-peak hours (20 hrs): 69,444 × 3,600 × 19 = 4.72 billion
-  Peak hours (4 hrs): 277,776 × 3,600 × 5 = 4.97 billion
-  Total daily requests = 9.69 billion
+  Off-peak hours (20 hrs): 60,000 × 3,600 × 20 = 4.32 billion
+  Peak hours (4 hrs): 240,000 × 3,600 × 4 = 3.46 billion
+  Total daily requests = 7.78 billion ≈ 7.8B
 
 Step 4: Server Capacity
   Assuming 500 QPS per server (typical web server):
   
-  Off-peak servers needed: 69,444 ÷ 500 = 120 servers
-  Peak servers needed: 277,776 ÷ 500 = 480 servers
+  Off-peak servers needed: 60,000 ÷ 500 = 120 servers
+  Peak servers needed: 240,000 ÷ 500 = 480 servers
   
   WITH 2X REDUNDANCY (master-slave replication):
-    Off-peak: 139 × 2 = 278 servers (always running)
-    Peak: 556 × 2 = 1,112 servers (scale up 6-11 PM)
-    Auto-scale: Add +834 servers during peak hours
+    Off-peak: 120 × 2 = 240 servers (always running)
+    Peak: 480 × 2 = 960 servers (scale up 6-11 PM)
+    Auto-scale: Add +720 servers during peak hours
 ```
 
 **USING STORAGE FORMULA:**
@@ -1124,7 +1124,7 @@ TIERED STORAGE STRATEGY (cost optimization):
 │   Off-peak servers:      139 (no redundancy)        │
 │   Peak servers:          556 (no redundancy)        │
 │   With 2X redundancy:    278 base + 960 peak     │
-│   Auto-scaling needed:   +834 servers (5 hours)    │
+│   Auto-scaling needed:   +720 servers (4 hours)    │
 │                                                      │
 │ STORAGE (Storage Formula):                           │
 │   Daily data:            1.8 EB                     │
@@ -1163,7 +1163,7 @@ SERVERS (QPS-based):
   ├─ Web tier: 278 base servers (always on)
   ├─ Web tier: +834 peak servers (auto-scale 6-11 PM)
   ├─ Load balancer: Distribute across regions
-  └─ Total: ~1,112 servers at peak
+  └─ Total: ~960 servers at peak
 
 STORAGE (Storage-based):
   ├─ Hot SSD storage: 657 PB (expensive, for current data)
@@ -2755,7 +2755,7 @@ Given:
   DAU = 300 million
   Requests per user = 20 per day
   Peak multiplier = 4X
-  Peak hours = 5 (6-11 PM)
+  Peak hours = 4 (7-11 PM)
   Average hours = 19
   Server capacity = 500 QPS per server
 
@@ -2776,7 +2776,7 @@ Step 4: Servers needed
   Off-peak: 69,444 ÷ 500 = 120 servers
   Peak: 277,776 ÷ 500 = 480 servers
   With 2X redundancy: 278 base, 960 peak
-  Auto-scale: +834 servers during peak hours
+  Auto-scale: +720 servers during peak hours
 ```
 
 ### Applications by System Type
@@ -2805,7 +2805,7 @@ Conclusion: Longer peaks require more infrastructure!
 **2. Peak and average QPS are NOT added**
 ```
 Off-peak:  60,000 QPS  (occurs 19 hours/day)
-Peak:      240,000 QPS (occurs 5 hours/day)
+Peak:      240,000 QPS (occurs 4 hours/day)
 
 WRONG: 69,444 + 277,776 = 347,220 total
 RIGHT: Peak is 4X multiplication, not addition
