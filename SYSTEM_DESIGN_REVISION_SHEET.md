@@ -51,6 +51,7 @@
 - **Daily Data** = DAU × Data_per_user
 - **Storage Needed** = Daily_Data × retention_days × redundancy ÷ compression
 - **Bandwidth** = Peak_QPS × response_size × 8 ÷ 10^9 × redundancy
+- **Storage Cost** = Hot_PB × $276M/PB + Warm_PB × $36M/PB (7.7x difference!)
 
 ---
 
@@ -79,14 +80,14 @@
 | **Cost Baseline:** | | retention × index × redundancy | Downtime: 5 minutes/year |
 | Servers: $50K/yr | | | **Only for critical systems!** |
 | **Hot Storage (SSD):** | | **Caching Formula:** | Cost: $5M+/year |
-| • $276K/TB/yr | | Cache = DB_size × hot_ratio × redundancy | |
-| • $0.023/GB/mo | | Hit_rate reduces DB_QPS by 80%+ | **RLF → AHM → PRZ** |
+| • $276M/PB/yr | | Cache = DB_size × hot_ratio × redundancy | |
+| • $23M/PB/mo | | Hit_rate reduces DB_QPS by 80%+ | **RLF → AHM → PRZ** |
 | **Warm Storage (HDD):** | | | Each adds resilience layer |
-| • $36K/TB/yr | | | Most systems use AHM (4 nines) |
-| • $0.003/GB/mo | | | Ask "Why" before over-building |
+| • $36M/PB/yr | | | Most systems use AHM (4 nines) |
+| • $3M/PB/mo | | | Ask "Why" before over-building |
 | Cache (RAM): $1.5/GB | | | **Twitter Cost Example:** |
-| | | | Hot: 1,095PB → $303M/yr |
-| | | | Warm: 4,380PB → $158M/yr |
+| | | | Hot: 1,095PB @ $276M/PB = $303M |
+| | | | Warm: 4,380PB @ $36M/PB = $158M |
 | | | | **Total: $461M/year** |
 
 ---
