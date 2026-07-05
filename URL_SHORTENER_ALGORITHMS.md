@@ -1,5 +1,28 @@
 # URL Shortener Algorithm Selection Guide
 
+## Table of Contents
+
+1. [Core Recommendation](#core-recommendation)
+2. [The Problem We're Solving](#the-problem-were-solving)
+3. [Approach 0: Naive Hashing](#approach-0-naive-hashing-the-starting-point---doesnt-work)
+4. [Deep Dive: Understanding CRC32](#deep-dive-understanding-crc32-why-it-fails)
+   - [What is CRC32?](#what-is-crc32)
+   - [How CRC32 Works](#how-crc32-works-simple-example-with-division)
+   - [Why Only 4.3 Billion Values?](#why-only-43-billion-values-the-fundamental-limit)
+   - [Why Collisions Happen](#why-collisions-happen-pigeonhole-principle)
+   - [The Timeline: When Does CRC32 Exhaust?](#the-timeline-when-does-crc32-exhaust)
+   - [Why CRC32 Can't Be Fixed](#why-crc32-cant-be-fixed)
+   - [Performance Reality](#crc32-performance-reality)
+5. [Algorithm 1: Hash + Collision Resolution](#algorithm-1-hash--collision-resolution-)
+6. [Algorithm 2: Base 62 Conversion](#algorithm-2-base-62-conversion--recommended)
+7. [Algorithm 3: Pre-Generation + Queue](#algorithm-3-pre-generation--queue-chubb-approach-)
+8. [Algorithm Comparison Matrix](#algorithm-comparison-matrix)
+9. [Recommendation by Scale](#recommendation-by-scale)
+10. [Key Takeaways](#key-takeaways)
+11. [Implementation Checklist](#implementation-checklist-for-base-62-production-system)
+
+---
+
 ## Core Recommendation
 
 For production systems, **Base 62 Conversion** is the optimal choice. It eliminates collisions entirely through mathematics (not luck), provides O(1) performance with no database lookups, and scales linearly with load. Default answer for any system handling >1K req/sec.
