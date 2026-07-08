@@ -9,7 +9,9 @@ These three tools from LangChain ecosystem serve different purposes in building 
 ## Reference Materials
 
 ### Videos
-- [LangChain vs LangGraph vs LangSmith Explained](https://youtu.be/vJOGC8QJZJQ?si=EZGnj28Gj9OjFsBf) - Comprehensive comparison of these three tools
+- **LangChain vs LangGraph vs LangSmith** by codebasics
+  - https://www.youtube.com/watch?v=vJOGC8QJZJQ
+  - Comprehensive comparison of these three tools and their use cases
 
 ## LangChain
 **Purpose**: Core framework for building LLM applications
