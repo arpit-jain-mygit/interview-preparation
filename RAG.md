@@ -7,6 +7,7 @@ RAG is a technique that enhances Large Language Models by retrieving relevant in
 
 ### Videos
 - [RAG Explained](https://youtu.be/v0ynfDPpe4E?si=2YRU9ut5AWSFQJ8n) - Comprehensive overview of RAG concepts and implementation
+- [RAG Deep Dive](https://www.youtube.com/watch?v=MpMjB_fSGUA) - In-depth exploration of RAG architectures and techniques
 
 ## Key Concepts
 - Retrieval component for fetching relevant documents
