@@ -6,8 +6,13 @@ RAG is a technique that enhances Large Language Models by retrieving relevant in
 ## Reference Materials
 
 ### Videos
-- [RAG Explained](https://youtu.be/v0ynfDPpe4E?si=2YRU9ut5AWSFQJ8n) - Comprehensive overview of RAG concepts and implementation
-- [RAG Deep Dive](https://www.youtube.com/watch?v=MpMjB_fSGUA) - In-depth exploration of RAG architectures and techniques
+- **RAG Explained in 12 Minutes** by Aishwarya Srinivasan
+  - https://www.youtube.com/watch?v=v0ynfDPpe4E
+  - Comprehensive overview of RAG concepts and implementation
+
+- **[हिन्दी] Generative AI vs AI Agents vs Agentic AI** by codebasics Hindi
+  - https://www.youtube.com/watch?v=MpMjB_fSGUA
+  - In-depth exploration of AI agents and agentic patterns with RAG context
 
 ## Key Concepts
 - Retrieval component for fetching relevant documents
