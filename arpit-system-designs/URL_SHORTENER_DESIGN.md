@@ -72,108 +72,15 @@ Load these IDs from each of the S3 files to Kafka via a publisher (Python/Java p
 
 **a) Batch design to manage unique IDs:**
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      BATCH DESIGN FLOW                              │
-│                                                                     │
-│  ┌─────────────────────┐                                           │
-│  │ Python program to   │                                           │
-│  │ generate 56B ID in  │                                           │
-│  │ Files (1 GB each)   │                                           │
-│  │ Total 360 files     │                                           │
-│  └──────────┬──────────┘                                           │
-│             │                                                       │
-│             ▼                                                       │
-│  ┌─────────────────────┐                                           │
-│  │ Store these files   │                                           │
-│  │ in S3               │                                           │
-│  └──────────┬──────────┘                                           │
-│             │                                                       │
-│             ▼                                                       │
-│  ┌─────────────────────────────────────┐                           │
-│  │ Write a spark program to load these  │                          │
-│  │ files and for each, call Unix sort   │                          │
-│  │ command to shuffle                  │                          │
-│  └──────────┬──────────────────────────┘                           │
-│             │                                                       │
-│             ▼                                                       │
-│  ┌──────────────────────┐                                          │
-│  │ Reload shuffled files│                                          │
-│  │ in S3                │                                          │
-│  └──────────┬───────────┘                                          │
-│             │                                                       │
-│             ▼                                                       │
-│  ┌──────────────────────────────┐                                  │
-│  │ Load shuffled files using    │                                  │
-│  │ Spark                        │                                  │
-│  └──────────┬───────────────────┘                                  │
-│             │                                                       │
-│             ▼                                                       │
-│  ┌──────────────────────────────────────────┐                      │
-│  │ Spark loads these entries from each file │                      │
-│  │ into Kafka partitions                    │                      │
-│  └──────────┬───────────────────────────────┘                       │
-│             │                                                       │
-│             ▼                                                       │
-│  ┌──────────────────────────────────────────┐                      │
-│  │ Short URLs are ready to be mapped to     │                      │
-│  │ long URLs on request                     │                      │
-│  └──────────────────────────────────────────┘                      │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+![Batch Design Diagram](./diagrams/batch-design-diagram.png)
+
+*Diagram: Python program generates 56B IDs in 360 files (1GB each) → Store in S3 → Spark loads and shuffles via Unix sort → Reload to S3 → Load with Spark → Load into Kafka partitions → Ready to map*
 
 **b) User request to convert long to short and redirect short URL to long URL:**
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│         USER REQUEST FLOW - WRITE & READ                             │
-│                                                                      │
-│                    User                                              │
-│                      │                                               │
-│                      ▼                                               │
-│            ┌─────────────────┐                                       │
-│            │   API Gateway   │                                       │
-│            └────────┬────────┘                                       │
-│                     │                                                │
-│                     ▼                                                │
-│            ┌─────────────────────┐                                   │
-│            │   Load Balancer     │                                   │
-│            └────────┬────────────┘                                   │
-│                     │                                                │
-│        ┌────────────┼────────────┐                                   │
-│        │                         │                                   │
-│  Long→Short                 Short→Long                               │
-│  (Write)                    (Read)                                   │
-│        │                         │                                   │
-│        ▼                         ▼                                   │
-│   ┌────────────────┐      ┌──────────────────┐                      │
-│   │ Create Short   │      │ Redirect Short   │                      │
-│   │ URLs App       │      │ URL to Long URL  │                      │
-│   │ Server serving │      │ App Server       │                      │
-│   │ Microservices  │      │ serving          │                      │
-│   │ PODs using     │      │ Microservices    │                      │
-│   │ Kubernetes     │      │ PODs using       │                      │
-│   │                │      │ Kubernetes       │                      │
-│   └────┬───────────┘      └────┬─────────────┘                      │
-│        │                       │                                    │
-│        ▼                       ▼                                    │
-│   ┌──────────┐            ┌──────────┐                             │
-│   │ NoSQL    │            │ Cache    │                             │
-│   │ Database │            │ Cluster  │                             │
-│   │ Cassandra│            │ (Redis)  │                             │
-│   │/DynamoDB │            └──┬───────┘                             │
-│   │          │               │                                     │
-│   │ Long URL │         If not found                                │
-│   │ Short URL│         in cache ↓                                  │
-│   │ Created_ │        ┌────────────────┐                           │
-│   │ on       │        │ Kafka          │                           │
-│   └──────────┘        │ (If not found  │                           │
-│                       │ in cache)      │                           │
-│                       └────────────────┘                           │
-│                                                                    │
-└──────────────────────────────────────────────────────────────────────┘
-```
+![User Request Flow Diagram](./diagrams/user-request-flow-diagram.png)
+
+*Diagram: User → API Gateway → Load Balancer → splits into Write path (Create Short URLs App Server) and Read path (Redirect Short URL to Long URL App Server) → NoSQL Database (Cassandra/DynamoDB) and Cache (Redis) and Kafka*
 
 ---
 
