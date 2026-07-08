@@ -8,9 +8,9 @@
 1. [LeetCode 98 - Validate Binary Search Tree [80%]](#1-leetcode-98---validate-binary-search-tree-80) ✅
 2. [LeetCode 235 - LCA of Binary Search Tree [75%]](#2-leetcode-235---lca-of-binary-search-tree-75) ✅
 3. [LeetCode 102 - Binary Tree Level Order Traversal [80%]](#3-leetcode-102---binary-tree-level-order-traversal-80) ✅
+4. [LeetCode 94 - Binary Tree Inorder Traversal [78%]](#4-leetcode-94---binary-tree-inorder-traversal-78) ✅
 
 #### Additional Problems (To Be Added)
-4. LeetCode 94 - Binary Tree Inorder Traversal [78%]
 5. LeetCode 144 - Binary Tree Preorder Traversal [75%]
 6. LeetCode 145 - Binary Tree Postorder Traversal [72%]
 7. LeetCode 230 - Kth Smallest Element in BST [75%]
@@ -554,6 +554,127 @@ None
 
 ---
 
+## 4. LeetCode 94 - Binary Tree Inorder Traversal [78%]
+
+### Problem Statement
+Given the root of a binary tree, return the inorder traversal of its nodes' values.
+
+**Input:** Binary tree root node
+**Output:** List of node values in inorder sequence
+
+### Example
+```
+Input Tree:
+    4
+   / \
+  2   6
+ / \ / \
+1 3 5  7
+
+Inorder Traversal: [1, 2, 3, 4, 5, 6, 7]
+(Left → Root → Right)
+```
+
+### Follow-up Problems (in the 17)
+- **#5: LeetCode 144 - Binary Tree Preorder Traversal [75%]** - Root → Left → Right
+- **#6: LeetCode 145 - Binary Tree Postorder Traversal [72%]** - Left → Right → Root
+
+### Code Solution
+
+```java
+import java.util.*;
+
+class Node {
+    int value;
+    Node left;
+    Node right;
+
+    public Node(int value) {
+        this.value = value;
+    }
+    public String toString() {
+        return "" + value;
+    }
+}
+
+public class BSTInOrderTraversal {
+    // ============ VALID BST TEST CASES ============
+    public static Node validBalancedBST() {
+        /*
+              4
+             / \
+            2   6
+           / \ / \
+          1 3 5  7
+        */
+        Node root = new Node(4);
+        root.left = new Node(2);
+        root.right = new Node(6);
+        root.left.left = new Node(1);
+        root.left.right = new Node(3);
+        root.right.left = new Node(5);
+        root.right.right = new Node(7);
+        return root;
+    }
+
+    // ============ TEST RUNNER ============
+
+    public static void main(String[] args) {
+        Node root = validBalancedBST();
+        in_order_traversal(root);
+    }
+
+    public static Node in_order_traversal(Node root){
+        if (root == null) return null;
+        in_order_traversal(root.left);
+        System.out.println(root.value+",");
+        in_order_traversal(root.right);
+        return null;
+    }
+}
+```
+
+**Output:**
+```
+1,
+2,
+3,
+4,
+5,
+6,
+7,
+```
+
+### Complexity Analysis
+- **Time Complexity:** O(n) - visit each node exactly once
+- **Space Complexity:** O(h) - where h is height (recursion stack)
+
+### MAANG Interview Questions
+1. "Why is inorder useful for BST?" → Returns sorted order (Left < Root < Right)
+2. "Can you do it iteratively?" → Yes, use explicit stack
+3. "How to do preorder/postorder?" → Change the order of operations
+4. "What if you need to store in a list?" → Collect values in List instead of printing
+5. "Can you solve without recursion?" → Stack-based iterative approach
+
+### Real-World Business Applications
+
+**1. BST Validation & Verification**
+- **Use Case:** Database systems verify B-tree/BST integrity using inorder traversal
+- **Business Impact:** Ensures data structure validity after insertions/deletions
+- **Example:** MySQL/PostgreSQL validating index tree structure
+
+**2. Report Generation (Sorted Output)**
+- **Use Case:** Financial systems generate sorted transaction reports
+- **Business Impact:** Produces chronologically/numerically sorted reports efficiently
+- **Example:** Bank statements showing transactions in date order
+
+**3. Data Export & Migration**
+- **Use Case:** Export database records in sorted order for audit trails
+- **Business Impact:** Compliance with regulatory requirements for sorted data dumps
+- **Example:** GDPR compliance exporting user data in sorted format
+
+---
+
 ## Summary
 
 | # | Problem | Frequency | Type | Status |
@@ -561,7 +682,7 @@ None
 | 1 | Validate BST | 80% | Validation | ✅ |
 | 2 | LCA BST | 75% | Traversal | ✅ |
 | 3 | Level Order Traversal | 80% | Traversal | ✅ |
-| 4 | Inorder Traversal | 78% | Traversal | - |
+| 4 | Inorder Traversal | 78% | Traversal | ✅ |
 | 5 | Preorder Traversal | 75% | Traversal | - |
 | 6 | Postorder Traversal | 72% | Traversal | - |
 | 7 | Kth Smallest | 75% | Traversal | - |
