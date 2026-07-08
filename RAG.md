@@ -18,6 +18,10 @@ RAG is a technique that enhances Large Language Models by retrieving relevant in
   - https://youtu.be/tzrwxLNHtRY?si=_hB6b8kpTt4_StW1
   - Understanding MCP for integrating external tools and resources with LLMs
 
+- **Vector Database Explained | What is Vector Database?** by codebasics
+  - https://youtu.be/72XgD322wZ8?si=SCvE-ru1Wg-HK0oY
+  - Essential for storing and retrieving embeddings in RAG systems
+
 ## Key Concepts
 - Retrieval component for fetching relevant documents
 - Augmentation of prompts with retrieved context
