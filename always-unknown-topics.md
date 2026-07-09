@@ -229,3 +229,94 @@ Item A added at 10:00 → TTL=5min → Expires at 10:05 (auto-remove)
 - **Memcached:** LRU
 
 **Golden rule:** **LRU is the safest default.** Use LFU if you have clearly "hot" data, TTL for time-sensitive data.
+
+## 301 vs 302 Redirects for Data Analytics
+
+### The Key Difference
+
+**301 (Permanent):** Tells search engines "this URL moved forever" → they update records and point directly to new URL
+
+**302 (Temporary):** Tells search engines "this URL moved temporarily" → they keep original URL in their records
+
+### Why 302 is Better for Analytics
+
+#### 1. Preserve Analytics History
+
+With **301:**
+```
+Old URL: /products → gets removed from analytics
+         → All traffic now shows under new URL
+         → Lost visibility into old URL's performance
+```
+
+With **302:**
+```
+Old URL: /products → stays in analytics
+         → Shows: "This redirected to /products-v2"
+         → You see complete redirect path + traffic flow
+```
+
+#### 2. Track User Journey
+
+**302 lets you see:**
+- How much traffic uses the old URL (gives insight into user bookmarks, links)
+- Conversion paths through the redirect
+- Which traffic sources link to old URL
+- User behavior across redirect
+
+**301 hides this** because search engines stop indexing the old URL.
+
+#### 3. Easy A/B Testing & Rollback
+
+```
+302 Redirect: Test new URL while keeping original
+             → If new URL performs worse, switch back
+             → Original URL's analytics intact
+
+301 Redirect: Hard to rollback
+             → Search engines already updated
+             → Analytics data scattered
+```
+
+#### 4. Keep SEO Credit Separate
+
+With **301:**
+```
+Old URL (100K backlinks) → All credit flows to new URL
+                         → Hard to measure which URL performs better
+```
+
+With **302:**
+```
+Old URL (100K backlinks) → Keeps separate in search results
+                         → Can compare performance of both URLs
+                         → More data = better insights
+```
+
+### When to Use What
+
+| Situation | Use | Why |
+|-----------|-----|-----|
+| **Temporary campaign/test** | 302 | Track separately, easy rollback |
+| **URL migration (keep testing)** | 302 | See redirect funnel |
+| **Permanent domain change** | 301 | SEO consolidation |
+| **Site restructure (final)** | 301 | Clean slate, new URL is permanent |
+
+### Real-World Example
+
+```
+Scenario: Moving /old-landing → /new-landing
+
+With 302:
+Analytics show:
+├── /old-landing: 5K visitors → redirected
+└── /new-landing: 5K visitors (via redirect)
+You see the complete funnel!
+
+With 301:
+Analytics show:
+└── /new-landing: 5K visitors
+(Where did they come from? Lost!)
+```
+
+**Golden rule:** Use 302 by default for anything that's not permanent. You get better analytics + flexibility. Switch to 301 only when you're 100% sure the old URL is gone forever.
