@@ -320,3 +320,215 @@ Analytics show:
 ```
 
 **Golden rule:** Use 302 by default for anything that's not permanent. You get better analytics + flexibility. Switch to 301 only when you're 100% sure the old URL is gone forever.
+
+## CDN Refresh Strategies
+
+### 1. TTL (Time To Live) - Automatic Expiration
+
+Most common method - CDN automatically refreshes after expiration.
+
+```
+File: image.jpg uploaded to CDN
+
+Response header:
+Cache-Control: max-age=3600
+(= Keep in cache for 1 hour)
+
+Timeline:
+├─ 10:00 AM → User downloads image.jpg
+├─ 10:15 AM → Another user → Served from CDN cache (fast!)
+├─ 11:00 AM → TTL expires
+├─ 11:05 AM → User requests image.jpg
+├─ → CDN checks origin: "Is this updated?"
+└─ → If yes, fetch new version + update cache
+```
+
+**TTL Header Examples:**
+
+```
+Cache-Control: max-age=86400
+(24 hours - good for static files like logos)
+
+Cache-Control: max-age=3600
+(1 hour - good for changing content)
+
+Cache-Control: max-age=0
+(Immediately stale - always check origin)
+
+Cache-Control: no-cache
+(Always validate before serving)
+```
+
+### 2. Cache Busting - Version in Filename
+
+Force CDN to get latest without waiting for TTL.
+
+```
+Old: image.jpg
+New: image_v2.jpg
+
+Or with hash:
+image.abc123def.jpg (hash changes when file changes)
+```
+
+**How it works:**
+
+```
+File updates:
+├─ image.jpg (v1) → TTL = 30 days
+├─ You update image.jpg
+├─ But CDN still serves old version (TTL not expired!)
+
+Solution:
+├─ Rename to image_v2.jpg
+├─ Update HTML: <img src="image_v2.jpg">
+├─ CDN never cached image_v2.jpg
+├─ Fetches fresh copy from origin
+└─ New users get latest immediately
+```
+
+**Real example:**
+
+```html
+<!-- Old -->
+<script src="app.js"></script>
+
+<!-- New - forces fresh download -->
+<script src="app.a1b2c3d4.js"></script>
+(hash changes when app.js changes)
+```
+
+### 3. Cache Purge/Invalidation - Manual Refresh
+
+Tell CDN to remove file immediately.
+
+```
+You update logo.png on origin
+
+Command (CloudFlare example):
+curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" \
+  -d '{"files": ["https://example.com/logo.png"]}'
+
+Result:
+├─ All CDN edge locations remove logo.png
+├─ Next user request → fetches fresh from origin
+└─ No waiting for TTL
+```
+
+**Purge types:**
+
+```
+Single file purge:
+├─ Purge: logo.png
+└─ Keep: other files cached
+
+Path purge:
+├─ Purge: /images/*
+└─ Remove all images
+
+Full purge:
+├─ Purge everything
+└─ Slowest option, last resort
+```
+
+### 4. Stale-While-Revalidate
+
+Serve old content while checking for new version in background.
+
+```
+Response header:
+Cache-Control: max-age=3600, stale-while-revalidate=86400
+
+Timeline:
+├─ 10:00 AM → User gets image.jpg (TTL=1 hour)
+├─ 11:05 AM → TTL expired
+├─ 11:06 AM → User requests image.jpg
+├─ CDN: "Send old version immediately"
+├─ CDN (background): "Check origin for update"
+├─ If update exists → refresh cache for next user
+└─ User gets fast response, cache eventually updates
+
+Benefits:
+✅ User gets instant response
+✅ Cache still gets updated
+✅ No need for purge commands
+```
+
+### 5. Conditional Requests (E-Tags)
+
+Smart refresh without transferring full file.
+
+```
+First request:
+GET image.jpg
+Response:
+  ETag: "abc123"
+  (hash of file content)
+
+Later request:
+GET image.jpg
+If-None-Match: "abc123"
+(Has same ETag?)
+
+Response:
+├─ If same → 304 Not Modified (use cached)
+├─ If different → 200 + new content
+└─ Saves bandwidth!
+```
+
+### Comparison: When to Use What
+
+| Strategy | TTL | Cache Bust | Purge | Stale-While | ETag |
+|----------|-----|-----------|-------|-------------|------|
+| **Static files (logo)** | 30 days | ✅ | ❌ | ✅ | ✅ |
+| **Dynamic content** | 1 hour | ✅ | ✅ | ✅ | ✅ |
+| **Critical update** | ❌ | ✅ | ✅ | ❌ | ✅ |
+| **API responses** | 5 min | ✅ | ✅ | ❌ | ✅ |
+| **Implementation effort** | None | Code change | API call | Code | Auto |
+
+### Real-World Scenario
+
+**Website deploy with new CSS:**
+
+```
+Old CSS: style.css (cached 30 days)
+
+You deploy new CSS:
+
+Option 1 (Cache Bust - Recommended):
+├─ Rename: style.abc123.css
+├─ Update HTML: <link href="style.abc123.css">
+├─ Deploy
+├─ Users get latest immediately
+└─ No API calls needed
+
+Option 2 (Purge):
+├─ Deploy new style.css to origin
+├─ Call CDN API: purge style.css
+├─ Wait 1-5 sec for all edges to purge
+├─ Users get latest in next request
+└─ Requires monitoring
+
+Option 3 (TTL only):
+├─ Deploy new style.css
+├─ Wait 30 days for cache to expire 😱
+└─ Not recommended for production!
+```
+
+### Best Practice Strategy
+
+```
+For static files (images, CSS, JS):
+✅ Use cache busting + long TTL (30 days)
+
+For changing content:
+✅ Use short TTL (1 hour) + stale-while-revalidate
+
+For critical updates:
+✅ Use cache purge (API call)
+
+For everything:
+✅ Always use ETag for smart revalidation
+```
+
+**Golden rule:** Use cache busting for static assets. It's the fastest and most reliable way to ensure users get updates without waiting for TTL expiration.
