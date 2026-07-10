@@ -6,22 +6,17 @@
 
 ## Table of Contents
 
-### 🔴 Must-Do (90%+ Interview Chance)
-- [1. LRU/LFU Cache](#1-lrulfuffifo-cache) — 95% | Google • Meta • Amazon • Apple • Netflix
-
-### 🟠 Very Common (70-89%)
-- [2. Parking Lot System](#2-parking-lot-system) — 78% | Amazon • Google • Meta
-- [3. Search Autocomplete / Typeahead (Trie)](#3-search-autocomplete--typeahead-trie) — 72% | Google • Meta • Amazon • Apple
-
-### 🟡 Common (50-69%)
-- [4. Rate Limiter (Algorithm Design)](#4-rate-limiter-algorithm-design) — 65% | Google • Amazon • Meta • Apple
-- [5. UUID / Distributed ID Generator](#5-uuid--distributed-id-generator) — 62% | Google • Amazon • Meta • Netflix • Apple
-- [6. Web Crawler (BFS/DFS)](#6-web-crawler-bfsdfs) — 58% | Google • Meta • Amazon
-
-### 🟢 Moderate (30-49%)
-- [7. Job Queue / Priority Queue Implementation](#7-job-queue--priority-queue-implementation) — 52% | Google • Amazon • Meta • Netflix • Apple
-- [8. Booking System (Interval Scheduling)](#8-booking-system-interval-scheduling) — 48% | Amazon • Google • Meta • Apple
-- [9. Search Engine (Inverted Index)](#9-search-engine-inverted-index) — 45% | Google • Meta • Amazon
+| # | Problem | Frequency | Companies | LeetCode |
+|---|---------|-----------|-----------|----------|
+| [1](#1-lrulfuffifo-cache) | LRU/LFU Cache | 95% | Google • Meta • Amazon • Apple • Netflix | 146, 460 |
+| [2](#2-parking-lot-system) | Parking Lot System | 78% | Amazon • Google • Meta | 1603 |
+| [3](#3-search-autocomplete--typeahead-trie) | Search Autocomplete (Trie) | 72% | Google • Meta • Amazon • Apple | 642 |
+| [4](#4-rate-limiter-algorithm-design) | Rate Limiter (Algorithm) | 65% | Google • Amazon • Meta • Apple | N/A |
+| [5](#5-uuid--distributed-id-generator) | UUID Generator | 62% | Google • Amazon • Meta • Netflix • Apple | N/A |
+| [6](#6-web-crawler-bfsdfs) | Web Crawler (BFS/DFS) | 58% | Google • Meta • Amazon | 1236 |
+| [7](#7-job-queue--priority-queue-implementation) | Job Queue/Priority Queue | 52% | Google • Amazon • Meta • Netflix • Apple | N/A |
+| [8](#8-booking-system-interval-scheduling) | Booking System (Intervals) | 48% | Amazon • Google • Meta • Apple | 252, 253 |
+| [9](#9-search-engine-inverted-index) | Search Engine (Inverted Index) | 45% | Google • Meta • Amazon | 212 |
 
 ---
 
@@ -365,25 +360,6 @@ Build a search engine backend that:
 | **Amazon** | LRU Cache (90%), Parking Lot (85%), Booking System (65%), Job Queue (65%), Rate Limiter (70%) |
 | **Apple** | LRU Cache (85%), Typeahead (50%), Rate Limiter (45%), UUID (50%), Job Queue (40%) |
 | **Netflix** | LRU Cache (80%), UUID (55%), Job Queue (45%), Rate Limiter (40%) |
-
----
-
-## Study Roadmap
-
-### Phase 1: Must-Know (Week 1-2)
-1. LRU/LFU Cache
-2. Parking Lot System
-3. Typeahead/Autocomplete
-
-### Phase 2: Very Important (Week 3-4)
-4. Rate Limiter (Algorithm)
-5. UUID/ID Generator
-6. Web Crawler
-
-### Phase 3: Important (Week 5-6)
-7. Job Queue/Priority Queue
-8. Booking System (Intervals)
-9. Search Engine
 
 ---
 
