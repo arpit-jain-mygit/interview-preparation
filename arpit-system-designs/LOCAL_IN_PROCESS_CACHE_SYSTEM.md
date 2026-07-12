@@ -1,5 +1,32 @@
 # Local/In-Process Cache System (LRU / LFU Cache) - Design
 
+## Table of Contents
+
+### Revision #1 - High-Level Design (Postgres + Multi-Instance)
+- [Functional Requirements](#functional-requirements)
+- [Non-Functional Requirements](#non-functional-requirements)
+- [Design (Revision #1)](#design-revision-1)
+  - [DB Choice and Storage Requirements](#db-choice-and-tables-design-storage-requirements)
+  - [APIs Design](#apis-design)
+  - [How to Achieve Functional Requirements](#how-to-achieve-functional-requirements)
+  - [How to Achieve Non-Functional Requirements](#how-to-achieve-non-functional-requirements)
+- [Honest Feedback on Revision #1](#honest-feedback)
+- [Summary Table: Works vs. Won't Work](#summary-table-works-vs-wont-work)
+- [Questions to Resolve Before Next Revision](#questions-to-resolve-before-next-revision)
+
+### Revision #2 - Implementation Design (HashMap + DoublyLinkedList)
+- [Core Approach](#core-approach)
+- [Get Operation](#get-operation)
+- [Put Operation](#put-operation)
+  - [Case (a): Key Exists](#case-a-key-exists--update-existing-value)
+  - [Case (b): Key Not Present](#case-b-key-not-present--add-new-entry-with-eviction-if-needed)
+- [Honest Feedback on Revision #2](#honest-feedback-on-revision-2)
+- [Summary Table: Revision #2 Status](#summary-table-revision-2-status)
+- [Verdict](#verdict)
+- [Questions for Revision #3](#questions-for-revision-3)
+
+---
+
 ## Revision #1
 
 ### Functional Requirements
