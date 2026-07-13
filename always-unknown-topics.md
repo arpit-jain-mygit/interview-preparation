@@ -19,6 +19,8 @@ Topics that frequently come up in interviews but are often unclear or misunderst
 11. [TTL (Time To Live) Strategies](#ttl-time-to-live-strategies)
 12. [TTL vs Cache Eviction](#ttl-vs-cache-eviction)
 13. [Item-Level vs Cache-Level TTL](#item-level-vs-cache-level-ttl)
+14. [Cache Capacity Boundary Logic](#cache-capacity-boundary-logic)
+15. [Calculate Memory Consumed by HashMap](#calculate-memory-consumed-by-hashmap)
 
 ---
 
@@ -1376,4 +1378,345 @@ Whichever expires FIRST wins:
 └─ Example: Web session timeout
 
 Best practice: Use Item-level + add Cache-level for safety
+```
+
+## Cache Capacity Boundary Logic
+
+**Cache capacity can limit by NUMBER OF ENTRIES or MEMORY SIZE (or both)**
+
+### Approach 1: Entry-Based Capacity
+
+**Cache holds maximum N items**
+
+```
+Capacity: 1000 entries (max)
+
+Cache fills to 1000 entries → FULL!
+Entry 1001 added → Trigger eviction
+```
+
+**Implementation:**
+
+```java
+public class LRUCache<K, V> {
+    private int capacity;  // Max entries
+    private Map<K, V> map;
+    
+    public void put(K key, V value) {
+        if (map.size() >= capacity) {
+            evictLRU();  // Remove least recently used
+        }
+        map.put(key, value);
+    }
+    
+    public int getCurrentSize() {
+        return map.size();
+    }
+    
+    public boolean isFull() {
+        return map.size() >= capacity;
+    }
+}
+
+// Usage
+LRUCache<String, String> cache = new LRUCache<>(1000);  // Max 1000
+cache.put("user:1", data);
+System.out.println(cache.getCurrentSize());  // Current entries
+System.out.println(cache.isFull());          // Is at capacity?
+```
+
+**Pros/Cons:**
+```
+✅ Simple: Just count items
+✅ Predictable: Exactly 1000 items
+❌ Ignores memory: Small items waste space, large items exceed RAM
+```
+
+---
+
+### Approach 2: Memory-Based Capacity
+
+**Cache holds maximum X MB/GB of memory**
+
+```
+Capacity: 1GB memory (max)
+
+Cache fills to 1GB → FULL!
+Adding more → Trigger eviction
+```
+
+**Implementation:**
+
+```java
+public class MemoryBoundCache<K, V> {
+    private long maxMemoryBytes;
+    private long currentMemoryBytes = 0;
+    private Map<K, V> cache;
+    private Map<K, Long> sizeMap;  // Track size of each item
+    
+    public void put(K key, V value) {
+        long itemSize = calculateSize(value);
+        
+        // Check if adding would exceed capacity
+        while (currentMemoryBytes + itemSize > maxMemoryBytes) {
+            evictLRU();
+        }
+        
+        cache.put(key, value);
+        sizeMap.put(key, itemSize);
+        currentMemoryBytes += itemSize;
+    }
+    
+    private long calculateSize(V value) {
+        if (value instanceof String) {
+            return 48 + ((String) value).length() * 2;  // String overhead + chars
+        } else if (value instanceof byte[]) {
+            return 16 + ((byte[]) value).length;
+        }
+        return 1024;  // Default estimate
+    }
+    
+    public long getCurrentMemory() {
+        return currentMemoryBytes;
+    }
+    
+    public double getCapacityUsage() {
+        return (double) currentMemoryBytes / maxMemoryBytes * 100;
+    }
+}
+
+// Usage
+MemoryBoundCache<String, String> cache = 
+    new MemoryBoundCache<>(1024 * 1024 * 100);  // 100MB
+
+cache.put("user:1", largeData);
+System.out.println(cache.getCurrentMemory() / (1024*1024) + " MB");
+System.out.println(cache.getCapacityUsage() + "%");
+```
+
+**Pros/Cons:**
+```
+✅ Realistic: Accounts for actual memory
+✅ Safe: Won't exceed RAM limit
+✅ Flexible: Small items fit more
+❌ Complex: Need to calculate item sizes
+❌ Variable: Number of items varies
+```
+
+---
+
+### Comparison
+
+| Aspect | Entry-Based | Memory-Based |
+|--------|-----------|------------|
+| **Limit** | N items (e.g., 1000) | X MB/GB (e.g., 1GB) |
+| **Size matters** | ❌ No | ✅ YES |
+| **Batch job needed** | ❌ NO (inline eviction) | Depends (inline or background) |
+| **Common in** | LRU cache implementations | Custom caches, Redis |
+
+---
+
+## Calculate Memory Consumed by HashMap
+
+**Three approaches with different accuracy/complexity tradeoffs**
+
+### Approach 1: Manual Estimation (Simple, ~70% Accurate)
+
+**Estimate based on object sizes**
+
+```java
+public class MemoryEstimator {
+    static final long OBJECT_HEADER = 16;
+    static final long HASHMAP_OVERHEAD = 48;
+    static final long ENTRY_OVERHEAD = 32;
+    static final long CHAR_SIZE = 2;
+    
+    public static long estimateMapMemory(Map<String, String> map) {
+        long total = HASHMAP_OVERHEAD;  // HashMap object
+        
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            
+            total += ENTRY_OVERHEAD;                    // Entry node
+            total += estimateStringSize(key);           // Key
+            total += estimateStringSize(value);         // Value
+        }
+        
+        return total;
+    }
+    
+    private static long estimateStringSize(String str) {
+        if (str == null) return 0;
+        return OBJECT_HEADER + 8 + str.length() * CHAR_SIZE;
+    }
+}
+
+// Usage
+Map<String, String> cache = new HashMap<>();
+cache.put("user:1", "John Doe");
+cache.put("user:2", "Jane Smith");
+
+long bytes = MemoryEstimator.estimateMapMemory(cache);
+System.out.println(bytes + " bytes");
+System.out.println(bytes / 1024.0 + " KB");
+```
+
+**Pros:** ✅ Fast, no setup  
+**Cons:** ❌ ~70% accurate, JVM-dependent
+
+---
+
+### Approach 2: Using JOL Library (Best, ~99% Accurate)
+
+**Most accurate and easiest**
+
+```java
+// Add dependency: org.openjdk.jol:jol-core
+
+import org.openjdk.jol.info.GraphLayout;
+
+public class MemoryAnalyzer {
+    
+    // Get deep size (entire object graph)
+    public static long getDeepSize(Map<String, String> map) {
+        return GraphLayout.parseInstance(map).totalSize();
+    }
+    
+    // Pretty print memory layout
+    public static void printMemoryLayout(Map<String, String> map) {
+        System.out.println(GraphLayout.parseInstance(map).toFootprint());
+    }
+}
+
+// Usage
+Map<String, String> cache = new HashMap<>();
+cache.put("user:1", "John Doe");
+
+long bytes = MemoryAnalyzer.getDeepSize(cache);
+System.out.println("Memory: " + bytes + " bytes");
+
+MemoryAnalyzer.printMemoryLayout(cache);
+// Output:
+// java.util.HashMap@4d405ef instance layout
+// INSTANCE DATA:
+//   java.lang.Object
+//   java.util.HashMap instance data
+// TOTAL SIZE: 512 bytes
+```
+
+**Pros:** ✅ Accurate (~99%), Easy  
+**Cons:** ❌ Requires external library
+
+---
+
+### Approach 3: Serialization Size (Practical, ~80% Accurate)
+
+**Fallback approach, no dependencies**
+
+```java
+public class SerializationSizer {
+    
+    public static long getSerializedSize(Object obj) throws Exception {
+        java.io.ByteArrayOutputStream baos = 
+            new java.io.ByteArrayOutputStream();
+        java.io.ObjectOutputStream oos = 
+            new java.io.ObjectOutputStream(baos);
+        oos.writeObject(obj);
+        oos.close();
+        return baos.size();
+    }
+}
+
+// Usage
+Map<String, String> cache = new HashMap<>();
+cache.put("user:1", "John Doe");
+
+long bytes = SerializationSizer.getSerializedSize(cache);
+System.out.println("Serialized size: " + bytes + " bytes");
+```
+
+**Pros:** ✅ No setup, reasonable accuracy  
+**Cons:** ❌ Slightly slower, ~80% accurate
+
+---
+
+### Practical Implementation: Track and Cache Sizes
+
+**Best for production custom cache:**
+
+```java
+public class CustomMemoryCache<K, V> {
+    private long maxMemoryBytes;
+    private long currentMemoryBytes = 0;
+    private Map<K, V> cache = new HashMap<>();
+    private Map<K, Long> sizeMap = new HashMap<>();  // Cache sizes!
+    
+    public void put(K key, V value) {
+        long itemSize = calculateSize(value);
+        
+        // Evict if needed
+        while (currentMemoryBytes + itemSize > maxMemoryBytes) {
+            evictLRU();
+        }
+        
+        // Track size (avoid recalculating!)
+        cache.put(key, value);
+        sizeMap.put(key, itemSize);
+        currentMemoryBytes += itemSize;
+    }
+    
+    // Practical size calculation
+    private long calculateSize(V value) {
+        if (value instanceof String) {
+            return 48 + ((String) value).length() * 2;
+        } else if (value instanceof byte[]) {
+            return 16 + ((byte[]) value).length;
+        }
+        return 1024;  // Safe default
+    }
+    
+    public void printStats() {
+        double usage = (double) currentMemoryBytes / maxMemoryBytes * 100;
+        System.out.println("Used: " + (currentMemoryBytes / 1024.0) + " KB");
+        System.out.println("Max: " + (maxMemoryBytes / 1024.0) + " KB");
+        System.out.println("Usage: " + usage + "%");
+        System.out.println("Entries: " + cache.size());
+    }
+}
+```
+
+---
+
+### Comparison of Approaches
+
+| Approach | Accuracy | Speed | Setup | Production |
+|----------|----------|-------|-------|------------|
+| **Manual Estimation** | ~70% | ⚡⚡⚡ | None | ✅ YES |
+| **JOL Library** | ~99% | ⚡⚡ | Easy | ✅ YES |
+| **Serialization** | ~80% | ⚡ | None | ✅ YES |
+
+---
+
+### TL;DR
+
+**For Custom Cache:**
+
+```
+Choose approach based on needs:
+
+Speed matters most:
+└─ Manual estimation (~70% accurate)
+
+Accuracy matters most:
+└─ JOL library (~99% accurate)
+
+Production balanced:
+└─ Manual + cache calculated sizes
+
+Implementation tip:
+├─ Calculate size once on put()
+├─ Store in Map<K, Long> sizeMap
+├─ Reuse on eviction
+└─ Avoid recalculating every time
 ```
