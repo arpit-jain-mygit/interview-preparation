@@ -1,5 +1,13 @@
 # Design Distributed Cache System (Redis-like)
 
+## MAANG Interview Readiness Score
+
+| Revision | Score (out of 100) | Assessment | Chances to Clear | Comments |
+|----------|-------------------|------------|-----------------|----------|
+| #1 | 42/100 | **L4 Weak** - Significant gaps, incomplete thinking | 25% | Good foundation but too vague; needs deeper architectural design |
+
+---
+
 ## Functional Requirements:
 - Get, set, delete operations
 - Support data types (string, list, set, hash, sorted set)
