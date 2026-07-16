@@ -314,6 +314,316 @@ true singletons like Logger, Config that are rarely mocked."
 
 ---
 
+#### Repercussions: Multiple Instances When Should Be Singleton
+
+**If you create multiple instances of something that should be Singleton, you get:**
+
+---
+
+### **1. Logger: Lost Logs & File Handle Exhaustion**
+
+**Wrong (Multiple Instances):**
+```java
+// Every time you log, new instance
+Logger logger1 = new Logger();
+logger1.init("app.log");
+logger1.info("User login");
+logger1.close();
+
+Logger logger2 = new Logger();
+logger2.init("app.log");
+logger2.info("User action");
+logger2.close();
+
+Logger logger3 = new Logger();
+logger3.init("app.log");
+logger3.info("User logout");
+logger3.close();
+
+// PROBLEMS:
+// ❌ File opened/closed 3 times
+// ❌ File handle exhaustion (OS has limit on open files)
+// ❌ Performance: overhead of init/close each time
+// ❌ Logs might be interleaved or lost if concurrent
+```
+
+**Right (Singleton):**
+```java
+Logger logger = Logger.getInstance();
+logger.info("User login");
+logger.info("User action");
+logger.info("User logout");
+
+// ✅ One file handle, stays open
+// ✅ All logs in sequence
+// ✅ One buffer, efficient writes
+```
+
+---
+
+### **2. Connection Pool: Connection Exhaustion & Deadlock**
+
+**Wrong (Multiple Instances):**
+```java
+// Each module creates its own pool
+ConnectionPool pool1 = new ConnectionPool(maxConnections=10);
+// pool1 holds 10 connections
+
+ConnectionPool pool2 = new ConnectionPool(maxConnections=10);
+// pool2 holds 10 different connections
+
+ConnectionPool pool3 = new ConnectionPool(maxConnections=10);
+// pool3 holds 10 different connections
+
+// Total database connections: 30
+// But database max connections limit: 20 ❌ CRASH
+
+// OR: Long-running connection never returned
+Connection conn = pool1.getConnection();
+// ... code hangs, connection not released
+
+// pool1 runs out of connections
+// Other modules trying to get connections DEADLOCK
+```
+
+**Right (Singleton):**
+```java
+ConnectionPool pool = ConnectionPool.getInstance(maxConnections=10);
+
+// Module 1 gets connection
+Connection conn1 = pool.getConnection();
+
+// Module 2 gets connection
+Connection conn2 = pool.getConnection();
+
+// ... (8 more modules)
+
+// Module 11 waits for a module to return connection
+Connection conn11 = pool.getWaitFor();  // Blocks until one is released
+
+// ✅ Total connections: exactly 10, controlled
+// ✅ Fair distribution across modules
+```
+
+---
+
+### **3. Configuration Manager: Inconsistent Config Across App**
+
+**Wrong (Multiple Instances):**
+```java
+// Loaded at different times, possibly different values
+Config config1 = new Config();
+config1.load("app.properties");
+String dbUrl1 = config1.get("database.url");  // "mysql://prod-db:3306"
+
+// Later, config file updated in production (bad practice but happens)
+// New instance loads new config
+Config config2 = new Config();
+config2.load("app.properties");
+String dbUrl2 = config2.get("database.url");  // "mysql://staging-db:3306" ❌
+
+// PROBLEM:
+// ❌ Module A writes to prod-db
+// ❌ Module B writes to staging-db
+// ❌ Data split across different databases
+// ❌ Inconsistent state, corruption
+```
+
+**Right (Singleton):**
+```java
+Config config = Config.getInstance();
+// Loaded ONCE at startup
+
+String dbUrl = config.get("database.url");
+// All modules get same URL ✅
+```
+
+---
+
+### **4. Cache Manager: Cache Misses & Lost Data**
+
+**Wrong (Multiple Instances):**
+```java
+// Instance 1 caches user data
+Cache cache1 = new Cache();
+cache1.set("user:123", userData);
+
+// Instance 2 doesn't have this data
+Cache cache2 = new Cache();
+String userData2 = cache2.get("user:123");  // null ❌
+
+// Code fetches from database AGAIN
+userData = database.query("SELECT * FROM users WHERE id=123");
+
+// PROBLEM:
+// ❌ Cache miss (should hit!)
+// ❌ Redundant database queries
+// ❌ Database overload
+// ❌ Performance degradation
+// ❌ Memory wasted (cached in 2 places)
+```
+
+**Right (Singleton):**
+```java
+Cache cache = CacheManager.getInstance();
+cache.set("user:123", userData);
+
+// Later, any module checks cache
+String cachedData = cache.get("user:123");  // Hit! ✅
+
+// ✅ One cache, shared data
+// ✅ Database query avoided
+// ✅ Performance: 1ms cache hit vs 100ms database query
+```
+
+---
+
+### **5. Thread Pool: Thread Explosion & OOM**
+
+**Wrong (Multiple Instances):**
+```java
+// Each component creates its own pool
+ExecutorService threadPool1 = Executors.newFixedThreadPool(100);
+// Creates 100 threads
+
+ExecutorService threadPool2 = Executors.newFixedThreadPool(100);
+// Creates 100 more threads
+
+ExecutorService threadPool3 = Executors.newFixedThreadPool(100);
+// Creates 100 more threads
+
+// Total threads: 300
+// JVM thread limit: typically 1000-2000
+// Each thread consumes ~1MB memory
+// 300MB just for threads ❌
+
+// With 10 components, 1000 threads, app crashes with OutOfMemory
+```
+
+**Right (Singleton):**
+```java
+ExecutorService threadPool = ThreadPoolManager.getInstance(size=100);
+
+// All components queue tasks to same 100 threads ✅
+threadPool.execute(task1);
+threadPool.execute(task2);
+// ... hundreds of tasks, but just 100 threads
+```
+
+---
+
+### **6. Metrics Collector: Wrong Statistics**
+
+**Wrong (Multiple Instances):**
+```java
+MetricsCollector metrics1 = new MetricsCollector();
+MetricsCollector metrics2 = new MetricsCollector();
+
+// Thread A increments metrics1
+metrics1.recordRequest();
+metrics1.recordRequest();
+metrics1.recordRequest();
+// metrics1.totalRequests = 3
+
+// Thread B increments metrics2
+metrics2.recordRequest();
+metrics2.recordRequest();
+// metrics2.totalRequests = 2
+
+// PROBLEM:
+// ❌ Actual requests: 5
+// ❌ metrics1 shows: 3
+// ❌ metrics2 shows: 2
+// ❌ Dashboard shows wrong numbers
+// ❌ Alerts don't trigger correctly
+```
+
+**Right (Singleton):**
+```java
+MetricsCollector metrics = MetricsCollector.getInstance();
+
+metrics.recordRequest();
+metrics.recordRequest();
+metrics.recordRequest();
+metrics.recordRequest();
+metrics.recordRequest();
+
+// metrics.totalRequests = 5 ✅
+// Accurate statistics, correct alerting
+```
+
+---
+
+### **7. Authentication Manager: Security Breach**
+
+**Wrong (Multiple Instances):**
+```java
+AuthManager auth1 = new AuthManager();
+auth1.login(user, password);
+auth1.setCurrentUser(user);  // Authenticated in auth1
+
+// But different request uses auth2
+AuthManager auth2 = new AuthManager();
+if (auth2.isAuthenticated()) {  // ❌ auth2 doesn't know about auth1!
+    // Returns false, user not allowed
+}
+
+// PROBLEM:
+// ❌ User authenticated in one instance
+// ❌ Denied access in another instance
+// ❌ Authentication state scattered
+// ❌ Sessions confused
+```
+
+**Right (Singleton):**
+```java
+AuthManager auth = AuthManager.getInstance();
+auth.login(user, password);
+
+// All requests check same instance
+if (auth.isAuthenticated()) {  // ✅ Consistent auth state
+    // Allowed
+}
+```
+
+---
+
+## Summary: Repercussions by Pattern
+
+| Resource | Multiple Instances | Repercussion |
+|----------|---|---|
+| **Logger** | File handle exhaustion, lost logs, performance hit |
+| **Connection Pool** | Database connection limit exceeded, deadlock, crashes |
+| **Config** | Inconsistent state, data split across systems |
+| **Cache** | Cache misses, database overload, wasted memory |
+| **Thread Pool** | Thread explosion, OutOfMemory, app crash |
+| **Metrics** | Wrong statistics, incorrect alerts, bad decisions |
+| **Auth Manager** | Authentication state confusion, security issues |
+
+---
+
+## Interview Answer
+
+**Q: What happens if you create multiple instances instead of using Singleton?**
+
+A: "Depends on the resource:
+
+1. **Logger**: File handles get exhausted, logs are lost or corrupted.
+
+2. **Connection Pool**: You exceed database connection limits or get deadlocks because each pool holds its own connections instead of sharing.
+
+3. **Config Manager**: Different modules read different configurations, causing data inconsistency across the app.
+
+4. **Cache**: Every instance has its own cache, so lookups fail and you hit the database repeatedly, killing performance.
+
+5. **Thread Pool**: Each instance creates its own threads. With 10 instances of 100-thread pools, you have 1000 threads and app crashes with OutOfMemory.
+
+6. **Metrics**: Statistics are scattered across instances, so dashboards show wrong numbers.
+
+The core issue: **shared resources need one single point of truth**. Multiple instances break that guarantee."
+
+---
+
 ---
 
 ### Factory Method
