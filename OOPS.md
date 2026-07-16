@@ -2069,21 +2069,1084 @@ OrderService service = new OrderService(new MongoOrderRepository());     // Migr
 
 ### Q1: Why use encapsulation when we can make all fields public?
 
-*Add detailed answer based on your questions...*
+**Short Answer:** Encapsulation lets you change internals without breaking 100+ services. It's the foundation of API stability and security.
+
+**Detailed Answer:**
+
+**1. API Contract & Stability**
+```java
+// ❌ Without encapsulation (public fields)
+public class User {
+    public String email;
+    public int age;
+    public List<String> permissions;
+}
+
+// Service 1 reads: user.permissions.contains("ADMIN")
+// Service 2 clears: user.permissions = new ArrayList();
+// Service 3 checks: if (user.permissions.size() == 0) { ... }
+
+// Problem: Tomorrow you need to validate email before setting
+// But 50 services directly access user.email - you can't validate anywhere!
+
+// ✅ With encapsulation
+public class User {
+    private String email;
+    private int age;
+    private List<String> permissions;
+    
+    public void setEmail(String email) {
+        // Validation happens here, once
+        if (!isValidEmail(email)) {
+            throw new IllegalArgumentException("Invalid email");
+        }
+        this.email = email;
+    }
+    
+    public String getEmail() {
+        return email;
+    }
+    
+    public boolean hasPermission(String perm) {
+        return permissions.contains(perm);  // Controlled access
+    }
+}
+
+// All 50 services use getEmail() → one place to add validation
+```
+
+**2. Security Boundary**
+```java
+// ❌ Public fields
+public class DatabaseConfig {
+    public String apiKey = System.getenv("API_KEY");  // Exposed in memory
+    public String password = "hardcoded";               // Visible to anyone who reads the field
+}
+
+// ✅ Private fields with controlled access
+public class DatabaseConfig {
+    private String apiKey;
+    private String password;
+    
+    public DatabaseConfig() {
+        // Load from secure vault, not environment
+        this.apiKey = SecureVault.get("database.apiKey");
+        this.password = SecureVault.get("database.password");
+    }
+    
+    public boolean authenticate(String inputPassword) {
+        // Compare securely, never expose password
+        return PasswordHasher.verify(inputPassword, password);
+    }
+    
+    // No getter for password or apiKey - can't expose them
+}
+```
+
+**3. Invariant Protection**
+```java
+// ❌ Without encapsulation
+public class BankAccount {
+    public double balance = 1000;
+}
+
+// Service A: account.balance = -1000;  // Negative balance? Bug!
+// Service B: account.balance = 999999999999.99;  // Injection attack
+
+// ✅ With encapsulation
+public class BankAccount {
+    private double balance;
+    
+    public void withdraw(double amount) throws InsufficientFundsException {
+        if (amount > balance) {
+            throw new InsufficientFundsException();
+        }
+        balance -= amount;
+    }
+    
+    public void deposit(double amount) throws InvalidAmountException {
+        if (amount <= 0) {
+            throw new InvalidAmountException("Amount must be positive");
+        }
+        balance += amount;
+    }
+    
+    public double getBalance() {
+        return balance;  // Read-only, can't be corrupted by direct assignment
+    }
+}
+```
+
+**4. Refactoring Freedom**
+```java
+// Version 1: Simple storage
+public class Cache {
+    private Map<String, Object> store;
+    
+    public Object get(String key) {
+        return store.get(key);
+    }
+}
+
+// Version 2: Added LRU eviction
+public class Cache {
+    private LinkedHashMap<String, Object> store;  // Changed!
+    private int maxSize;
+    
+    public Object get(String key) {
+        Object value = store.get(key);
+        if (value != null) {
+            store.remove(key);
+            store.put(key, value);  // Move to end (LRU)
+        }
+        return value;
+    }
+}
+
+// Version 3: Moved to Redis for distributed caching
+public class Cache {
+    private JedisCluster redis;  // Completely different!
+    
+    public Object get(String key) {
+        return redis.get(key);
+    }
+}
+
+// All internal changes! Caller code never changes:
+Object value = cache.get("user:123");  // Works in all 3 versions
+```
+
+**Architect Perspective:** Encapsulation = API stability. In a microservices world with 50 services, changing internals without breaking clients is critical.
+
+---
 
 ### Q2: When would you use inheritance vs composition?
 
-*Add detailed answer based on your questions...*
+**Short Answer:** Use inheritance for IS-A relationships with shared implementation. Use composition for everything else. Default to composition.
+
+**Detailed Answer:**
+
+**When to Use Inheritance (Rare, ~10% of cases)**
+
+```java
+// ✅ Good: Clear IS-A relationship with shared behavior
+public abstract class PaymentMethod {
+    protected String cardNumber;
+    
+    public abstract boolean validate();
+    
+    protected boolean isExpired() {
+        // Shared expiration logic
+        return expirationDate.isBefore(LocalDate.now());
+    }
+}
+
+public class CreditCard extends PaymentMethod {
+    @Override
+    public boolean validate() {
+        return isValidCardNumber() && !isExpired();
+    }
+}
+
+public class DebitCard extends PaymentMethod {
+    @Override
+    public boolean validate() {
+        return hasBalance() && !isExpired();
+    }
+}
+```
+
+**Conditions for Inheritance:**
+1. ✅ Clear IS-A relationship (DebitCard IS-A PaymentMethod)
+2. ✅ Shared behavior needed (expiration checking)
+3. ✅ Shallow hierarchy (2-3 levels max)
+4. ✅ LSP holds - subclass is truly substitutable
+
+**When to Use Composition (90% of cases)**
+
+```java
+// ❌ Don't extend just for code reuse
+public class Employee extends Person {
+    // Inherits name, age, email from Person
+    // But Employee IS-A Person? Not really - Employee HAS-A Person (contact info)
+}
+
+// ✅ Use composition instead
+public class Employee {
+    private PersonInfo personInfo;  // Composed, not inherited
+    private EmployeeInfo employeeInfo;
+    
+    public String getName() {
+        return personInfo.getName();
+    }
+}
+
+// Why composition is better:
+// - Employee can have multiple PersonInfo if needed (work + personal)
+// - Can swap PersonInfo source (database → cache)
+// - Easy to test (mock PersonInfo)
+// - No deep hierarchies
+```
+
+**Real-World Decision Tree**
+
+```
+┌─ Is it a clear IS-A relationship?
+│  └─ No → Use Composition
+│
+└─ Yes
+   ├─ Will it violate LSP? → Use Composition
+   ├─ Is hierarchy 4+ levels deep? → Use Composition
+   ├─ Is it just for code reuse? → Use Composition
+   └─ Does it truly model the domain? → Consider Inheritance
+```
+
+**Example: Report vs ReportTemplate**
+
+```java
+// ❌ Bad inheritance
+public class Report {
+    public void generate() { /* ... */ }
+    public void save() { /* ... */ }
+}
+
+public class MonthlyReport extends Report {
+    // Inherits generate() and save()
+    // But Monthly-specific logic mixed with base class
+}
+
+// ✅ Good composition
+public class Report {
+    private ReportTemplate template;
+    private DataStore dataStore;
+    
+    public void generate() {
+        Data data = collectData();
+        String content = template.render(data);
+        dataStore.save(content);
+    }
+}
+
+public class MonthlyTemplate implements ReportTemplate {
+    @Override
+    public String render(Data data) {
+        return "Monthly Report: " + aggregateByMonth(data);
+    }
+}
+
+public class AnnualTemplate implements ReportTemplate {
+    @Override
+    public String render(Data data) {
+        return "Annual Report: " + aggregateByYear(data);
+    }
+}
+```
+
+**Composition Advantages:**
+- ✅ Flexible (can change strategy at runtime)
+- ✅ Testable (mock dependencies easily)
+- ✅ Avoids deep hierarchies
+- ✅ Single responsibility per class
+- ✅ Follows DIP (depend on abstractions)
+
+---
 
 ### Q3: How do SOLID principles apply to microservices design?
 
-*Add detailed answer based on your questions...*
+**Short Answer:** SOLID principles ARE microservices architecture. Each principle maps to a microservice design rule.
+
+**Detailed Mapping:**
+
+| SOLID | Microservice Application | Example |
+|-------|--------------------------|---------|
+| **SRP** | Each service = one business domain | UserService, OrderService, PaymentService separate |
+| **OCP** | Extend with new services, not modifying old ones | Add RecommendationService without changing OrderService |
+| **LSP** | Services must be interchangeable (same contract) | Both SQL and NoSQL repositories work identically |
+| **ISP** | Keep APIs lean | OrderService exposes order operations only, not payment APIs |
+| **DIP** | Services depend on contracts (async messaging) | Services talk via Kafka, not direct HTTP dependencies |
+
+**Detailed Examples:**
+
+**1. SRP → Service Boundaries**
+```
+Monolith (SRP violated):
+UserService {
+  - validateUser()
+  - saveUser()
+  - notifyUser()
+  - auditUser()
+  - assignRole()
+  - trackLogin()
+}
+= 6 reasons to change this class
+
+Microservices (SRP applied):
+├─ User Service (core user domain)
+├─ Notification Service (email, SMS, push)
+├─ Audit Service (compliance logging)
+├─ Auth Service (authentication, roles)
+└─ Analytics Service (user tracking)
+
+Each service has ONE reason to change!
+```
+
+**2. OCP → Service Extensibility**
+```
+Problem: Adding new payment processor breaks OrderService
+│
+├─ ❌ Monolith approach: Modify OrderService.processPayment()
+│     if (type == "STRIPE") { ... }
+│     else if (type == "PAYPAL") { ... }
+│     // Add Square? Modify OrderService again!
+│
+└─ ✅ Microservice approach:
+     OrderService {
+       private PaymentService paymentService;
+       public void process(Order order) {
+         paymentService.pay(order.getTotal());
+       }
+     }
+     
+     PaymentService publishes: PaymentProcessorRegistry
+     → StripeProcessor, PayPalProcessor, SquareProcessor register
+     → Add new processor without touching OrderService!
+```
+
+**3. LSP → Contract Consistency**
+```java
+// All payment processors must follow same contract
+public interface PaymentProcessor {
+    PaymentResult process(Payment p) throws PaymentException;  // Same signature everywhere
+}
+
+// Service 1: Stripe (handles retries internally)
+// Service 2: PayPal (handles rate limiting internally)
+// Service 3: Square (new, handles circuit breaking internally)
+
+// OrderService doesn't care which one - they're all substitutable
+// This is LSP applied at microservice level
+```
+
+**4. ISP → API Design**
+```
+❌ Fat API (OrderService exposes everything):
+GET /api/orders/{id}
+GET /api/orders/{id}/items
+POST /api/orders/{id}/payment
+GET /api/orders/{id}/shipping
+PUT /api/orders/{id}/customer
+
+Clients must know about items, payment, shipping, customer - tight coupling
+
+✅ Segregated APIs (Separate services):
+OrderService:
+  GET /orders/{id}
+  POST /orders
+
+ItemService:
+  GET /orders/{orderId}/items
+  POST /orders/{orderId}/items
+
+PaymentService:
+  POST /orders/{orderId}/payment
+  GET /orders/{orderId}/payment-status
+
+Each service exposes only what it owns
+```
+
+**5. DIP → Async Communication**
+```
+❌ Direct dependency (tight coupling):
+OrderService → PaymentService.pay() → EmailService.send()
+
+If any service is down, whole chain breaks
+
+✅ DIP with messaging (loose coupling):
+OrderService publishes: "order.created" → Kafka
+PaymentService consumes: "order.created" → processes async
+EmailService consumes: "order.created" → sends email
+
+Services don't know about each other
+Can deploy/scale independently
+Resilient to failures (queue buffers messages)
+```
+
+**Architect Perspective:**
+Microservices are SOLID principles applied to systems architecture. If your microservices violate SOLID, they're too monolithic or poorly designed.
+
+---
 
 ### Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
 
-*Add detailed answer based on your questions...*
+**Short Answer:** Use Strategy pattern (OCP) with abstraction (DIP). Add new processors without modifying existing code.
+
+**Detailed Design:**
+
+**1. Core Abstraction**
+```java
+public interface PaymentProcessor {
+    // Core contract all processors must follow
+    PaymentResult process(Payment payment) throws PaymentException;
+    
+    // Capability checking
+    boolean supports(PaymentType type);
+    
+    // Refund capability (optional)
+    RefundResult refund(String transactionId) throws RefundNotSupportedException;
+}
+
+public enum PaymentType {
+    CREDIT_CARD, DEBIT_CARD, PAYPAL, APPLE_PAY, GOOGLE_PAY, BANK_TRANSFER, CRYPTO
+}
+
+public class Payment {
+    private String id;
+    private double amount;
+    private PaymentType type;
+    private PaymentDetails details;  // Polymorphic: CardDetails, PayPalDetails, etc.
+}
+```
+
+**2. Implementations (Easy to Add)**
+```java
+public class StripePaymentProcessor implements PaymentProcessor {
+    private StripeClient stripe;
+    
+    @Override
+    public boolean supports(PaymentType type) {
+        return type == PaymentType.CREDIT_CARD || 
+               type == PaymentType.DEBIT_CARD;
+    }
+    
+    @Override
+    public PaymentResult process(Payment payment) throws PaymentException {
+        try {
+            CardDetails card = (CardDetails) payment.getDetails();
+            
+            StripeCharge charge = stripe.charge(
+                payment.getAmount(),
+                card.getToken(),
+                Map.of(
+                    "idempotency_key", payment.getId(),
+                    "metadata", Map.of("order_id", payment.getOrderId())
+                )
+            );
+            
+            return PaymentResult.success(
+                charge.getId(),
+                charge.getStatus(),
+                Map.of("processor", "stripe")
+            );
+        } catch (StripeException e) {
+            throw new PaymentException("Stripe charge failed: " + e.getMessage(), e);
+        }
+    }
+    
+    @Override
+    public RefundResult refund(String transactionId) throws PaymentException {
+        StripeRefund refund = stripe.refund(transactionId);
+        return RefundResult.success(refund.getId());
+    }
+}
+
+public class PayPalPaymentProcessor implements PaymentProcessor {
+    private PayPalClient paypal;
+    
+    @Override
+    public boolean supports(PaymentType type) {
+        return type == PaymentType.PAYPAL;
+    }
+    
+    @Override
+    public PaymentResult process(Payment payment) throws PaymentException {
+        PayPalDetails details = (PayPalDetails) payment.getDetails();
+        
+        PayPalTransaction transaction = paypal.execute(
+            details.getAuthorizationToken(),
+            payment.getAmount(),
+            Map.of("invoice_id", payment.getId())
+        );
+        
+        return PaymentResult.success(
+            transaction.getId(),
+            transaction.getStatus(),
+            Map.of("processor", "paypal")
+        );
+    }
+    
+    @Override
+    public RefundResult refund(String transactionId) throws PaymentException {
+        return paypal.refund(transactionId);
+    }
+}
+
+public class SquarePaymentProcessor implements PaymentProcessor {
+    private SquareClient square;
+    
+    @Override
+    public boolean supports(PaymentType type) {
+        return type == PaymentType.CREDIT_CARD;
+    }
+    
+    @Override
+    public PaymentResult process(Payment payment) throws PaymentException {
+        CardDetails card = (CardDetails) payment.getDetails();
+        
+        SquareCharge charge = square.createPayment(
+            payment.getAmount(),
+            card.getNonce(),
+            Map.of("order_id", payment.getId())
+        );
+        
+        return PaymentResult.success(charge.getId(), "COMPLETED");
+    }
+    
+    @Override
+    public RefundResult refund(String transactionId) throws PaymentException {
+        SquareRefund refund = square.refundPayment(transactionId);
+        return RefundResult.success(refund.getId());
+    }
+}
+```
+
+**3. Factory + Registry Pattern**
+```java
+public class PaymentProcessorRegistry {
+    private List<PaymentProcessor> processors;
+    
+    public PaymentProcessorRegistry() {
+        this.processors = Arrays.asList(
+            new StripePaymentProcessor(stripeClient),
+            new PayPalPaymentProcessor(paypalClient),
+            new SquarePaymentProcessor(squareClient)
+        );
+    }
+    
+    public PaymentProcessor getProcessor(PaymentType type) throws PaymentException {
+        return processors.stream()
+            .filter(p -> p.supports(type))
+            .findFirst()
+            .orElseThrow(() -> new PaymentException("No processor for: " + type));
+    }
+    
+    // Add new processor at runtime (for A/B testing)
+    public void registerProcessor(PaymentProcessor processor) {
+        processors.add(processor);
+    }
+}
+```
+
+**4. Payment Service (Orchestration)**
+```java
+public class PaymentService {
+    private PaymentProcessorRegistry registry;
+    private PaymentRepository repository;
+    private EventPublisher eventPublisher;
+    private CircuitBreaker circuitBreaker;
+    
+    public PaymentResult processPayment(Payment payment) throws PaymentException {
+        try {
+            // Step 1: Validate
+            if (payment.getAmount() <= 0) {
+                throw new PaymentException("Invalid amount");
+            }
+            
+            // Step 2: Find processor
+            PaymentProcessor processor = registry.getProcessor(payment.getType());
+            
+            // Step 3: Process with resilience
+            PaymentResult result = circuitBreaker.execute(() -> 
+                processor.process(payment)
+            );
+            
+            // Step 4: Persist
+            repository.save(payment, result);
+            
+            // Step 5: Publish event for other services
+            if (result.isSuccess()) {
+                eventPublisher.publish("payment.completed", Map.of(
+                    "payment_id", payment.getId(),
+                    "amount", payment.getAmount(),
+                    "processor", result.getProcessorName()
+                ));
+            }
+            
+            return result;
+        } catch (CircuitBreakerOpenException e) {
+            // Processor is down, use fallback
+            eventPublisher.publish("payment.failed", Map.of(
+                "reason", "circuit_breaker_open",
+                "processor", payment.getType()
+            ));
+            throw new PaymentException("Payment processor temporarily unavailable", e);
+        }
+    }
+    
+    public RefundResult refundPayment(String transactionId) throws PaymentException {
+        Payment payment = repository.findByTransactionId(transactionId);
+        
+        PaymentProcessor processor = registry.getProcessor(payment.getType());
+        RefundResult result = processor.refund(transactionId);
+        
+        repository.recordRefund(payment, result);
+        
+        eventPublisher.publish("payment.refunded", Map.of(
+            "transaction_id", transactionId,
+            "refund_id", result.getRefundId()
+        ));
+        
+        return result;
+    }
+}
+```
+
+**5. Adding a New Processor (CryptoCurrency)**
+```java
+// Just implement PaymentProcessor - no modifications needed!
+public class CryptoPaymentProcessor implements PaymentProcessor {
+    private BlockchainClient blockchain;
+    
+    @Override
+    public boolean supports(PaymentType type) {
+        return type == PaymentType.CRYPTO;
+    }
+    
+    @Override
+    public PaymentResult process(Payment payment) throws PaymentException {
+        CryptoDetails details = (CryptoDetails) payment.getDetails();
+        
+        BlockchainTransaction tx = blockchain.transfer(
+            details.getWalletAddress(),
+            payment.getAmount(),
+            details.getCurrencyType()
+        );
+        
+        return PaymentResult.success(
+            tx.getHash(),
+            tx.getStatus(),
+            Map.of("processor", "blockchain", "network", tx.getNetwork())
+        );
+    }
+    
+    @Override
+    public RefundResult refund(String transactionId) throws RefundNotSupportedException {
+        throw new RefundNotSupportedException("Blockchain transactions cannot be refunded");
+    }
+}
+
+// Register it - PaymentService doesn't change
+registry.registerProcessor(new CryptoPaymentProcessor(blockchainClient));
+```
+
+**Design Principles Applied:**
+- ✅ **OCP:** Add processors without modifying PaymentService
+- ✅ **DIP:** Service depends on PaymentProcessor interface
+- ✅ **SRP:** Each processor has one responsibility
+- ✅ **LSP:** All processors follow same contract
+- ✅ **ISP:** Refund interface is separate (optional capability)
+
+**At Scale (Architect Perspective):**
+- New processor? Deploy as separate microservice, register via config
+- A/B testing? Create wrapper processor that routes to two implementations
+- Circuit breaker? Wrap processor to handle failure gracefully
+- Analytics? Decorator pattern - wrap real processor to track metrics
+- Multi-region? Router processor picks regional processor based on customer location
+
+---
+
+### Q5: Explain the difference between Abstraction and Encapsulation
+
+**Short Answer:**
+- **Encapsulation:** Hiding implementation details (HOW)
+- **Abstraction:** Showing only essential features (WHAT)
+
+**Detailed Comparison:**
+
+```java
+public class DatabaseConnection {
+    // ENCAPSULATION: Hide connection pooling, retry logic
+    private HikariDataSource pool;
+    private RetryPolicy retryPolicy;
+    private List<SQLListener> listeners;
+    
+    // ABSTRACTION: Show only what matters to caller
+    public Result executeQuery(String sql) throws SQLException {
+        // Implementation hidden
+    }
+}
+
+// Caller sees only: executeQuery()
+// Caller doesn't see: pool management, retries, listeners
+```
+
+| Aspect | Encapsulation | Abstraction |
+|--------|---------------|-------------|
+| **What** | Hiding data and implementation | Showing only essential interface |
+| **How** | private, protected, package-private | interfaces, abstract classes |
+| **Example** | `private int connectionPoolSize` | `public Result executeQuery(String sql)` |
+| **Focus** | Protecting internal state | Simplifying client interaction |
+| **Benefit** | Security, stability | Ease of use, reduced complexity |
+
+**Real Example: Coffee Machine**
+
+```
+Encapsulation: The machine hides how it grinds beans, heats water, pressurizes steam
+Abstraction: The machine shows only: "dispense(CoffeeType type)"
+
+You don't see:
+- Grinding mechanism (encapsulated)
+- Water heating circuit (encapsulated)
+- Pressure gauges (encapsulated)
+
+You see only:
+- Button for espresso (abstracted)
+- Button for cappuccino (abstracted)
+```
+
+---
+
+### Q6: How would you refactor a God Object (violating SRP) into proper design?
+
+**Strategy:** Identify responsibilities, extract into separate classes, inject dependencies.
+
+```java
+// ❌ God Object: UserManager does everything
+public class UserManager {
+    public boolean validateUser(User u) { /* ... */ }
+    public void saveUser(User u) { /* ... */ }
+    public void sendWelcomeEmail(User u) { /* ... */ }
+    public void auditUserCreation(User u) { /* ... */ }
+    public void assignDefaultRole(User u) { /* ... */ }
+    public List<User> searchByEmail(String email) { /* ... */ }
+    public void generateUserReport() { /* ... */ }
+    public void syncToLDAP(User u) { /* ... */ }
+    public void notifyManagers(User u) { /* ... */ }
+}
+
+// ✅ Step 1: Identify responsibilities
+List<String> responsibilities = Arrays.asList(
+    "Validation",        // UserValidator
+    "Persistence",       // UserRepository
+    "Email",             // UserNotificationService
+    "Auditing",          // UserAuditLogger
+    "Authorization",     // RoleAssignmentService
+    "Search",            // UserSearchService
+    "Reporting",         // UserAnalytics
+    "LDAP Sync",         // DirectoryService
+    "Manager Alerts"     // AlertService
+);
+
+// ✅ Step 2: Extract into focused classes
+public class UserValidator {
+    public ValidationResult validate(User u) { /* ... */ }
+}
+
+public class UserRepository {
+    public void save(User u) { /* ... */ }
+}
+
+public class UserNotificationService {
+    public void sendWelcomeEmail(User u) { /* ... */ }
+}
+
+public class UserAuditLogger {
+    public void logUserCreation(User u) { /* ... */ }
+}
+
+public class RoleAssignmentService {
+    public void assignDefaultRole(User u) { /* ... */ }
+}
+
+public class UserSearchService {
+    public List<User> findByEmail(String email) { /* ... */ }
+}
+
+public class UserAnalytics {
+    public void generateUserReport() { /* ... */ }
+}
+
+public class DirectoryService {
+    public void syncToLDAP(User u) { /* ... */ }
+}
+
+public class AlertService {
+    public void notifyManagers(User u) { /* ... */ }
+}
+
+// ✅ Step 3: Create orchestrator (coordinates specialists)
+public class UserRegistrationService {
+    private UserValidator validator;
+    private UserRepository repository;
+    private UserNotificationService notifier;
+    private UserAuditLogger auditLogger;
+    private RoleAssignmentService roleService;
+    private DirectoryService directory;
+    private AlertService alerts;
+    
+    public void registerUser(User user) throws RegistrationException {
+        // Validate
+        ValidationResult validation = validator.validate(user);
+        if (!validation.isValid()) {
+            throw new RegistrationException(validation.getErrors());
+        }
+        
+        // Persist
+        repository.save(user);
+        
+        // Assign role
+        roleService.assignDefaultRole(user);
+        
+        // Sync to directory
+        directory.syncToLDAP(user);
+        
+        // Notifications
+        notifier.sendWelcomeEmail(user);
+        alerts.notifyManagers(user);
+        
+        // Audit
+        auditLogger.logUserCreation(user);
+    }
+}
+```
+
+**Benefits of Refactoring:**
+- Each class has ONE reason to change
+- Easy to unit test (mock individual specialists)
+- Easy to scale (DirectoryService on separate server)
+- Easy to reuse (UserValidator used by other services)
+- Clear code organization
+
+---
+
+### Q7: When should you use interfaces vs abstract classes?
+
+**Quick Guide:**
+- **Interface:** Contract for external clients, multiple inheritance
+- **Abstract Class:** Shared implementation, "is-a" relationship
+
+```java
+// ✅ Use Abstract Class: Shared implementation, clear hierarchy
+public abstract class DataStore {
+    // Shared: connection pooling, caching, metrics
+    protected ConnectionPool pool;
+    protected CacheLayer cache;
+    
+    protected abstract Object query(String sql);
+    
+    public Object get(String key) {
+        // Shared implementation
+        Object cached = cache.get(key);
+        if (cached != null) return cached;
+        
+        Object result = query("SELECT * FROM " + key);
+        cache.put(key, result);
+        return result;
+    }
+}
+
+public class MySQLDataStore extends DataStore {
+    @Override
+    protected Object query(String sql) {
+        // MySQL-specific query
+    }
+}
+
+// ✅ Use Interface: No shared implementation, multiple "contracts"
+public interface Cacheable {
+    Object getFromCache(String key);
+}
+
+public interface Persistent {
+    void persist();
+}
+
+public interface Searchable {
+    List<Object> search(String query);
+}
+
+public class Document implements Cacheable, Persistent, Searchable {
+    @Override
+    public Object getFromCache(String key) { /* ... */ }
+    
+    @Override
+    public void persist() { /* ... */ }
+    
+    @Override
+    public List<Object> search(String query) { /* ... */ }
+}
+```
+
+| Aspect | Abstract Class | Interface |
+|--------|----------------|-----------|
+| **Implementation** | Can have shared code | No implementation (Java 8+ has defaults) |
+| **Inheritance** | Single only | Multiple |
+| **State** | Can have fields | No fields |
+| **Access Modifiers** | Any (private, protected, public) | Only public |
+| **Constructor** | Can have | Cannot have |
+| **When to Use** | Shared behavior, IS-A | Contract, capability |
+
+---
+
+### Q8: How do you handle circular dependencies?
+
+**Problem:**
+```
+Service A → Service B → Service C → Service A
+Circular dependency → Can't start application
+```
+
+**Solutions:**
+
+**Solution 1: Invert dependency direction (Dependency Injection)**
+```java
+// ❌ Circular: OrderService → PaymentService → OrderService
+public class OrderService {
+    private PaymentService payment;  // Depends on Payment
+    
+    public void createOrder(Order order) {
+        payment.process(order);
+    }
+}
+
+public class PaymentService {
+    private OrderService orderService;  // Depends on Order - CIRCULAR!
+    
+    public void handlePaymentCallback(PaymentResult result) {
+        orderService.updateStatus(result.getOrderId(), "PAID");
+    }
+}
+
+// ✅ Solution: Use events (PaymentService publishes, OrderService subscribes)
+public class PaymentService {
+    private EventPublisher events;
+    
+    public void handlePaymentCallback(PaymentResult result) {
+        events.publish("payment.completed", result);  // No dependency on OrderService
+    }
+}
+
+public class OrderService implements EventSubscriber {
+    @Override
+    public void onPaymentCompleted(PaymentResult result) {
+        updateOrderStatus(result.getOrderId(), "PAID");
+    }
+}
+```
+
+**Solution 2: Extract common interface**
+```java
+// ❌ Circular: UserService → AuthService → UserService
+public class UserService {
+    private AuthService auth;
+}
+
+public class AuthService {
+    private UserService users;  // CIRCULAR!
+}
+
+// ✅ Extract UserReader interface
+public interface UserReader {
+    User findById(String id);
+}
+
+public class UserService implements UserReader {
+    public User findById(String id) { /* ... */ }
+}
+
+public class AuthService {
+    private UserReader userReader;  // Depends on interface, not UserService
+    
+    public void authenticate(String email, String password) {
+        User user = userReader.findById(email);
+        // No circular dependency!
+    }
+}
+```
+
+**Solution 3: Lazy initialization**
+```java
+// ✅ Defer dependency until needed
+public class ServiceA {
+    private ServiceB serviceB;  // Lazy
+    
+    public void process() {
+        if (serviceB == null) {
+            serviceB = ServiceRegistry.get(ServiceB.class);
+        }
+        serviceB.doWork();
+    }
+}
+```
+
+---
+
+### Q9: Design a caching layer for a multi-region system. How do you maintain consistency?
+
+**Architecture:**
+```
+┌─ User Request
+│  ├─ Check Local Cache (L1 - In-Memory)
+│  ├─ Check Distributed Cache (L2 - Redis)
+│  ├─ Query Database (L3 - Source of Truth)
+│  └─ Invalidate on write
+```
+
+```java
+public class MultiLayerCache {
+    private Cache l1Cache;  // In-memory, per-server
+    private DistributedCache l2Cache;  // Redis, shared across regions
+    private CacheInvalidationService invalidator;
+    
+    public User getUser(String userId) {
+        // L1: Check local cache
+        User user = l1Cache.get("user:" + userId);
+        if (user != null) return user;
+        
+        // L2: Check distributed cache
+        user = l2Cache.get("user:" + userId);
+        if (user != null) {
+            l1Cache.put("user:" + userId, user);  // Populate L1
+            return user;
+        }
+        
+        // L3: Query database
+        user = database.findUser(userId);
+        l2Cache.put("user:" + userId, user);
+        l1Cache.put("user:" + userId, user);
+        
+        return user;
+    }
+    
+    public void updateUser(User user) {
+        // Update source
+        database.save(user);
+        
+        // Invalidate all layers
+        invalidator.invalidate("user:" + user.getId());
+    }
+}
+
+// Invalidation strategy: Pub/Sub across regions
+public class CacheInvalidationService {
+    private EventBus eventBus;  // Kafka/RabbitMQ
+    
+    public void invalidate(String key) {
+        // Publish invalidation event to all regions
+        eventBus.publish("cache.invalidate", Map.of("key", key));
+    }
+}
+
+// All regions listen to invalidation events
+public class CacheInvalidationListener {
+    @EventHandler
+    public void onCacheInvalidate(CacheInvalidateEvent event) {
+        l1Cache.remove(event.getKey());  // Clear local cache
+        l2Cache.remove(event.getKey());  // Clear distributed cache
+    }
+}
+```
 
 ---
 
 **Last Updated:** 2026-07-16  
-**Status:** In Progress - Questions pending
+**Status:** Complete with 9 comprehensive interview questions
