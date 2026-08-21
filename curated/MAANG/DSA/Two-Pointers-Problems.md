@@ -11,6 +11,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 - [Problems #26 - #680](#problems-26---680)
 - [Problems #696 - #2200](#problems-696---2200)
 - [Problems #2367 - #3992](#problems-2367---3992)
+- [Solutions](#solutions)
 - [Legend](#legend)
 
 ---
@@ -98,6 +99,33 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | ⬜ | 3936 | [Minimum Swaps to Move Zeros to End](https://leetcode.com/problems/minimum-swaps-to-move-zeros-to-end/) | 60.5% |
 | ⬜ | 3940 | [Limit Occurrences in Sorted Array](https://leetcode.com/problems/limit-occurrences-in-sorted-array/) | 73.4% |
 | ⬜ | 3992 | [Rearrange String to Avoid Character Pair](https://leetcode.com/problems/rearrange-string-to-avoid-character-pair/) | 78.2% |
+
+---
+
+## Solutions
+
+### 26. Remove Duplicates from Sorted Array
+
+**Approach:** Brute Force
+
+```java
+class Solution {
+    public int removeDuplicates(int[] nums) {
+        //O(n) time, O(1) space
+        int elem = nums[0];
+        int uniqueCnt = 1;//start with 1, as array will have at least one unique as arr[0]
+        for (int i = 1; i < nums.length; i++){//start with arr[1]
+            if(elem != nums[i]){
+                elem = nums[i];
+                nums[uniqueCnt] = elem;
+                uniqueCnt++;
+
+            }
+        }
+        return uniqueCnt;
+    }
+}
+```
 
 ---
 
