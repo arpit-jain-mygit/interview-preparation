@@ -127,6 +127,8 @@ class Solution {
 }
 ```
 
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
