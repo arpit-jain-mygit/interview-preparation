@@ -21,7 +21,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | Status | # | Problem | Acceptance | Link | Solution |
 |--------|---|---------|-----------|------|----------|
 | ✅ | 26 | Remove Duplicates from Sorted Array | 63.6% | [LeetCode](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | [View](#26-remove-duplicates-from-sorted-array) |
-| ⬜ | 27 | Remove Element | 62.4% | [LeetCode](https://leetcode.com/problems/remove-element/) | - |
+| ✅ | 27 | Remove Element | 62.4% | [LeetCode](https://leetcode.com/problems/remove-element/) | [View](#27-remove-element) |
 | ⬜ | 28 | Find the Index of the First Occurrence in a String | 47.2% | [LeetCode](https://leetcode.com/problems/find-the-index-of-the-first-occurrence-in-a-string/) | - |
 | ⬜ | 88 | Merge Sorted Array | 55.6% | [LeetCode](https://leetcode.com/problems/merge-sorted-array/) | - |
 | ⬜ | 125 | Valid Palindrome | 54.1% | [LeetCode](https://leetcode.com/problems/valid-palindrome/) | - |
@@ -129,6 +129,26 @@ class Solution {
 
 [⬆ Back to Top](#table-of-contents)
 
+### 27. Remove Element
+
+**Approach:** Two Pointers
+
+```java
+class Solution {
+    public int removeElement(int[] nums, int val) {
+        int k = 0;
+        for(int i =0; i < nums.length; i++){
+            if(val != nums[i]){
+                nums[k++] = nums[i];
+            }
+        }
+        return k;
+    }
+}
+```
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -137,6 +157,6 @@ class Solution {
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 1/69  
+**Solved:** 2/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
