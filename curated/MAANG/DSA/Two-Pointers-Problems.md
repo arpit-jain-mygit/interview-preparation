@@ -19,7 +19,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 
 | Status | # | Problem | Acceptance |
 |--------|---|---------|-----------|
-| ⬜ | 26 | [Remove Duplicates from Sorted Array](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | 63.6% |
+| ✅ | 26 | [Remove Duplicates from Sorted Array](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | 63.6% |
 | ⬜ | 27 | [Remove Element](https://leetcode.com/problems/remove-element/) | 62.4% |
 | ⬜ | 28 | [Find the Index of the First Occurrence in a String](https://leetcode.com/problems/find-the-index-of-the-first-occurrence-in-a-string/) | 47.2% |
 | ⬜ | 88 | [Merge Sorted Array](https://leetcode.com/problems/merge-sorted-array/) | 55.6% |
@@ -107,6 +107,6 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 0/69  
+**Solved:** 1/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
