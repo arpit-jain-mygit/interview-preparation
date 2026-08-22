@@ -22,7 +22,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 |-------|--------|---|---------|-----------|------|----------|
 | 1 | ✅ | 26 | Remove Duplicates from Sorted Array | 63.6% | [LeetCode](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | [View](#26-remove-duplicates-from-sorted-array) |
 | 2 | ✅ | 27 | Remove Element | 62.4% | [LeetCode](https://leetcode.com/problems/remove-element/) | [View](#27-remove-element) |
-| 3 | ⬜ | 28 | Find the Index of the First Occurrence in a String | 47.2% | [LeetCode](https://leetcode.com/problems/find-the-index-of-the-first-occurrence-in-a-string/) | - |
+| 3 | ✅ | 28 | Find the Index of the First Occurrence in a String | 47.2% | [LeetCode](https://leetcode.com/problems/find-the-index-of-the-first-occurrence-in-a-string/) | [View](#28-find-the-index-of-the-first-occurrence-in-a-string) |
 | 4 | ⬜ | 88 | Merge Sorted Array | 55.6% | [LeetCode](https://leetcode.com/problems/merge-sorted-array/) | - |
 | 5 | ⬜ | 125 | Valid Palindrome | 54.1% | [LeetCode](https://leetcode.com/problems/valid-palindrome/) | - |
 | 6 | ⬜ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | - |
@@ -149,6 +149,30 @@ class Solution {
 
 [⬆ Back to Top](#table-of-contents)
 
+### 28. Find the Index of the First Occurrence in a String
+
+**Approach:** Sliding Window (substring comparison)
+
+```java
+class Solution {
+    public int strStr(String haystack, String needle) {
+        //O(n·m) time (n is for haystack loop, m is for needle substring loop) / O(1) space
+
+        //loop should not run if needle first char matches with as last char of haystack (haystack=xya, needle=ay)
+        for(int i=0; i <= haystack.length() - needle.length(); i++){
+            if(needle.charAt(0) == haystack.charAt(i)){
+                if(haystack.substring(i,i+needle.length()).equals(needle)){
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+}
+```
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -157,6 +181,6 @@ class Solution {
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 2/69  
+**Solved:** 3/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
