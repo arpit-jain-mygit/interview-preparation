@@ -25,7 +25,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 3 | ✅ | 28 | Find the Index of the First Occurrence in a String | 47.2% | [LeetCode](https://leetcode.com/problems/find-the-index-of-the-first-occurrence-in-a-string/) | [View](#28-find-the-index-of-the-first-occurrence-in-a-string) |
 | 4 | ✅ | 88 | Merge Sorted Array | 55.6% | [LeetCode](https://leetcode.com/problems/merge-sorted-array/) | [View](#88-merge-sorted-array) |
 | 5 | ✅ | 125 | Valid Palindrome | 54.1% | [LeetCode](https://leetcode.com/problems/valid-palindrome/) | [View](#125-valid-palindrome) |
-| 6 | ⬜ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | - |
+| 6 | ✅ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | [View](#141-linked-list-cycle) |
 | 7 | ⬜ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | - |
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - |
 | 9 | ⬜ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | - |
@@ -237,6 +237,38 @@ class Solution {
 
 [⬆ Back to Top](#table-of-contents)
 
+### 141. Linked List Cycle
+
+**Approach:** Floyd's Cycle Detection (Fast & Slow Pointers)
+
+```java
+/**
+ * Definition for singly-linked list.
+ * class ListNode {
+ *     int val;
+ *     ListNode next;
+ *     ListNode(int x) {
+ *         val = x;
+ *         next = null;
+ *     }
+ * }
+ */
+public class Solution {
+    public boolean hasCycle(ListNode head) {
+        ListNode slow = head;//slow moves by 1 step
+        ListNode fast = head;//fast moves by 2 steps
+        while(fast!=null && fast.next!=null){
+            slow = slow.next;
+            fast = fast.next.next;
+            if(slow == fast) return true;//cycle is detected, return true
+        }
+        return false;//found null node to end the loop, hence no cycle
+    }
+}
+```
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -245,6 +277,6 @@ class Solution {
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 5/69  
+**Solved:** 6/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
