@@ -26,7 +26,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 4 | ✅ | 88 | Merge Sorted Array | 55.6% | [LeetCode](https://leetcode.com/problems/merge-sorted-array/) | [View](#88-merge-sorted-array) |
 | 5 | ✅ | 125 | Valid Palindrome | 54.1% | [LeetCode](https://leetcode.com/problems/valid-palindrome/) | [View](#125-valid-palindrome) |
 | 6 | ✅ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | [View](#141-linked-list-cycle) |
-| 7 | ⬜ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | - |
+| 7 | ✅ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | [View](#160-intersection-of-two-linked-lists) |
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - |
 | 9 | ⬜ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | - |
 | 10 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - |
@@ -269,6 +269,47 @@ public class Solution {
 
 [⬆ Back to Top](#table-of-contents)
 
+### 160. Intersection of Two Linked Lists
+
+**Approach:** Two Pointers (redirect on null)
+
+**Hint Video:** https://www.youtube.com/shorts/WjK-_KN0_Ck?t=97&feature=share
+
+```java
+/**
+ * Definition for singly-linked list.
+ * public class ListNode {
+ *     int val;
+ *     ListNode next;
+ *     ListNode(int x) {
+ *         val = x;
+ *         next = null;
+ *     }
+ * }
+ */
+public class Solution {
+    public ListNode getIntersectionNode(ListNode headA, ListNode headB) {
+        ListNode pa = headA;
+        ListNode pb = headB;
+        while(pa!=pb){
+            if(pa==null)
+                pa = headB;//when pa reaches to the end of 1st, point to headB
+            else
+                pa = pa.next;//else move to next
+
+            if(pb==null)
+                pb = headA;//when pb reaches to the end of 2nd, point to headA
+            else
+                pb = pb.next;//else move to next
+        }
+        if(pa==pb) return pa;
+        return null;
+    }
+}
+```
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -277,6 +318,6 @@ public class Solution {
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 6/69  
+**Solved:** 7/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
