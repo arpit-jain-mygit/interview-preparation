@@ -23,7 +23,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 1 | ✅ | 26 | Remove Duplicates from Sorted Array | 63.6% | [LeetCode](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | [View](#26-remove-duplicates-from-sorted-array) |
 | 2 | ✅ | 27 | Remove Element | 62.4% | [LeetCode](https://leetcode.com/problems/remove-element/) | [View](#27-remove-element) |
 | 3 | ✅ | 28 | Find the Index of the First Occurrence in a String | 47.2% | [LeetCode](https://leetcode.com/problems/find-the-index-of-the-first-occurrence-in-a-string/) | [View](#28-find-the-index-of-the-first-occurrence-in-a-string) |
-| 4 | ⬜ | 88 | Merge Sorted Array | 55.6% | [LeetCode](https://leetcode.com/problems/merge-sorted-array/) | - |
+| 4 | ✅ | 88 | Merge Sorted Array | 55.6% | [LeetCode](https://leetcode.com/problems/merge-sorted-array/) | [View](#88-merge-sorted-array) |
 | 5 | ⬜ | 125 | Valid Palindrome | 54.1% | [LeetCode](https://leetcode.com/problems/valid-palindrome/) | - |
 | 6 | ⬜ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | - |
 | 7 | ⬜ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | - |
@@ -173,6 +173,38 @@ class Solution {
 
 [⬆ Back to Top](#table-of-contents)
 
+### 88. Merge Sorted Array
+
+**Approach:** Two Pointers (merge from the back)
+
+```java
+class Solution {
+    public void merge(int[] nums1, int m, int[] nums2, int n) {
+        //Time - O (n+m) -> n is for first array, m is for 2nd array, Space complexity - O(1)
+        int i = m-1, j = n-1, k = nums1.length-1;//point to the last of each array
+        for(;i>=0 && j>=0;){
+            //move larget number to the last position of arr1, and move respective pointer to 1 left
+            if(nums1[i]>nums2[j]){
+                nums1[k] = nums1[i];
+                i--;
+            }else{
+                nums1[k] = nums2[j];
+                j--;
+            }
+            k--;//move 0's pointer position to left in either case
+        }
+        if(i==-1){//if first array exhausted, copy 2nd arr to first one as it is
+            for(int cnt=j;cnt>=0;cnt--){
+                nums1[cnt] = nums2[j];
+                j--;
+            }
+        }//if 2nd array is exhausted, there is no need to copy arr1 to arr1, its already and sorted.
+    }
+}
+```
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -181,6 +213,6 @@ class Solution {
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 3/69  
+**Solved:** 4/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
