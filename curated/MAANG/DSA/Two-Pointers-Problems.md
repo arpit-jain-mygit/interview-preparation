@@ -177,6 +177,8 @@ class Solution {
 
 **Approach:** Two Pointers (merge from the back)
 
+**Hint Video:** https://www.youtube.com/shorts/R2EdWO88I5k?feature=share
+
 ```java
 class Solution {
     public void merge(int[] nums1, int m, int[] nums2, int n) {
