@@ -22,7 +22,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | S.No. | Status | # | Problem | Acceptance | Link | Solution | Key Concept |
 |-------|--------|---|---------|-----------|------|----------|--------------|
 | 1 | ✅ | 175 | Combine Two Tables | 79.9% | [LeetCode](https://leetcode.com/problems/combine-two-tables/) | [View](#175-combine-two-tables) | LEFT JOIN to keep all rows from the left table regardless of a match |
-| 2 | ⬜ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | - | Self JOIN, comparing each employee's salary to their manager's salary |
+| 2 | ✅ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | [View](#181-employees-earning-more-than-their-managers) | Self JOIN, comparing each employee's salary to their manager's salary |
 | 3 | ⬜ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | - | GROUP BY email with HAVING COUNT(*) > 1 |
 | 4 | ⬜ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | - | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
 | 5 | ⬜ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | - | Self JOIN DELETE, keeping the row with the smaller id per email |
@@ -106,6 +106,62 @@ from Person p
 left join Address a on p.personId = a.personId;
 ```
 
+### 181. Employees Earning More Than Their Managers
+
+**Approach:** Self JOIN
+
+The `Employee` table is read twice under two aliases — `e` for the employee row, `m` for the manager row — paired wherever `e.managerId = m.id`, then filtered to `e.salary > m.salary`.
+
+**View 1 — `e` (the employee copy)**
+```
+e.id | e.name  | e.salary | e.managerId
+-----+---------+----------+------------
+  1  | Joe     |  70000   |     3
+  2  | Henry   |  80000   |     4
+  3  | Sam     |  60000   |    null
+  4  | Max     |  90000   |    null
+```
+
+**View 2 — `m` (the manager copy, same table)**
+```
+m.id | m.name  | m.salary
+-----+---------+---------
+  1  | Joe     |  70000
+  2  | Henry   |  80000
+  3  | Sam     |  60000
+  4  | Max     |  90000
+```
+
+**Join them on `e.managerId = m.id`:**
+```
+e.name (salary) | matches               | m.name (salary)
+-----------------+-----------------------+-----------------
+Joe    (70000)  | mId 3 = id 3          | Sam  (60000)
+Henry  (80000)  | mId 4 = id 4          | Max  (90000)
+Sam    (60000)  | mId null → no match   | —
+Max    (90000)  | mId null → no match   | —
+```
+
+**Apply `e.salary > m.salary`:**
+```
+Joe    70000 > 60000  → true   → kept
+Henry  80000 > 90000  → false  → dropped
+```
+
+**Result:**
+```
+Employee
+--------
+Joe
+```
+
+```sql
+select e.name as Employee
+from Employee e
+join Employee m ON e.managerId = m.id
+where e.salary > m.salary;
+```
+
 ---
 
 ## Legend
@@ -114,6 +170,6 @@ left join Address a on p.personId = a.personId;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 1/55
+**Solved:** 2/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
