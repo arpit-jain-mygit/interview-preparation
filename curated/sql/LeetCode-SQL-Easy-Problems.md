@@ -24,7 +24,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 1 | ✅ | 175 | Combine Two Tables | 79.9% | [LeetCode](https://leetcode.com/problems/combine-two-tables/) | [View](#175-combine-two-tables) | LEFT JOIN to keep all rows from the left table regardless of a match |
 | 2 | ✅ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | [View](#181-employees-earning-more-than-their-managers) | Self JOIN, comparing each employee's salary to their manager's salary |
 | 3 | ✅ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | [View](#182-duplicate-emails) | GROUP BY email with HAVING COUNT(*) > 1 |
-| 4 | ⬜ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | - | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
+| 4 | ✅ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | [View](#183-customers-who-never-order) | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
 | 5 | ⬜ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | - | Self JOIN DELETE, keeping the row with the smaller id per email |
 | 6 | ⬜ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | - | Self JOIN on consecutive dates using DATEDIFF |
 | 7 | ⬜ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | - | GROUP BY player_id, MIN(event_date) |
@@ -230,6 +230,25 @@ from (
 where cnt > 1;
 ```
 
+### 183. Customers Who Never Order
+
+**Approach 1: NOT IN subquery**
+
+```sql
+select c.name as Customers
+from Customers c
+where c.id not in (select customerId from Orders);
+```
+
+**Approach 2: LEFT JOIN + IS NULL** (NULL-safe by construction — keeps every customer via the outer join, then filters for the ones with no matching order row)
+
+```sql
+select c.name as Customers
+from Customers c
+left join Orders o on c.id = o.customerId
+where o.customerId is null;
+```
+
 ---
 
 ## Legend
@@ -238,6 +257,6 @@ where cnt > 1;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 3/55
+**Solved:** 4/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
