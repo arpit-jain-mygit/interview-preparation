@@ -127,6 +127,16 @@ class Solution {
 }
 ```
 
+**Dry Run — Input:** `nums = [1,1,2]` → expected `uniqueCnt=2`, `nums=[1,2,_]`
+
+| i | nums[i] | elem | Compare | Action | uniqueCnt after | nums state |
+|---|---------|------|---------|--------|-------------------|------------|
+| start | - | 1 | - | `elem=nums[0]=1`, `uniqueCnt=1` | 1 | [1,1,2] |
+| 1 | 1 | 1 | `1 != 1`? No | skip | 1 | [1,1,2] |
+| 2 | 2 | 1 | `1 != 2`? Yes | `elem=2`, `nums[1]=2`, `uniqueCnt++` | 2 | [1,2,2] |
+
+**Return `2`.** First 2 elements: `[1,2]` ✅
+
 [⬆ Back to Top](#table-of-contents)
 
 ### 27. Remove Element
@@ -146,6 +156,17 @@ class Solution {
     }
 }
 ```
+
+**Dry Run — Input:** `nums = [3,2,2,3]`, `val = 3` → expected `k=2`, `nums=[2,2,_,_]`
+
+| i | nums[i] | val != nums[i]? | Action | k after | nums state |
+|---|---------|--------------------|--------|---------|------------|
+| 0 | 3 | false | skip | 0 | [3,2,2,3] |
+| 1 | 2 | true | `nums[0]=2`, `k++` | 1 | [2,2,2,3] |
+| 2 | 2 | true | `nums[1]=2`, `k++` | 2 | [2,2,2,3] |
+| 3 | 3 | false | skip | 2 | [2,2,2,3] |
+
+**Return `2`.** First 2 elements: `[2,2]` ✅
 
 [⬆ Back to Top](#table-of-contents)
 
@@ -170,6 +191,19 @@ class Solution {
     }
 }
 ```
+
+**Dry Run — Input:** `haystack = "leetcode"`, `needle = "leeto"` → expected `-1`
+
+`haystack.length()=8`, `needle.length()=5`, loop runs `i = 0` to `8-5 = 3`.
+
+| i | haystack.charAt(i) | matches needle[0]='l'? | substring(i, i+5) | equals "leeto"? | Result |
+|---|---------------------|--------------------------|---------------------|-------------------|--------|
+| 0 | 'l' | yes | "leetc" | no | continue |
+| 1 | 'e' | no | - | - | skip |
+| 2 | 'e' | no | - | - | skip |
+| 3 | 't' | no | - | - | skip |
+
+Loop ends (`i=4` fails `i<=3`). Return `-1`. ✅
 
 [⬆ Back to Top](#table-of-contents)
 
@@ -205,6 +239,21 @@ class Solution {
 }
 ```
 
+**Dry Run — Input:** `nums1 = [1,2,3,0,0,0]`, `m = 3`, `nums2 = [2,5,6]`, `n = 3` → expected `[1,2,2,3,5,6]`
+
+Start: `i=2, j=2, k=5`
+
+| Iter | nums1[i] | nums2[j] | Compare | Action | i,j,k after | nums1 state |
+|------|----------|----------|---------|--------|--------------|-------------|
+| 1 | 3 | 6 | `3>6`? No | `nums1[5]=nums2[2]=6`, `j--` | i=2,j=1,k=4 | [1,2,3,0,0,**6**] |
+| 2 | 3 | 5 | `3>5`? No | `nums1[4]=nums2[1]=5`, `j--` | i=2,j=0,k=3 | [1,2,3,0,**5**,6] |
+| 3 | 3 | 2 | `3>2`? Yes | `nums1[3]=nums1[2]=3`, `i--` | i=1,j=0,k=2 | [1,2,3,**3**,5,6] |
+| 4 | 2 | 2 | `2>2`? No | `nums1[2]=nums2[0]=2`, `j--` | i=1,j=-1,k=1 | [1,2,**2**,3,5,6] |
+
+Loop ends (`j=-1`). Since `i=1` (not `-1`), the cleanup block is skipped — `nums1[0..1] = [1,2]` are original values already in the correct spot.
+
+**Final:** `[1,2,2,3,5,6]` ✅
+
 [⬆ Back to Top](#table-of-contents)
 
 ### 125. Valid Palindrome
@@ -234,6 +283,18 @@ class Solution {
     }
 }
 ```
+
+**Dry Run — Input:** `s = "race a car"` → expected `false`
+
+Indices: `0:r 1:a 2:c 3:e 4:' ' 5:a 6:' ' 7:c 8:a 9:r`
+
+| Iter | start (char) | end (char) | Action | New start, end |
+|------|--------------|------------|--------|-----------------|
+| 1 | 0:'r' | 9:'r' | both alnum, match | start=1, end=8 |
+| 2 | 1:'a' | 8:'a' | both alnum, match | start=2, end=7 |
+| 3 | 2:'c' | 7:'c' | both alnum, match | start=3, end=6 |
+| 4 | 3:'e' | 6:' ' | end is non-alnum → skip it | start=3, end=5 |
+| 5 | 3:'e' | 5:'a' | both alnum, **mismatch** → return `false` | - |
 
 [⬆ Back to Top](#table-of-contents)
 
@@ -266,6 +327,15 @@ public class Solution {
     }
 }
 ```
+
+**Dry Run — Input:** `head = [3,2,0,-4]`, `pos = 1` (tail node `-4` connects back to node at index `1`, value `2`)
+
+| Iter | slow | fast | slow == fast? |
+|------|------|------|----------------|
+| start | 3 | 3 | (not checked yet) |
+| 1 | 2 | 0 | no |
+| 2 | 0 | 2 | no |
+| 3 | -4 | -4 | **yes** → cycle detected, return `true` |
 
 [⬆ Back to Top](#table-of-contents)
 
@@ -307,6 +377,24 @@ public class Solution {
     }
 }
 ```
+
+**Dry Run — Input:** `listA = [4,1,8,4,5]`, `listB = [5,6,1,8,4,5]`, `skipA = 2`, `skipB = 3` (shared tail `[8,4,5]`, intersection value `8`)
+
+Nodes labeled by list + position (value in parens). `a1(4), a2(1)` are A's own nodes; `b1(5), b2(6), b3(1)` are B's own nodes; `c1(8), c2(4), c3(5)` are the **shared** tail nodes (same objects reachable from both lists).
+
+| Iter | pa | pb | pa == pb? |
+|------|----|----|-----------|
+| start | a1(4) | b1(5) | no |
+| 1 | a2(1) | b2(6) | no |
+| 2 | c1(8) | b3(1) | no |
+| 3 | c2(4) | c1(8) | no |
+| 4 | c3(5) | c2(4) | no |
+| 5 | b1(5) *(pa hit null → redirected to headB)* | c3(5) | no — **different nodes, same value!** |
+| 6 | b2(6) | a1(4) *(pb hit null → redirected to headA)* | no |
+| 7 | b3(1) | a2(1) | no — **different nodes, same value again!** |
+| 8 | c1(8) | c1(8) | **yes — same node** → return `c1` (val `8`) |
+
+Note iterations 5 and 7: `pa`/`pb` land on nodes with the *same value* but they're genuinely different node objects (`b1` vs `c3`, `b3` vs `a2`) — this only works correctly because the comparison is by reference (`==`), not by value.
 
 [⬆ Back to Top](#table-of-contents)
 
