@@ -138,29 +138,31 @@ class Solution {
 
 ### 27. Remove Element
 
-**Approach:** Two Pointers
+**Approach:** Two Pointers (Fast & Slow)
 
 ```java
 class Solution {
+    //O(n) time, O(1) space
     public int removeElement(int[] nums, int val) {
-        int k = 0;
-        for(int i =0; i < nums.length; i++){
-            if(val != nums[i]){
-                nums[k++] = nums[i];
+        int slow = 0;
+        for(int fast =0; fast < nums.length; fast++){//fast will move next everytime
+            if(val != nums[fast]){
+                nums[slow] = nums[fast];
+                slow++;//slow will move only when not matched to value
             }
         }
-        return k;
+        return slow;//count after removing given value
     }
 }
 ```
 
-**Dry Run — Input:** `nums = [3,2,2,3]`, `val = 3` → expected `k=2`, `nums=[2,2,_,_]`
+**Dry Run — Input:** `nums = [3,2,2,3]`, `val = 3` → expected `slow=2`, `nums=[2,2,_,_]`
 
-| i | nums[i] | val != nums[i]? | Action | k after | nums state |
-|---|---------|--------------------|--------|---------|------------|
+| fast | nums[fast] | val != nums[fast]? | Action | slow after | nums state |
+|------|------------|------------------------|--------|-------------|------------|
 | 0 | 3 | false | skip | 0 | [3,2,2,3] |
-| 1 | 2 | true | `nums[0]=2`, `k++` | 1 | [2,2,2,3] |
-| 2 | 2 | true | `nums[1]=2`, `k++` | 2 | [2,2,2,3] |
+| 1 | 2 | true | `nums[0]=2`, `slow++` | 1 | [2,2,2,3] |
+| 2 | 2 | true | `nums[1]=2`, `slow++` | 2 | [2,2,2,3] |
 | 3 | 3 | false | skip | 2 | [2,2,2,3] |
 
 **Return `2`.** First 2 elements: `[2,2]` ✅
