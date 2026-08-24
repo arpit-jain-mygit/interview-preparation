@@ -21,7 +21,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 
 | S.No. | Status | # | Problem | Acceptance | Link | Solution | Key Concept |
 |-------|--------|---|---------|-----------|------|----------|--------------|
-| 1 | ⬜ | 175 | Combine Two Tables | 79.9% | [LeetCode](https://leetcode.com/problems/combine-two-tables/) | - | LEFT JOIN to keep all rows from the left table regardless of a match |
+| 1 | ✅ | 175 | Combine Two Tables | 79.9% | [LeetCode](https://leetcode.com/problems/combine-two-tables/) | [View](#175-combine-two-tables) | LEFT JOIN to keep all rows from the left table regardless of a match |
 | 2 | ⬜ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | - | Self JOIN, comparing each employee's salary to their manager's salary |
 | 3 | ⬜ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | - | GROUP BY email with HAVING COUNT(*) > 1 |
 | 4 | ⬜ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | - | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
@@ -96,7 +96,15 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 
 ## Solutions
 
-_Solutions are added here as each problem is solved and verified — see the Status column above._
+### 175. Combine Two Tables
+
+**Approach:** LEFT JOIN
+
+```sql
+select p.firstName, p.lastName, a.city, a.state
+from Person p
+left join Address a on p.personId = a.personId;
+```
 
 ---
 
@@ -106,6 +114,6 @@ _Solutions are added here as each problem is solved and verified — see the Sta
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 0/55
-**Status:** Not Started
+**Solved:** 1/55
+**Status:** In Progress
 **Last Updated:** 2026-08-24
