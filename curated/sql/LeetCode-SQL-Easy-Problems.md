@@ -317,11 +317,33 @@ id | email
 ```
 `id=3` is removed; the smallest-id row per email is the only one left standing.
 
+**MySQL** — supports multi-table `DELETE ... JOIN`, so the alias to delete from (`p1`) must be named right after `DELETE`, since a join alone doesn't say which side's rows to remove:
+
 ```sql
 delete p1
 from Person p1
 join Person p2 on p1.email = p2.email
 where p1.id > p2.id;
+```
+
+**Oracle** — `DELETE` only ever operates on one table; there's no `JOIN` clause allowed in a `DELETE` statement at all. Same logic, expressed as a single-table delete with a correlated subquery:
+
+```sql
+delete from Person p1
+where exists (
+  select 1 from Person p2
+  where p2.email = p1.email
+    and p2.id < p1.id
+);
+```
+
+Or the simpler `MIN(id)` form — Oracle has no restriction against referencing the table being deleted from inside its own subquery (MySQL does, and needs an extra derived-table wrapper to work around it):
+
+```sql
+delete from Person p1
+where p1.id not in (
+  select min(id) from Person group by email
+);
 ```
 
 ---
