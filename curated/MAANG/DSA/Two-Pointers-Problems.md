@@ -106,34 +106,31 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 
 ### 26. Remove Duplicates from Sorted Array
 
-**Approach:** Brute Force
+**Approach:** Two Pointers (Fast & Slow)
 
 ```java
 class Solution {
     public int removeDuplicates(int[] nums) {
         //O(n) time, O(1) space
-        int elem = nums[0];
-        int uniqueCnt = 1;//start with 1, as array will have at least one unique as arr[0]
-        for (int i = 1; i < nums.length; i++){//start with arr[1]
-            if(elem != nums[i]){
-                elem = nums[i];
-                nums[uniqueCnt] = elem;
-                uniqueCnt++;
-
+        int slow = 1;//start with 1, as array will have at least one unique as arr[0]
+        for (int fast = 1; fast < nums.length; fast++){//start with arr[1]
+            if(nums[fast] != nums[slow-1]){
+                nums[slow] = nums[fast];//move unique element found to slow index
+                slow++;//move slow to next, only when non-repeated found 
             }
         }
-        return uniqueCnt;
+        return slow;//number of unique elements
     }
 }
 ```
 
-**Dry Run — Input:** `nums = [1,1,2]` → expected `uniqueCnt=2`, `nums=[1,2,_]`
+**Dry Run — Input:** `nums = [1,1,2]` → expected `slow=2`, `nums=[1,2,_]`
 
-| i | nums[i] | elem | Compare | Action | uniqueCnt after | nums state |
-|---|---------|------|---------|--------|-------------------|------------|
-| start | - | 1 | - | `elem=nums[0]=1`, `uniqueCnt=1` | 1 | [1,1,2] |
-| 1 | 1 | 1 | `1 != 1`? No | skip | 1 | [1,1,2] |
-| 2 | 2 | 1 | `1 != 2`? Yes | `elem=2`, `nums[1]=2`, `uniqueCnt++` | 2 | [1,2,2] |
+| fast | nums[fast] | nums[slow-1] | Compare | Action | slow after | nums state |
+|------|------------|---------------|---------|--------|-------------|------------|
+| start | - | - | - | `slow=1` | 1 | [1,1,2] |
+| 1 | 1 | nums[0]=1 | `1 != 1`? No | skip | 1 | [1,1,2] |
+| 2 | 2 | nums[0]=1 | `2 != 1`? Yes | `nums[1]=2`, `slow++` | 2 | [1,2,2] |
 
 **Return `2`.** First 2 elements: `[1,2]` ✅
 
