@@ -23,7 +23,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 |-------|--------|---|---------|-----------|------|----------|--------------|
 | 1 | ✅ | 175 | Combine Two Tables | 79.9% | [LeetCode](https://leetcode.com/problems/combine-two-tables/) | [View](#175-combine-two-tables) | LEFT JOIN to keep all rows from the left table regardless of a match |
 | 2 | ✅ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | [View](#181-employees-earning-more-than-their-managers) | Self JOIN, comparing each employee's salary to their manager's salary |
-| 3 | ⬜ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | - | GROUP BY email with HAVING COUNT(*) > 1 |
+| 3 | ✅ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | [View](#182-duplicate-emails) | GROUP BY email with HAVING COUNT(*) > 1 |
 | 4 | ⬜ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | - | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
 | 5 | ⬜ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | - | Self JOIN DELETE, keeping the row with the smaller id per email |
 | 6 | ⬜ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | - | Self JOIN on consecutive dates using DATEDIFF |
@@ -162,6 +162,17 @@ join Employee m ON e.managerId = m.id
 where e.salary > m.salary;
 ```
 
+### 182. Duplicate Emails
+
+**Approach:** GROUP BY + HAVING
+
+```sql
+select Email
+from Person p
+group by email
+having count(email) > 1;
+```
+
 ---
 
 ## Legend
@@ -170,6 +181,6 @@ where e.salary > m.salary;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 2/55
+**Solved:** 3/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
