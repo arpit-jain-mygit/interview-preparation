@@ -164,13 +164,70 @@ where e.salary > m.salary;
 
 ### 182. Duplicate Emails
 
-**Approach:** GROUP BY + HAVING
+**Approach 1: GROUP BY + HAVING**
 
 ```sql
 select Email
 from Person p
 group by email
 having count(email) > 1;
+```
+
+**Approach 2: Subquery (filter the aggregate with WHERE instead of HAVING)**
+
+`WHERE` runs before `SELECT`, so a `SELECT`-list alias in the *same* query isn't visible to that query's own `WHERE` clause yet. A subquery sidesteps this: it runs to completion first, producing a materialized derived table with real, named columns — so the outer query can filter on them with a plain `WHERE`.
+
+**Step 1 — source table `Person`**
+```
+id | email
+---+-----------
+1  | a@b.com
+2  | c@d.com
+3  | a@b.com
+```
+
+**Step 2 — inner query runs to completion first**
+```sql
+select email, count(*) as cnt
+from Person
+group by email
+```
+```
+email     | cnt
+----------+-----
+a@b.com   |  2      <- grouped 2 rows (id 1, id 3)
+c@d.com   |  1      <- grouped 1 row (id 2)
+```
+This result is now a materialized table, aliased `t`. `cnt` is a finished column, not an in-flight alias.
+
+**Step 3 — outer query treats `t` like any ordinary table**
+```sql
+select email
+from t          -- t = { email, cnt }, just columns now
+where cnt > 1   -- plain column filter, nothing special about it
+```
+```
+email     | cnt
+----------+-----
+a@b.com   |  2      <- cnt > 1 ✓ kept
+c@d.com   |  1      <- cnt > 1 ✗ dropped
+```
+
+**Step 4 — result**
+```
+email
+--------
+a@b.com
+```
+
+```sql
+select email
+from (
+  select email, count(*) as cnt
+  from Person
+  group by email
+) t
+where cnt > 1;
 ```
 
 ---
