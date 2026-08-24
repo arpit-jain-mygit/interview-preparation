@@ -1,0 +1,111 @@
+# LeetCode Easy SQL (Database) Problems - Complete Study Guide
+
+**55 Problems | LeetCode Database Study Plan | Free/Non-Premium, Sorted by Problem Number**
+
+Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes premium-only problems)
+
+---
+
+## Table of Contents
+
+- [Problems #175 - #627](#problems-175---627)
+- [Problems #1050 - #1527](#problems-1050---1527)
+- [Problems #1581 - #1978](#problems-1581---1978)
+- [Problems #2356 - #3793](#problems-2356---3793)
+- [Solutions](#solutions)
+- [Legend](#legend)
+
+---
+
+## Problems #175 - #627
+
+| S.No. | Status | # | Problem | Acceptance | Link | Solution | Key Concept |
+|-------|--------|---|---------|-----------|------|----------|--------------|
+| 1 | ⬜ | 175 | Combine Two Tables | 79.9% | [LeetCode](https://leetcode.com/problems/combine-two-tables/) | - | LEFT JOIN to keep all rows from the left table regardless of a match |
+| 2 | ⬜ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | - | Self JOIN, comparing each employee's salary to their manager's salary |
+| 3 | ⬜ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | - | GROUP BY email with HAVING COUNT(*) > 1 |
+| 4 | ⬜ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | - | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
+| 5 | ⬜ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | - | Self JOIN DELETE, keeping the row with the smaller id per email |
+| 6 | ⬜ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | - | Self JOIN on consecutive dates using DATEDIFF |
+| 7 | ⬜ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | - | GROUP BY player_id, MIN(event_date) |
+| 8 | ⬜ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | - | LEFT JOIN, filtering for bonus < 1000 or NULL |
+| 9 | ⬜ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | - | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
+| 10 | ⬜ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | - | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
+| 11 | ⬜ | 595 | Big Countries | 68.8% | [LeetCode](https://leetcode.com/problems/big-countries/) | - | WHERE with an OR across two independent conditions |
+| 12 | ⬜ | 596 | Classes With at Least 5 Students | 64.7% | [LeetCode](https://leetcode.com/problems/classes-with-at-least-5-students/) | - | GROUP BY class HAVING COUNT(*) >= 5 |
+| 13 | ⬜ | 607 | Sales Person | 66.3% | [LeetCode](https://leetcode.com/problems/sales-person/) | - | NOT IN subquery to exclude salespeople tied to a specific company's orders |
+| 14 | ⬜ | 610 | Triangle Judgement | 75.1% | [LeetCode](https://leetcode.com/problems/triangle-judgement/) | - | CASE WHEN applying the triangle inequality theorem |
+| 15 | ⬜ | 619 | Biggest Single Number | 72.0% | [LeetCode](https://leetcode.com/problems/biggest-single-number/) | - | Subquery: GROUP BY HAVING COUNT(*) = 1, then MAX() |
+| 16 | ⬜ | 620 | Not Boring Movies | 75.2% | [LeetCode](https://leetcode.com/problems/not-boring-movies/) | - | WHERE filtering on an odd id (MOD) and a text condition |
+| 17 | ⬜ | 627 | Swap Salary | 84.9% | [LeetCode](https://leetcode.com/problems/swap-salary/) | - | UPDATE with CASE WHEN to flip an enum-like column |
+
+## Problems #1050 - #1527
+
+| S.No. | Status | # | Problem | Acceptance | Link | Solution | Key Concept |
+|-------|--------|---|---------|-----------|------|----------|--------------|
+| 18 | ⬜ | 1050 | Actors and Directors Who Cooperated At Least Three Times | 71.4% | [LeetCode](https://leetcode.com/problems/actors-and-directors-who-cooperated-at-least-three-times/) | - | GROUP BY actor_id, director_id HAVING COUNT(*) >= 3 |
+| 19 | ⬜ | 1068 | Product Sales Analysis I | 86.1% | [LeetCode](https://leetcode.com/problems/product-sales-analysis-i/) | - | Simple JOIN on product_id |
+| 20 | ⬜ | 1075 | Project Employees I | 67.2% | [LeetCode](https://leetcode.com/problems/project-employees-i/) | - | JOIN + GROUP BY with ROUND(AVG(experience_years)) |
+| 21 | ⬜ | 1084 | Sales Analysis III | 48.2% | [LeetCode](https://leetcode.com/problems/sales-analysis-iii/) | - | GROUP BY product_id HAVING all sales fall inside a date range |
+| 22 | ⬜ | 1141 | User Activity for the Past 30 Days I | 51.4% | [LeetCode](https://leetcode.com/problems/user-activity-for-the-past-30-days-i/) | - | Date range filter + GROUP BY day, COUNT(DISTINCT user_id) |
+| 23 | ⬜ | 1148 | Article Views I | 76.8% | [LeetCode](https://leetcode.com/problems/article-views-i/) | - | DISTINCT filter where author_id = viewer_id |
+| 24 | ⬜ | 1179 | Reformat Department Table | 76.4% | [LeetCode](https://leetcode.com/problems/reformat-department-table/) | - | Pivot rows to columns using conditional SUM per month |
+| 25 | ⬜ | 1211 | Queries Quality and Percentage | 54.5% | [LeetCode](https://leetcode.com/problems/queries-quality-and-percentage/) | - | GROUP BY query_name with ROUND(AVG(...), 2) ratio calculations |
+| 26 | ⬜ | 1251 | Average Selling Price | 37.8% | [LeetCode](https://leetcode.com/problems/average-selling-price/) | - | LEFT JOIN on a date range, weighted average via SUM/SUM |
+| 27 | ⬜ | 1280 | Students and Examinations | 61.8% | [LeetCode](https://leetcode.com/problems/students-and-examinations/) | - | CROSS JOIN students × subjects, LEFT JOIN exams, GROUP BY COUNT |
+| 28 | ⬜ | 1327 | List the Products Ordered in a Period | 72.0% | [LeetCode](https://leetcode.com/problems/list-the-products-ordered-in-a-period/) | - | JOIN + GROUP BY HAVING SUM(unit) >= 100, filtered by date range |
+| 29 | ⬜ | 1378 | Replace Employee ID With The Unique Identifier | 83.8% | [LeetCode](https://leetcode.com/problems/replace-employee-id-with-the-unique-identifier/) | - | LEFT JOIN to preserve unmatched employees |
+| 30 | ⬜ | 1407 | Top Travellers | 57.7% | [LeetCode](https://leetcode.com/problems/top-travellers/) | - | LEFT JOIN + GROUP BY SUM(distance), ORDER BY |
+| 31 | ⬜ | 1484 | Group Sold Products By The Date | 78.2% | [LeetCode](https://leetcode.com/problems/group-sold-products-by-the-date/) | - | GROUP BY sell_date with GROUP_CONCAT(DISTINCT product) |
+| 32 | ⬜ | 1517 | Find Users With Valid E-Mails | 35.4% | [LeetCode](https://leetcode.com/problems/find-users-with-valid-e-mails/) | - | REGEXP pattern matching against an email format |
+| 33 | ⬜ | 1527 | Patients With a Condition | 39.2% | [LeetCode](https://leetcode.com/problems/patients-with-a-condition/) | - | LIKE pattern matching for a word-boundary prefix code |
+
+## Problems #1581 - #1978
+
+| S.No. | Status | # | Problem | Acceptance | Link | Solution | Key Concept |
+|-------|--------|---|---------|-----------|------|----------|--------------|
+| 34 | ⬜ | 1581 | Customer Who Visited but Did Not Make Any Transactions | 68.4% | [LeetCode](https://leetcode.com/problems/customer-who-visited-but-did-not-make-any-transactions/) | - | LEFT JOIN, WHERE transaction IS NULL, GROUP BY COUNT |
+| 35 | ⬜ | 1587 | Bank Account Summary II | 83.0% | [LeetCode](https://leetcode.com/problems/bank-account-summary-ii/) | - | JOIN + GROUP BY SUM(amount) HAVING > 10000 |
+| 36 | ⬜ | 1633 | Percentage of Users Attended a Contest | 61.0% | [LeetCode](https://leetcode.com/problems/percentage-of-users-attended-a-contest/) | - | JOIN, COUNT(DISTINCT) divided by total users via a scalar subquery |
+| 37 | ⬜ | 1661 | Average Time of Process per Machine | 66.9% | [LeetCode](https://leetcode.com/problems/average-time-of-process-per-machine/) | - | Self JOIN pairing 'start' and 'end' rows, AVG(end - start) |
+| 38 | ⬜ | 1667 | Fix Names in a Table | 60.7% | [LeetCode](https://leetcode.com/problems/fix-names-in-a-table/) | - | CONCAT with UPPER/LOWER + SUBSTRING to fix casing |
+| 39 | ⬜ | 1683 | Invalid Tweets | 85.2% | [LeetCode](https://leetcode.com/problems/invalid-tweets/) | - | WHERE filtering on LENGTH(content) |
+| 40 | ⬜ | 1693 | Daily Leads and Partners | 86.9% | [LeetCode](https://leetcode.com/problems/daily-leads-and-partners/) | - | GROUP BY date_id, make_name with COUNT(DISTINCT ...) |
+| 41 | ⬜ | 1729 | Find Followers Count | 69.6% | [LeetCode](https://leetcode.com/problems/find-followers-count/) | - | GROUP BY user_id, COUNT(*), ORDER BY user_id |
+| 42 | ⬜ | 1731 | The Number of Employees Which Report to Each Employee | 53.8% | [LeetCode](https://leetcode.com/problems/the-number-of-employees-which-report-to-each-employee/) | - | Self JOIN GROUP BY manager, COUNT(*) + ROUND(AVG(age)) |
+| 43 | ⬜ | 1741 | Find Total Time Spent by Each Employee | 86.4% | [LeetCode](https://leetcode.com/problems/find-total-time-spent-by-each-employee/) | - | GROUP BY emp_id, event_day, SUM(out_time - in_time) |
+| 44 | ⬜ | 1757 | Recyclable and Low Fat Products | 88.6% | [LeetCode](https://leetcode.com/problems/recyclable-and-low-fat-products/) | - | WHERE combining two flag-column conditions |
+| 45 | ⬜ | 1789 | Primary Department for Each Employee | 75.2% | [LeetCode](https://leetcode.com/problems/primary-department-for-each-employee/) | - | UNION of explicit primary rows and single-department employees |
+| 46 | ⬜ | 1795 | Rearrange Products Table | 85.5% | [LeetCode](https://leetcode.com/problems/rearrange-products-table/) | - | UNPIVOT via UNION ALL across store columns, filtering NOT NULL |
+| 47 | ⬜ | 1873 | Calculate Special Bonus | 57.1% | [LeetCode](https://leetcode.com/problems/calculate-special-bonus/) | - | CASE WHEN combining an even-id check and a name-prefix check |
+| 48 | ⬜ | 1890 | The Latest Login in 2020 | 77.1% | [LeetCode](https://leetcode.com/problems/the-latest-login-in-2020/) | - | GROUP BY user_id, MAX(time_stamp), filtered to a single year |
+| 49 | ⬜ | 1965 | Employees With Missing Information | 73.5% | [LeetCode](https://leetcode.com/problems/employees-with-missing-information/) | - | UNION + GROUP BY HAVING COUNT(*) = 1 to find unmatched ids |
+| 50 | ⬜ | 1978 | Employees Whose Manager Left the Company | 48.9% | [LeetCode](https://leetcode.com/problems/employees-whose-manager-left-the-company/) | - | LEFT JOIN self, salary threshold + manager id not present in table |
+
+## Problems #2356 - #3793
+
+| S.No. | Status | # | Problem | Acceptance | Link | Solution | Key Concept |
+|-------|--------|---|---------|-----------|------|----------|--------------|
+| 51 | ⬜ | 2356 | Number of Unique Subjects Taught by Each Teacher | 89.3% | [LeetCode](https://leetcode.com/problems/number-of-unique-subjects-taught-by-each-teacher/) | - | GROUP BY teacher_id, COUNT(DISTINCT subject_id) |
+| 52 | ⬜ | 3436 | Find Valid Emails | 43.3% | [LeetCode](https://leetcode.com/problems/find-valid-emails/) | - | REGEXP pattern validation against a stricter email format |
+| 53 | ⬜ | 3465 | Find Products with Valid Serial Numbers | 28.8% | [LeetCode](https://leetcode.com/problems/find-products-with-valid-serial-numbers/) | - | REGEXP pattern match on a fixed serial-number format |
+| 54 | ⬜ | 3570 | Find Books with No Available Copies | 54.7% | [LeetCode](https://leetcode.com/problems/find-books-with-no-available-copies/) | - | GROUP BY book_id HAVING SUM(available_copies) = 0 |
+| 55 | ⬜ | 3793 | Find Users with High Token Usage | 57.1% | [LeetCode](https://leetcode.com/problems/find-users-with-high-token-usage/) | - | GROUP BY / window function comparing usage against a threshold |
+
+---
+
+## Solutions
+
+_Solutions are added here as each problem is solved and verified — see the Status column above._
+
+---
+
+## Legend
+
+- ⬜ Not attempted
+- ✅ Solution submitted
+
+**Total Problems:** 55
+**Solved:** 0/55
+**Status:** Not Started
+**Last Updated:** 2026-08-24
