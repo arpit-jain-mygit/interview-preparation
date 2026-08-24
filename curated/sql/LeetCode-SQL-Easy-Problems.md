@@ -25,7 +25,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 2 | ✅ | 181 | Employees Earning More Than Their Managers | 73.8% | [LeetCode](https://leetcode.com/problems/employees-earning-more-than-their-managers/) | [View](#181-employees-earning-more-than-their-managers) | Self JOIN, comparing each employee's salary to their manager's salary |
 | 3 | ✅ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | [View](#182-duplicate-emails) | GROUP BY email with HAVING COUNT(*) > 1 |
 | 4 | ✅ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | [View](#183-customers-who-never-order) | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
-| 5 | ⬜ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | - | Self JOIN DELETE, keeping the row with the smaller id per email |
+| 5 | ✅ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | [View](#196-delete-duplicate-emails) | Self JOIN DELETE, keeping the row with the smaller id per email |
 | 6 | ⬜ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | - | Self JOIN on consecutive dates using DATEDIFF |
 | 7 | ⬜ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | - | GROUP BY player_id, MIN(event_date) |
 | 8 | ⬜ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | - | LEFT JOIN, filtering for bonus < 1000 or NULL |
@@ -249,6 +249,81 @@ left join Orders o on c.id = o.customerId
 where o.customerId is null;
 ```
 
+### 196. Delete Duplicate Emails
+
+**Approach:** Self JOIN DELETE — keep the row with the smallest `id` per email, delete the rest.
+
+**Step 1 — source table `Person`**
+```
+id | email
+---+------------------
+1  | john@example.com
+2  | bob@example.com
+3  | john@example.com
+```
+
+**Step 2a — raw cross join `Person p1, Person p2` (every row × every row, no filter yet)**
+```
+p1.id | p1.email          | p2.id | p2.email
+------+-------------------+-------+------------------
+  1   | john@example.com  |   1   | john@example.com
+  1   | john@example.com  |   2   | bob@example.com
+  1   | john@example.com  |   3   | john@example.com
+  2   | bob@example.com   |   1   | john@example.com
+  2   | bob@example.com   |   2   | bob@example.com
+  2   | bob@example.com   |   3   | john@example.com
+  3   | john@example.com  |   1   | john@example.com
+  3   | john@example.com  |   2   | bob@example.com
+  3   | john@example.com  |   3   | john@example.com
+```
+3 rows × 3 rows = 9 pairs total, unrelated to email — this is what a self join is before any condition narrows it down.
+
+**Step 2b — apply `on p1.email = p2.email`, keep only matching-email pairs**
+```
+p1.id | p1.email          | p2.id | p2.email          | same email?
+------+-------------------+-------+-------------------+-------------
+  1   | john@example.com  |   1   | john@example.com  | yes  ✓ kept
+  1   | john@example.com  |   2   | bob@example.com    | no   ✗ dropped
+  1   | john@example.com  |   3   | john@example.com  | yes  ✓ kept
+  2   | bob@example.com   |   1   | john@example.com   | no   ✗ dropped
+  2   | bob@example.com   |   2   | bob@example.com    | yes  ✓ kept
+  2   | bob@example.com   |   3   | john@example.com   | no   ✗ dropped
+  3   | john@example.com  |   1   | john@example.com  | yes  ✓ kept
+  3   | john@example.com  |   2   | bob@example.com    | no   ✗ dropped
+  3   | john@example.com  |   3   | john@example.com  | yes  ✓ kept
+```
+9 raw pairs → 5 survive: 4 for the john group `{1,3}` (2×2), 1 for the bob group `{2}` (1×1).
+
+**Step 3 — apply `where p1.id > p2.id` on those 5 surviving pairs, mark matches for delete**
+```
+p1.id | p2.id | p1.id > p2.id ?  | outcome
+------+-------+------------------+-------------------
+  1   |   1   |  1 > 1 = false   | not marked
+  1   |   3   |  1 > 3 = false   | not marked
+  3   |   1   |  3 > 1 = true    | ✗ mark p1 (id=3) for delete
+  3   |   3   |  3 > 3 = false   | not marked
+  2   |   2   |  2 > 2 = false   | not marked
+```
+Row `id=1` (john) never finds a smaller-id partner sharing its email → never marked → keeper.
+Row `id=3` (john) finds `id=1`, which is smaller → marked → deleted.
+Row `id=2` (bob) has no one else sharing its email at all → never marked → keeper.
+
+**Step 4 — result after DELETE**
+```
+id | email
+---+------------------
+1  | john@example.com
+2  | bob@example.com
+```
+`id=3` is removed; the smallest-id row per email is the only one left standing.
+
+```sql
+delete p1
+from Person p1
+join Person p2 on p1.email = p2.email
+where p1.id > p2.id;
+```
+
 ---
 
 ## Legend
@@ -257,6 +332,6 @@ where o.customerId is null;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 4/55
+**Solved:** 5/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
