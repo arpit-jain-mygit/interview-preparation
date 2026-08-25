@@ -29,7 +29,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 6 | ✅ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | [View](#197-rising-temperature) | Self JOIN on consecutive dates using DATEDIFF |
 | 7 | ✅ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | [View](#511-game-play-analysis-i) | GROUP BY player_id, MIN(event_date) |
 | 8 | ✅ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | [View](#577-employee-bonus) | LEFT JOIN, filtering for bonus < 1000 or NULL |
-| 9 | ⬜ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | - | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
+| 9 | ✅ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | [View](#584-find-customer-referee) | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
 | 10 | ⬜ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | - | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
 | 11 | ⬜ | 595 | Big Countries | 68.8% | [LeetCode](https://leetcode.com/problems/big-countries/) | - | WHERE with an OR across two independent conditions |
 | 12 | ⬜ | 596 | Classes With at Least 5 Students | 64.7% | [LeetCode](https://leetcode.com/problems/classes-with-at-least-5-students/) | - | GROUP BY class HAVING COUNT(*) >= 5 |
@@ -392,6 +392,18 @@ left join bonus b on e.empId = b.empId
 where b.bonus < 1000 or b.bonus is null;
 ```
 
+### 584. Find Customer Referee
+
+**Approach:** Plain WHERE filter — no join needed
+
+Everything needed (`referee_id`) already lives on the same row, so a join is unnecessary — and actively harmful here: an INNER join against another copy of the table would drop every `referee_id IS NULL` row before the `WHERE` clause ever sees it, since `NULL` never matches a join condition.
+
+```sql
+select name
+from customer
+where referee_id != 2 or referee_id is null;
+```
+
 ---
 
 ## Legend
@@ -400,6 +412,6 @@ where b.bonus < 1000 or b.bonus is null;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 8/55
+**Solved:** 9/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
