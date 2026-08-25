@@ -30,7 +30,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 7 | ✅ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | [View](#511-game-play-analysis-i) | GROUP BY player_id, MIN(event_date) |
 | 8 | ✅ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | [View](#577-employee-bonus) | LEFT JOIN, filtering for bonus < 1000 or NULL |
 | 9 | ✅ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | [View](#584-find-customer-referee) | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
-| 10 | ⬜ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | - | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
+| 10 | ✅ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | [View](#586-customer-placing-the-largest-number-of-orders) | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
 | 11 | ⬜ | 595 | Big Countries | 68.8% | [LeetCode](https://leetcode.com/problems/big-countries/) | - | WHERE with an OR across two independent conditions |
 | 12 | ⬜ | 596 | Classes With at Least 5 Students | 64.7% | [LeetCode](https://leetcode.com/problems/classes-with-at-least-5-students/) | - | GROUP BY class HAVING COUNT(*) >= 5 |
 | 13 | ⬜ | 607 | Sales Person | 66.3% | [LeetCode](https://leetcode.com/problems/sales-person/) | - | NOT IN subquery to exclude salespeople tied to a specific company's orders |
@@ -404,6 +404,18 @@ from customer
 where referee_id != 2 or referee_id is null;
 ```
 
+### 586. Customer Placing the Largest Number of Orders
+
+**Approach:** GROUP BY + COUNT, then take the top row after sorting
+
+`ORDER BY` can sort by an aggregate (`COUNT(*)`) even when it isn't in the `SELECT` list, since `ORDER BY` runs after the grouping is already computed. Oracle's newer `FETCH FIRST 1 ROW ONLY` isn't supported on LeetCode's Oracle judge (pre-12c) and throws `ORA-00933`; `ROWNUM = 1` also can't be used directly on the raw table, since `WHERE`/`rownum` are evaluated before `GROUP BY`/`ORDER BY` — that grabs an arbitrary row, not the top one. The fix is to wrap the already-grouped-and-sorted query in a subquery, so `rownum = 1` applies to the finished, sorted result instead of the raw table.
+
+```sql
+select customer_number from
+(select customer_number from orders group by customer_number order by count(*) desc)
+where rownum = 1;
+```
+
 ---
 
 ## Legend
@@ -412,6 +424,6 @@ where referee_id != 2 or referee_id is null;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 9/55
+**Solved:** 10/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
