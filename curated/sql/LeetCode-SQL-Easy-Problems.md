@@ -32,7 +32,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 9 | ✅ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | [View](#584-find-customer-referee) | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
 | 10 | ✅ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | [View](#586-customer-placing-the-largest-number-of-orders) | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
 | 11 | ⬜ | 595 | Big Countries | 68.8% | [LeetCode](https://leetcode.com/problems/big-countries/) | - | WHERE with an OR across two independent conditions |
-| 12 | ⬜ | 596 | Classes With at Least 5 Students | 64.7% | [LeetCode](https://leetcode.com/problems/classes-with-at-least-5-students/) | - | GROUP BY class HAVING COUNT(*) >= 5 |
+| 12 | ✅ | 596 | Classes With at Least 5 Students | 64.7% | [LeetCode](https://leetcode.com/problems/classes-with-at-least-5-students/) | [View](#596-classes-with-at-least-5-students) | GROUP BY class HAVING COUNT(*) >= 5 |
 | 13 | ⬜ | 607 | Sales Person | 66.3% | [LeetCode](https://leetcode.com/problems/sales-person/) | - | NOT IN subquery to exclude salespeople tied to a specific company's orders |
 | 14 | ⬜ | 610 | Triangle Judgement | 75.1% | [LeetCode](https://leetcode.com/problems/triangle-judgement/) | - | CASE WHEN applying the triangle inequality theorem |
 | 15 | ⬜ | 619 | Biggest Single Number | 72.0% | [LeetCode](https://leetcode.com/problems/biggest-single-number/) | - | Subquery: GROUP BY HAVING COUNT(*) = 1, then MAX() |
@@ -416,6 +416,19 @@ select customer_number from
 where rownum = 1;
 ```
 
+### 596. Classes With at Least 5 Students
+
+**Approach:** GROUP BY + HAVING
+
+`(student, class)` is the primary key on `Courses`, so each row is a unique student-class pair — `COUNT(*)` per class can't be inflated by duplicates, it's exactly the distinct student count.
+
+```sql
+select class
+from Courses
+group by class
+having count(*) >= 5;
+```
+
 ---
 
 ## Legend
@@ -424,6 +437,6 @@ where rownum = 1;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 10/55
+**Solved:** 11/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
