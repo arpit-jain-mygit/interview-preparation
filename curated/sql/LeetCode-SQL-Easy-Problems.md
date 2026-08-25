@@ -27,7 +27,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 4 | ✅ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | [View](#183-customers-who-never-order) | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
 | 5 | ✅ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | [View](#196-delete-duplicate-emails) | Self JOIN DELETE, keeping the row with the smaller id per email |
 | 6 | ✅ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | [View](#197-rising-temperature) | Self JOIN on consecutive dates using DATEDIFF |
-| 7 | ⬜ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | - | GROUP BY player_id, MIN(event_date) |
+| 7 | ✅ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | [View](#511-game-play-analysis-i) | GROUP BY player_id, MIN(event_date) |
 | 8 | ⬜ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | - | LEFT JOIN, filtering for bonus < 1000 or NULL |
 | 9 | ⬜ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | - | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
 | 10 | ⬜ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | - | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
@@ -367,6 +367,18 @@ where w2.recordDate = w1.recordDate + 1
   and w2.temperature > w1.temperature;
 ```
 
+### 511. Game Play Analysis I
+
+**Approach:** GROUP BY + MIN
+
+Finds each player's earliest `event_date`. In Oracle, `DATE` always carries a time component — even though `event_date` only ever stores midnight, `MIN(event_date)` still returns a `DATE`, which prints with a trailing `00:00:00` and mismatches the expected plain-date string. `TO_CHAR(..., 'YYYY-MM-DD')` formats it down to just the date.
+
+```sql
+select player_id, to_char(min(event_date), 'YYYY-MM-DD') as first_login
+from activity
+group by player_id;
+```
+
 ---
 
 ## Legend
@@ -375,6 +387,6 @@ where w2.recordDate = w1.recordDate + 1
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 6/55
+**Solved:** 7/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
