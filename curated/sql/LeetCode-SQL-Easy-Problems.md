@@ -26,7 +26,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 3 | ✅ | 182 | Duplicate Emails | 74.2% | [LeetCode](https://leetcode.com/problems/duplicate-emails/) | [View](#182-duplicate-emails) | GROUP BY email with HAVING COUNT(*) > 1 |
 | 4 | ✅ | 183 | Customers Who Never Order | 72.3% | [LeetCode](https://leetcode.com/problems/customers-who-never-order/) | [View](#183-customers-who-never-order) | LEFT JOIN with a NULL check (or NOT IN) to find unmatched rows |
 | 5 | ✅ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | [View](#196-delete-duplicate-emails) | Self JOIN DELETE, keeping the row with the smaller id per email |
-| 6 | ⬜ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | - | Self JOIN on consecutive dates using DATEDIFF |
+| 6 | ✅ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | [View](#197-rising-temperature) | Self JOIN on consecutive dates using DATEDIFF |
 | 7 | ⬜ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | - | GROUP BY player_id, MIN(event_date) |
 | 8 | ⬜ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | - | LEFT JOIN, filtering for bonus < 1000 or NULL |
 | 9 | ⬜ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | - | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
@@ -346,6 +346,27 @@ where p1.id not in (
 );
 ```
 
+### 197. Rising Temperature
+
+**Approach:** Self JOIN on consecutive calendar dates, not on `id` adjacency.
+
+An `id`-based join (`w2.id = w1.id + 1`) looks tempting since `id` and `recordDate` often happen to increase together — but `id` is just a primary key with no guaranteed relationship to date order. Counterexample that breaks it:
+
+```
+id | recordDate  | temperature
+1  | 2000-12-16  |     3
+2  | 2000-12-15  |    -1
+```
+
+Here `id=1`'s date (Dec 16) is *later* than `id=2`'s date (Dec 15) — the id order and date order are reversed. `w2.id = w1.id+1` pairs `w1=1` (Dec 16) as "yesterday" and `w2=2` (Dec 15) as "today," backwards from reality, so the temperature check runs on the wrong pair and misses the correct answer (`id=1`, since Dec 16's temp of 3 is greater than the real previous day Dec 15's temp of -1). The fix: join on `recordDate` adjacency directly, so it's correct regardless of what the `id`s happen to be.
+
+```sql
+select w2.id
+from weather w1, weather w2
+where w2.recordDate = w1.recordDate + 1
+  and w2.temperature > w1.temperature;
+```
+
 ---
 
 ## Legend
@@ -354,6 +375,6 @@ where p1.id not in (
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 5/55
+**Solved:** 6/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
