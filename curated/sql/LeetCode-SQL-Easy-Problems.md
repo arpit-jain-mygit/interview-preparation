@@ -28,7 +28,7 @@ Source: https://leetcode.com/problemset/database/ (Easy difficulty, excludes pre
 | 5 | ✅ | 196 | Delete Duplicate Emails | 66.6% | [LeetCode](https://leetcode.com/problems/delete-duplicate-emails/) | [View](#196-delete-duplicate-emails) | Self JOIN DELETE, keeping the row with the smaller id per email |
 | 6 | ✅ | 197 | Rising Temperature | 52.0% | [LeetCode](https://leetcode.com/problems/rising-temperature/) | [View](#197-rising-temperature) | Self JOIN on consecutive dates using DATEDIFF |
 | 7 | ✅ | 511 | Game Play Analysis I | 76.6% | [LeetCode](https://leetcode.com/problems/game-play-analysis-i/) | [View](#511-game-play-analysis-i) | GROUP BY player_id, MIN(event_date) |
-| 8 | ⬜ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | - | LEFT JOIN, filtering for bonus < 1000 or NULL |
+| 8 | ✅ | 577 | Employee Bonus | 78.0% | [LeetCode](https://leetcode.com/problems/employee-bonus/) | [View](#577-employee-bonus) | LEFT JOIN, filtering for bonus < 1000 or NULL |
 | 9 | ⬜ | 584 | Find Customer Referee | 73.4% | [LeetCode](https://leetcode.com/problems/find-customer-referee/) | - | WHERE with `!=` and NULL handling (`OR referee_id IS NULL`) |
 | 10 | ⬜ | 586 | Customer Placing the Largest Number of Orders | 64.7% | [LeetCode](https://leetcode.com/problems/customer-placing-the-largest-number-of-orders/) | - | GROUP BY customer_number, ORDER BY COUNT(*) DESC LIMIT 1 |
 | 11 | ⬜ | 595 | Big Countries | 68.8% | [LeetCode](https://leetcode.com/problems/big-countries/) | - | WHERE with an OR across two independent conditions |
@@ -379,6 +379,19 @@ from activity
 group by player_id;
 ```
 
+### 577. Employee Bonus
+
+**Approach:** LEFT JOIN + NULL-inclusive filter
+
+An INNER join would silently drop employees who have no row at all in `Bonus`, but the problem wants those employees included too (with `bonus = null`). `LEFT JOIN` keeps every employee regardless of a match, and the filter covers both the "small bonus" and "no bonus row" cases.
+
+```sql
+select e.name, b.bonus
+from employee e
+left join bonus b on e.empId = b.empId
+where b.bonus < 1000 or b.bonus is null;
+```
+
 ---
 
 ## Legend
@@ -387,6 +400,6 @@ group by player_id;
 - ✅ Solution submitted
 
 **Total Problems:** 55
-**Solved:** 7/55
+**Solved:** 8/55
 **Status:** In Progress
 **Last Updated:** 2026-08-24
