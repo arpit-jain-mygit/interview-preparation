@@ -395,6 +395,21 @@ Nodes labeled by list + position (value in parens). `a1(4), a2(1)` are A's own n
 
 Note iterations 5 and 7: `pa`/`pb` land on nodes with the *same value* but they're genuinely different node objects (`b1` vs `c3`, `b3` vs `a2`) — this only works correctly because the comparison is by reference (`==`), not by value.
 
+**Dry Run — Input (no intersection, different lengths):** `A = [1,2,3]`, `B = [5,6,7,8]` → expected `null`
+
+| Iter | pa | pb | Note |
+|------|----|----|------|
+| 0 | 1 | 5 | start |
+| 1 | 2 | 6 | |
+| 2 | 3 | 7 | |
+| 3 | `null` → redirect → 5 | 8 | `pa` exhausted A (3 steps) |
+| 4 | 6 | `null` → redirect → 1 | `pb` exhausted B (4 steps), one iteration later than `pa` since B is longer |
+| 5 | 7 | 2 | |
+| 6 | 8 | 3 | |
+| 7 | `null` | `null` | both exhausted their *second* list at the same time (`pa`'s total steps = `lenA+lenB` = 7, same for `pb`) |
+
+Loop condition `pa != pb` → `null != null` → **false** → exits immediately, before either pointer gets a chance to redirect again. Return `null`. ✅ Confirms the redirect trick works regardless of the length difference between the two lists — both pointers always cover the same *total* distance (`lenA+lenB`) before concluding "no intersection."
+
 [⬆ Back to Top](#table-of-contents)
 
 ---
