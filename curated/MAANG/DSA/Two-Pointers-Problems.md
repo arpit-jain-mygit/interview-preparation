@@ -28,7 +28,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 6 | ✅ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | [View](#141-linked-list-cycle) | Fast/slow pointers (Floyd's) detect a loop because they move at different speeds |
 | 7 | ✅ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | [View](#160-intersection-of-two-linked-lists) | Two pointers swap heads on reaching the end, equalizing total distance traveled |
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
-| 9 | ⬜ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | - | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
+| 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
 | 10 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
 | 11 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
 | 12 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
@@ -412,6 +412,61 @@ Loop condition `pa != pb` → `null != null` → **false** → exits immediately
 
 [⬆ Back to Top](#table-of-contents)
 
+### 202. Happy Number
+
+**Approach:** Floyd's Cycle Detection (Fast & Slow Pointers)
+
+```java
+class Solution {
+    public boolean isHappy(int n) {
+        int slow = n;
+        int fast = sumOfSqrs(n);
+        while(fast!=1 && slow!=fast){//slow and fast will meet in endless cycle, if not happy, check for n=2
+            slow = sumOfSqrs(slow);
+            fast = sumOfSqrs((sumOfSqrs(fast)));
+        }
+        if (fast == 1)  return true;
+        return false;//end less cycle -> slow  = fast
+    }
+
+    private int sumOfSqrs(int num){
+        int sum = 0;
+        while(num!=0){
+            sum += (num%10)*(num%10);
+            num = num/10;
+        }
+        return sum;
+    }
+}
+```
+
+**Dry Run — Input:** `n = 19` → expected `true` (happy)
+
+| Iter | slow | fast | Note |
+|------|------|------|------|
+| start | 19 | 82 (`sumOfSqrs(19)`) | `fast` starts one transform ahead |
+| 1 | 82 | 68 | `sumOfSqrs(82)=68` after 2 steps: `82→68` |
+| 2 | 68 | 1 | `sumOfSqrs(sumOfSqrs(68))`: `68→100→1` |
+
+Loop exits (`fast==1`). **Return `true`.** ✅
+
+**Dry Run — Input:** `n = 2` → expected `false` (unhappy, falls into the `4→16→37→58→89→145→42→20→4→...` cycle)
+
+| Iter | slow | fast |
+|------|------|------|
+| start | 2 | 4 |
+| 1 | 4 | 37 |
+| 2 | 16 | 89 |
+| 3 | 37 | 42 |
+| 4 | 58 | 4 |
+| 5 | 89 | 37 |
+| 6 | 145 | 89 |
+| 7 | 42 | 42 |
+
+Loop exits (`slow==fast==42`, and `fast!=1`). **Return `false`.** ✅
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -420,6 +475,6 @@ Loop condition `pa != pb` → `null != null` → **false** → exits immediately
 - ✅ Solution submitted
 
 **Total Problems:** 69  
-**Solved:** 7/69  
+**Solved:** 8/69  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
