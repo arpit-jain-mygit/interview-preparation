@@ -30,30 +30,30 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
 | 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
 | 10 | ✅ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | [View](#206-reverse-linked-list) | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
-| 11 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
-| 12 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
-| 13 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
-| 14 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
-| 15 | ⬜ | 345 | Reverse Vowels of a String | 62.1% | [LeetCode](https://leetcode.com/problems/reverse-vowels-of-a-string/) | - | Two pointers converge from both ends, swapping only vowel positions |
-| 16 | ⬜ | 349 | Intersection of Two Arrays | 78.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays/) | - | Two pointers walk both sorted arrays together to find shared elements |
-| 17 | ⬜ | 350 | Intersection of Two Arrays II | 60.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays-ii/) | - | Two pointers walk both sorted arrays, matching elements including duplicates |
-| 18 | ⬜ | 392 | Is Subsequence | 49.4% | [LeetCode](https://leetcode.com/problems/is-subsequence/) | - | Two pointers advance through both strings in lockstep, one only on a match |
-| 19 | ⬜ | 408 | Valid Word Abbreviation | 37.0% | [LeetCode](https://leetcode.com/problems/valid-word-abbreviation/) | - | Two pointers walk the word and the abbreviation together |
-| 20 | ⬜ | 455 | Assign Cookies | 55.4% | [LeetCode](https://leetcode.com/problems/assign-cookies/) | - | Two pointers on sorted children and cookies greedily match smallest-fit pairs |
-| 21 | ⬜ | 541 | Reverse String II | 54.4% | [LeetCode](https://leetcode.com/problems/reverse-string-ii/) | - | A pointer marks each chunk boundary; an inner two-pointer swap reverses it |
-| 22 | ⬜ | 557 | Reverse Words in a String III | 84.1% | [LeetCode](https://leetcode.com/problems/reverse-words-in-a-string-iii/) | - | Two pointers reverse the characters within each word in place |
-| 23 | ⬜ | 653 | Two Sum IV - Input is a BST | 63.6% | [LeetCode](https://leetcode.com/problems/two-sum-iv-input-is-a-bst/) | - | In-order traversal gives sorted values, then two pointers converge to the target sum |
-| 24 | ⬜ | 680 | Valid Palindrome II | 44.6% | [LeetCode](https://leetcode.com/problems/valid-palindrome-ii/) | - | Two pointers converge from both ends, allowed one mismatch skip on either side |
+| 11 | ⬜ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | - | *(Prerequisite for #234)* Fast pointer moves 2x the speed of the slow pointer |
+| 12 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
+| 13 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
+| 14 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
+| 15 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
+| 16 | ⬜ | 345 | Reverse Vowels of a String | 62.1% | [LeetCode](https://leetcode.com/problems/reverse-vowels-of-a-string/) | - | Two pointers converge from both ends, swapping only vowel positions |
+| 17 | ⬜ | 349 | Intersection of Two Arrays | 78.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays/) | - | Two pointers walk both sorted arrays together to find shared elements |
+| 18 | ⬜ | 350 | Intersection of Two Arrays II | 60.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays-ii/) | - | Two pointers walk both sorted arrays, matching elements including duplicates |
+| 19 | ⬜ | 392 | Is Subsequence | 49.4% | [LeetCode](https://leetcode.com/problems/is-subsequence/) | - | Two pointers advance through both strings in lockstep, one only on a match |
+| 20 | ⬜ | 408 | Valid Word Abbreviation | 37.0% | [LeetCode](https://leetcode.com/problems/valid-word-abbreviation/) | - | Two pointers walk the word and the abbreviation together |
+| 21 | ⬜ | 455 | Assign Cookies | 55.4% | [LeetCode](https://leetcode.com/problems/assign-cookies/) | - | Two pointers on sorted children and cookies greedily match smallest-fit pairs |
+| 22 | ⬜ | 541 | Reverse String II | 54.4% | [LeetCode](https://leetcode.com/problems/reverse-string-ii/) | - | A pointer marks each chunk boundary; an inner two-pointer swap reverses it |
+| 23 | ⬜ | 557 | Reverse Words in a String III | 84.1% | [LeetCode](https://leetcode.com/problems/reverse-words-in-a-string-iii/) | - | Two pointers reverse the characters within each word in place |
+| 24 | ⬜ | 653 | Two Sum IV - Input is a BST | 63.6% | [LeetCode](https://leetcode.com/problems/two-sum-iv-input-is-a-bst/) | - | In-order traversal gives sorted values, then two pointers converge to the target sum |
+| 25 | ⬜ | 680 | Valid Palindrome II | 44.6% | [LeetCode](https://leetcode.com/problems/valid-palindrome-ii/) | - | Two pointers converge from both ends, allowed one mismatch skip on either side |
 
 ## Problems #696 - #2200
 
 | S.No. | Status | # | Problem | Acceptance | Link | Solution | Why Two Pointers |
 |-------|--------|---|---------|-----------|------|----------|-------------------|
-| 25 | ⬜ | 696 | Count Binary Substrings | 70.5% | [LeetCode](https://leetcode.com/problems/count-binary-substrings/) | - | Two pointers track consecutive run lengths, comparing adjacent groups |
-| 26 | ⬜ | 821 | Shortest Distance to a Character | 73.0% | [LeetCode](https://leetcode.com/problems/shortest-distance-to-a-character/) | - | Two passes with a pointer tracking the nearest occurrence seen so far |
-| 27 | ⬜ | 832 | Flipping an Image | 84.0% | [LeetCode](https://leetcode.com/problems/flipping-an-image/) | - | Two pointers per row swap-and-invert symmetric elements |
-| 28 | ⬜ | 844 | Backspace String Compare | 50.2% | [LeetCode](https://leetcode.com/problems/backspace-string-compare/) | - | Two pointers walk both strings backward, skipping backspaced characters |
-| 29 | ⬜ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | - | Fast pointer moves 2x the speed of the slow pointer |
+| 26 | ⬜ | 696 | Count Binary Substrings | 70.5% | [LeetCode](https://leetcode.com/problems/count-binary-substrings/) | - | Two pointers track consecutive run lengths, comparing adjacent groups |
+| 27 | ⬜ | 821 | Shortest Distance to a Character | 73.0% | [LeetCode](https://leetcode.com/problems/shortest-distance-to-a-character/) | - | Two passes with a pointer tracking the nearest occurrence seen so far |
+| 28 | ⬜ | 832 | Flipping an Image | 84.0% | [LeetCode](https://leetcode.com/problems/flipping-an-image/) | - | Two pointers per row swap-and-invert symmetric elements |
+| 29 | ⬜ | 844 | Backspace String Compare | 50.2% | [LeetCode](https://leetcode.com/problems/backspace-string-compare/) | - | Two pointers walk both strings backward, skipping backspaced characters |
 | 30 | ⬜ | 905 | Sort Array By Parity | 76.6% | [LeetCode](https://leetcode.com/problems/sort-array-by-parity/) | - | Two pointers converge from both ends, swapping odd/even values |
 | 31 | ⬜ | 917 | Reverse Only Letters | 69.0% | [LeetCode](https://leetcode.com/problems/reverse-only-letters/) | - | Two pointers converge from both ends, skipping non-letter characters |
 | 32 | ⬜ | 922 | Sort Array By Parity II | 71.3% | [LeetCode](https://leetcode.com/problems/sort-array-by-parity-ii/) | - | Two pointers step through even-indexed and odd-indexed slots together |
