@@ -29,7 +29,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 7 | ✅ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | [View](#160-intersection-of-two-linked-lists) | Two pointers swap heads on reaching the end, equalizing total distance traveled |
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
 | 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
-| 10 | ⬜ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | - | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
+| 10 | ✅ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | [View](#206-reverse-linked-list) | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
 | 11 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
 | 12 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
 | 13 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
@@ -468,6 +468,56 @@ Loop exits (`slow==fast==42`, and `fast!=1`). **Return `false`.** ✅
 
 [⬆ Back to Top](#table-of-contents)
 
+### 206. Reverse Linked List
+
+*(Prerequisite for #234 — reverse the second half to compare against the first)*
+
+**Approach:** Two Pointers (prev/curr, in-place reversal)
+
+```java
+/**
+ * Definition for singly-linked list.
+ * public class ListNode {
+ *     int val;
+ *     ListNode next;
+ *     ListNode() {}
+ *     ListNode(int val) { this.val = val; }
+ *     ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+ * }
+ */
+class Solution {
+    public ListNode reverseList(ListNode head) {
+        ListNode p = null;//prev pointer
+        ListNode c = head;//curr pointer
+        ListNode n = null;//next pointer
+        while(c != null){
+            //we will will reverse the link backward and keep moving pointers forward
+            n = c.next;//we are going to break the original link, so keep next already with us, so that curr can be moved to next
+            c.next = p;//reverse the link. no need to reverse many link, just reverse one, thats curr's next pointing to prev. 
+            p = c;//move prev to curr forward
+            c = n;//move curr to next forward 
+            //there is a pattern in above all 4 assignments, first assign any variables to other variables, then only change this var.
+            //observe right side var is being assigned later, first its value is stored to other var.
+            //just start with n=c.next, then all assignments will be led by RHS var.
+        }
+        return p;//its new head now
+    }
+}
+```
+
+**Dry Run — Input:** `head = [1,2,3]` → expected `[3,2,1]`
+
+| Iter | c | n (=c.next, saved) | c.next = p | p after | c after |
+|------|---|----------------------|------------|---------|---------|
+| start | 1 | - | - | null | 1 |
+| 1 | 1 | 2 | `1.next = null` | 1 | 2 |
+| 2 | 2 | 3 | `2.next = 1` | 2 | 3 |
+| 3 | 3 | null | `3.next = 2` | 3 | null |
+
+Loop ends (`c==null`). **Return `p = 3`** → list is now `3 → 2 → 1 → null`. ✅
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -476,6 +526,6 @@ Loop exits (`slow==fast==42`, and `fast!=1`). **Return `false`.** ✅
 - ✅ Solution submitted
 
 **Total Problems:** 70  
-**Solved:** 8/70  
+**Solved:** 9/70  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
