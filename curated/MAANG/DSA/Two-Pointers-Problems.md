@@ -543,9 +543,9 @@ class Solution {
     public ListNode middleNode(ListNode head) {
         ListNode slow = head;
         ListNode fast = head;
-        while(fast!=null && fast.next != null){
+        while(fast!=null && fast.next != null){//fast condition for even size LL, fast.next condition for odd size LL
             slow = slow.next;
-            fast = fast.next.next;
+            fast = fast.next.next;//fast is moving twice as the speed of slow, thats why, slow will always to the middle to wherever fast is at the moment
         }
         return slow;
     }
