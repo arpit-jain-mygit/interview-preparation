@@ -474,6 +474,8 @@ Loop exits (`slow==fast==42`, and `fast!=1`). **Return `false`.** ✅
 
 **Approach:** Two Pointers (prev/curr, in-place reversal)
 
+**Hint Video:** https://www.youtube.com/watch?v=R-CKBYnOv1U
+
 ```java
 /**
  * Definition for singly-linked list.
