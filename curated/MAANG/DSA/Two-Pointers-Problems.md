@@ -1,6 +1,6 @@
 # LeetCode Easy Two Pointers Problems - Complete Study Guide
 
-**69 Problems | LeetCode Two Pointers Study Plan | Sorted by Problem Number**
+**70 Problems | LeetCode Two Pointers Study Plan | Sorted by Problem Number**
 
 Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 
@@ -29,76 +29,77 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 7 | ✅ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | [View](#160-intersection-of-two-linked-lists) | Two pointers swap heads on reaching the end, equalizing total distance traveled |
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
 | 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
-| 10 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
-| 11 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
-| 12 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
-| 13 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
-| 14 | ⬜ | 345 | Reverse Vowels of a String | 62.1% | [LeetCode](https://leetcode.com/problems/reverse-vowels-of-a-string/) | - | Two pointers converge from both ends, swapping only vowel positions |
-| 15 | ⬜ | 349 | Intersection of Two Arrays | 78.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays/) | - | Two pointers walk both sorted arrays together to find shared elements |
-| 16 | ⬜ | 350 | Intersection of Two Arrays II | 60.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays-ii/) | - | Two pointers walk both sorted arrays, matching elements including duplicates |
-| 17 | ⬜ | 392 | Is Subsequence | 49.4% | [LeetCode](https://leetcode.com/problems/is-subsequence/) | - | Two pointers advance through both strings in lockstep, one only on a match |
-| 18 | ⬜ | 408 | Valid Word Abbreviation | 37.0% | [LeetCode](https://leetcode.com/problems/valid-word-abbreviation/) | - | Two pointers walk the word and the abbreviation together |
-| 19 | ⬜ | 455 | Assign Cookies | 55.4% | [LeetCode](https://leetcode.com/problems/assign-cookies/) | - | Two pointers on sorted children and cookies greedily match smallest-fit pairs |
-| 20 | ⬜ | 541 | Reverse String II | 54.4% | [LeetCode](https://leetcode.com/problems/reverse-string-ii/) | - | A pointer marks each chunk boundary; an inner two-pointer swap reverses it |
-| 21 | ⬜ | 557 | Reverse Words in a String III | 84.1% | [LeetCode](https://leetcode.com/problems/reverse-words-in-a-string-iii/) | - | Two pointers reverse the characters within each word in place |
-| 22 | ⬜ | 653 | Two Sum IV - Input is a BST | 63.6% | [LeetCode](https://leetcode.com/problems/two-sum-iv-input-is-a-bst/) | - | In-order traversal gives sorted values, then two pointers converge to the target sum |
-| 23 | ⬜ | 680 | Valid Palindrome II | 44.6% | [LeetCode](https://leetcode.com/problems/valid-palindrome-ii/) | - | Two pointers converge from both ends, allowed one mismatch skip on either side |
+| 10 | ⬜ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | - | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
+| 11 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
+| 12 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
+| 13 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
+| 14 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
+| 15 | ⬜ | 345 | Reverse Vowels of a String | 62.1% | [LeetCode](https://leetcode.com/problems/reverse-vowels-of-a-string/) | - | Two pointers converge from both ends, swapping only vowel positions |
+| 16 | ⬜ | 349 | Intersection of Two Arrays | 78.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays/) | - | Two pointers walk both sorted arrays together to find shared elements |
+| 17 | ⬜ | 350 | Intersection of Two Arrays II | 60.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays-ii/) | - | Two pointers walk both sorted arrays, matching elements including duplicates |
+| 18 | ⬜ | 392 | Is Subsequence | 49.4% | [LeetCode](https://leetcode.com/problems/is-subsequence/) | - | Two pointers advance through both strings in lockstep, one only on a match |
+| 19 | ⬜ | 408 | Valid Word Abbreviation | 37.0% | [LeetCode](https://leetcode.com/problems/valid-word-abbreviation/) | - | Two pointers walk the word and the abbreviation together |
+| 20 | ⬜ | 455 | Assign Cookies | 55.4% | [LeetCode](https://leetcode.com/problems/assign-cookies/) | - | Two pointers on sorted children and cookies greedily match smallest-fit pairs |
+| 21 | ⬜ | 541 | Reverse String II | 54.4% | [LeetCode](https://leetcode.com/problems/reverse-string-ii/) | - | A pointer marks each chunk boundary; an inner two-pointer swap reverses it |
+| 22 | ⬜ | 557 | Reverse Words in a String III | 84.1% | [LeetCode](https://leetcode.com/problems/reverse-words-in-a-string-iii/) | - | Two pointers reverse the characters within each word in place |
+| 23 | ⬜ | 653 | Two Sum IV - Input is a BST | 63.6% | [LeetCode](https://leetcode.com/problems/two-sum-iv-input-is-a-bst/) | - | In-order traversal gives sorted values, then two pointers converge to the target sum |
+| 24 | ⬜ | 680 | Valid Palindrome II | 44.6% | [LeetCode](https://leetcode.com/problems/valid-palindrome-ii/) | - | Two pointers converge from both ends, allowed one mismatch skip on either side |
 
 ## Problems #696 - #2200
 
 | S.No. | Status | # | Problem | Acceptance | Link | Solution | Why Two Pointers |
 |-------|--------|---|---------|-----------|------|----------|-------------------|
-| 24 | ⬜ | 696 | Count Binary Substrings | 70.5% | [LeetCode](https://leetcode.com/problems/count-binary-substrings/) | - | Two pointers track consecutive run lengths, comparing adjacent groups |
-| 25 | ⬜ | 821 | Shortest Distance to a Character | 73.0% | [LeetCode](https://leetcode.com/problems/shortest-distance-to-a-character/) | - | Two passes with a pointer tracking the nearest occurrence seen so far |
-| 26 | ⬜ | 832 | Flipping an Image | 84.0% | [LeetCode](https://leetcode.com/problems/flipping-an-image/) | - | Two pointers per row swap-and-invert symmetric elements |
-| 27 | ⬜ | 844 | Backspace String Compare | 50.2% | [LeetCode](https://leetcode.com/problems/backspace-string-compare/) | - | Two pointers walk both strings backward, skipping backspaced characters |
-| 28 | ⬜ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | - | Fast pointer moves 2x the speed of the slow pointer |
-| 29 | ⬜ | 905 | Sort Array By Parity | 76.6% | [LeetCode](https://leetcode.com/problems/sort-array-by-parity/) | - | Two pointers converge from both ends, swapping odd/even values |
-| 30 | ⬜ | 917 | Reverse Only Letters | 69.0% | [LeetCode](https://leetcode.com/problems/reverse-only-letters/) | - | Two pointers converge from both ends, skipping non-letter characters |
-| 31 | ⬜ | 922 | Sort Array By Parity II | 71.3% | [LeetCode](https://leetcode.com/problems/sort-array-by-parity-ii/) | - | Two pointers step through even-indexed and odd-indexed slots together |
-| 32 | ⬜ | 925 | Long Pressed Name | 33.1% | [LeetCode](https://leetcode.com/problems/long-pressed-name/) | - | Two pointers walk name and typed strings in parallel, allowing repeats |
-| 33 | ⬜ | 942 | DI String Match | 81.3% | [LeetCode](https://leetcode.com/problems/di-string-match/) | - | Two pointers track a low/high bound, assigned based on each instruction |
-| 34 | ⬜ | 977 | Squares of a Sorted Array | 74.1% | [LeetCode](https://leetcode.com/problems/squares-of-a-sorted-array/) | - | Two pointers from both ends compare magnitudes, filling the result from the back |
-| 35 | ⬜ | 1089 | Duplicate Zeros | 54.0% | [LeetCode](https://leetcode.com/problems/duplicate-zeros/) | - | A read pointer scans while a second tracks the shifted write position |
-| 36 | ⬜ | 1099 | Two Sum Less Than K | 62.2% | [LeetCode](https://leetcode.com/problems/two-sum-less-than-k/) | - | Sort the array, then two pointers converge to maximize the sum under k |
-| 37 | ⬜ | 1332 | Remove Palindromic Subsequences | 77.2% | [LeetCode](https://leetcode.com/problems/remove-palindromic-subsequences/) | - | Two pointers converge from both ends to check whether it's already a palindrome |
-| 38 | ⬜ | 1346 | Check If N and Its Double Exist | 42.0% | [LeetCode](https://leetcode.com/problems/check-if-n-and-its-double-exist/) | - | On a sorted array, two pointers check value/double pairs |
-| 39 | ⬜ | 1385 | Find the Distance Value Between Two Arrays | 72.2% | [LeetCode](https://leetcode.com/problems/find-the-distance-value-between-two-arrays/) | - | Two pointers over the sorted second array bound each comparison |
-| 40 | ⬜ | 1455 | Check If a Word Occurs As a Prefix of Any Word in a Sentence | 68.8% | [LeetCode](https://leetcode.com/problems/check-if-a-word-occurs-as-a-prefix-of-any-word-in-a-sentence/) | - | Two pointers scan sentence word boundaries and compare against the prefix |
-| 41 | ⬜ | 1768 | Merge Strings Alternately | 82.2% | [LeetCode](https://leetcode.com/problems/merge-strings-alternately/) | - | Two pointers advance through both strings, alternating characters |
-| 42 | ⬜ | 1826 | Faulty Sensor | 50.5% | [LeetCode](https://leetcode.com/problems/faulty-sensor/) | - | Two pointers compare both arrays in parallel, skipping past the mismatch |
-| 43 | ⬜ | 1961 | Check If String Is a Prefix of Array | 52.9% | [LeetCode](https://leetcode.com/problems/check-if-string-is-a-prefix-of-array/) | - | Two pointers track position across the words array and the target string |
-| 44 | ⬜ | 2000 | Reverse Prefix of Word | 86.5% | [LeetCode](https://leetcode.com/problems/reverse-prefix-of-word/) | - | Two pointers reverse characters up to a found index |
-| 45 | ⬜ | 2108 | Find First Palindromic String in the Array | 84.1% | [LeetCode](https://leetcode.com/problems/find-first-palindromic-string-in-the-array/) | - | Two pointers converge from both ends to check each string |
-| 46 | ⬜ | 2200 | Find All K-Distant Indices in an Array | 77.2% | [LeetCode](https://leetcode.com/problems/find-all-k-distant-indices-in-an-array/) | - | A pointer/window tracks distance around each key index |
+| 25 | ⬜ | 696 | Count Binary Substrings | 70.5% | [LeetCode](https://leetcode.com/problems/count-binary-substrings/) | - | Two pointers track consecutive run lengths, comparing adjacent groups |
+| 26 | ⬜ | 821 | Shortest Distance to a Character | 73.0% | [LeetCode](https://leetcode.com/problems/shortest-distance-to-a-character/) | - | Two passes with a pointer tracking the nearest occurrence seen so far |
+| 27 | ⬜ | 832 | Flipping an Image | 84.0% | [LeetCode](https://leetcode.com/problems/flipping-an-image/) | - | Two pointers per row swap-and-invert symmetric elements |
+| 28 | ⬜ | 844 | Backspace String Compare | 50.2% | [LeetCode](https://leetcode.com/problems/backspace-string-compare/) | - | Two pointers walk both strings backward, skipping backspaced characters |
+| 29 | ⬜ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | - | Fast pointer moves 2x the speed of the slow pointer |
+| 30 | ⬜ | 905 | Sort Array By Parity | 76.6% | [LeetCode](https://leetcode.com/problems/sort-array-by-parity/) | - | Two pointers converge from both ends, swapping odd/even values |
+| 31 | ⬜ | 917 | Reverse Only Letters | 69.0% | [LeetCode](https://leetcode.com/problems/reverse-only-letters/) | - | Two pointers converge from both ends, skipping non-letter characters |
+| 32 | ⬜ | 922 | Sort Array By Parity II | 71.3% | [LeetCode](https://leetcode.com/problems/sort-array-by-parity-ii/) | - | Two pointers step through even-indexed and odd-indexed slots together |
+| 33 | ⬜ | 925 | Long Pressed Name | 33.1% | [LeetCode](https://leetcode.com/problems/long-pressed-name/) | - | Two pointers walk name and typed strings in parallel, allowing repeats |
+| 34 | ⬜ | 942 | DI String Match | 81.3% | [LeetCode](https://leetcode.com/problems/di-string-match/) | - | Two pointers track a low/high bound, assigned based on each instruction |
+| 35 | ⬜ | 977 | Squares of a Sorted Array | 74.1% | [LeetCode](https://leetcode.com/problems/squares-of-a-sorted-array/) | - | Two pointers from both ends compare magnitudes, filling the result from the back |
+| 36 | ⬜ | 1089 | Duplicate Zeros | 54.0% | [LeetCode](https://leetcode.com/problems/duplicate-zeros/) | - | A read pointer scans while a second tracks the shifted write position |
+| 37 | ⬜ | 1099 | Two Sum Less Than K | 62.2% | [LeetCode](https://leetcode.com/problems/two-sum-less-than-k/) | - | Sort the array, then two pointers converge to maximize the sum under k |
+| 38 | ⬜ | 1332 | Remove Palindromic Subsequences | 77.2% | [LeetCode](https://leetcode.com/problems/remove-palindromic-subsequences/) | - | Two pointers converge from both ends to check whether it's already a palindrome |
+| 39 | ⬜ | 1346 | Check If N and Its Double Exist | 42.0% | [LeetCode](https://leetcode.com/problems/check-if-n-and-its-double-exist/) | - | On a sorted array, two pointers check value/double pairs |
+| 40 | ⬜ | 1385 | Find the Distance Value Between Two Arrays | 72.2% | [LeetCode](https://leetcode.com/problems/find-the-distance-value-between-two-arrays/) | - | Two pointers over the sorted second array bound each comparison |
+| 41 | ⬜ | 1455 | Check If a Word Occurs As a Prefix of Any Word in a Sentence | 68.8% | [LeetCode](https://leetcode.com/problems/check-if-a-word-occurs-as-a-prefix-of-any-word-in-a-sentence/) | - | Two pointers scan sentence word boundaries and compare against the prefix |
+| 42 | ⬜ | 1768 | Merge Strings Alternately | 82.2% | [LeetCode](https://leetcode.com/problems/merge-strings-alternately/) | - | Two pointers advance through both strings, alternating characters |
+| 43 | ⬜ | 1826 | Faulty Sensor | 50.5% | [LeetCode](https://leetcode.com/problems/faulty-sensor/) | - | Two pointers compare both arrays in parallel, skipping past the mismatch |
+| 44 | ⬜ | 1961 | Check If String Is a Prefix of Array | 52.9% | [LeetCode](https://leetcode.com/problems/check-if-string-is-a-prefix-of-array/) | - | Two pointers track position across the words array and the target string |
+| 45 | ⬜ | 2000 | Reverse Prefix of Word | 86.5% | [LeetCode](https://leetcode.com/problems/reverse-prefix-of-word/) | - | Two pointers reverse characters up to a found index |
+| 46 | ⬜ | 2108 | Find First Palindromic String in the Array | 84.1% | [LeetCode](https://leetcode.com/problems/find-first-palindromic-string-in-the-array/) | - | Two pointers converge from both ends to check each string |
+| 47 | ⬜ | 2200 | Find All K-Distant Indices in an Array | 77.2% | [LeetCode](https://leetcode.com/problems/find-all-k-distant-indices-in-an-array/) | - | A pointer/window tracks distance around each key index |
 
 ## Problems #2367 - #3992
 
 | S.No. | Status | # | Problem | Acceptance | Link | Solution | Why Two Pointers |
 |-------|--------|---|---------|-----------|------|----------|-------------------|
-| 47 | ⬜ | 2367 | Number of Arithmetic Triplets | 85.6% | [LeetCode](https://leetcode.com/problems/number-of-arithmetic-triplets/) | - | Two pointers scan the sorted array for equal-difference triplets |
-| 48 | ⬜ | 2441 | Largest Positive Integer That Exists With Its Negative | 74.5% | [LeetCode](https://leetcode.com/problems/largest-positive-integer-that-exists-with-its-negative/) | - | Two pointers from both ends of a value-sorted array find matching +/- pairs |
-| 49 | ⬜ | 2460 | Apply Operations to an Array | 74.8% | [LeetCode](https://leetcode.com/problems/apply-operations-to-an-array/) | - | Fast/slow pointers merge equal adjacent pairs, then shift zeros to the end |
-| 50 | ⬜ | 2465 | Number of Distinct Averages | 59.1% | [LeetCode](https://leetcode.com/problems/number-of-distinct-averages/) | - | After sorting, two pointers repeatedly pair the smallest with the largest |
-| 51 | ⬜ | 2511 | Maximum Enemy Forts That Can Be Captured | 41.8% | [LeetCode](https://leetcode.com/problems/maximum-enemy-forts-that-can-be-captured/) | - | Two pointers scan for a capturable `1...0...-1` pattern |
-| 52 | ⬜ | 2540 | Minimum Common Value | 60.7% | [LeetCode](https://leetcode.com/problems/minimum-common-value/) | - | Two pointers walk both sorted arrays together to the first common value |
-| 53 | ⬜ | 2562 | Find the Array Concatenation Value | 72.1% | [LeetCode](https://leetcode.com/problems/find-the-array-concatenation-value/) | - | Two pointers from both ends concatenate and sum each pair |
-| 54 | ⬜ | 2570 | Merge Two 2D Arrays by Summing Values | 81.7% | [LeetCode](https://leetcode.com/problems/merge-two-2d-arrays-by-summing-values/) | - | Two pointers merge two sorted arrays by matching ids, same family as #88 |
-| 55 | ⬜ | 2697 | Lexicographically Smallest Palindrome | 81.7% | [LeetCode](https://leetcode.com/problems/lexicographically-smallest-palindrome/) | - | Two pointers converge from both ends, picking the smaller of each mismatched pair |
-| 56 | ⬜ | 2824 | Count Pairs Whose Sum is Less than Target | 87.6% | [LeetCode](https://leetcode.com/problems/count-pairs-whose-sum-is-less-than-target/) | - | Sort the array, then two pointers converge while counting valid pairs |
-| 57 | ⬜ | 2903 | Find Indices With Index and Value Difference I | 60.1% | [LeetCode](https://leetcode.com/problems/find-indices-with-index-and-value-difference-i/) | - | A trailing pointer tracks the running min/max seen so far while scanning |
-| 58 | ⬜ | 2970 | Count the Number of Incremovable Subarrays I | 56.5% | [LeetCode](https://leetcode.com/problems/count-the-number-of-incremovable-subarrays-i/) | - | Two pointers/window scan for valid removable-subarray boundaries |
-| 59 | ⬜ | 3194 | Minimum Average of Smallest and Largest Elements | 85.1% | [LeetCode](https://leetcode.com/problems/minimum-average-of-smallest-and-largest-elements/) | - | Sort, then two pointers repeatedly pair the smallest with the largest remaining |
-| 60 | ⬜ | 3633 | Earliest Finish Time for Land and Water Rides I | 73.0% | [LeetCode](https://leetcode.com/problems/earliest-finish-time-for-land-and-water-rides-i/) | - | Two pointers over sorted ride-start times pick the earliest valid pairing |
-| 61 | ⬜ | 3643 | Flip Square Submatrix Vertically | 79.2% | [LeetCode](https://leetcode.com/problems/flip-square-submatrix-vertically/) | - | Two pointers (top row / bottom row) swap while flipping the submatrix |
-| 62 | ⬜ | 3667 | Sort Array By Absolute Value | 86.8% | [LeetCode](https://leetcode.com/problems/sort-array-by-absolute-value/) | - | Two pointers from both ends of the value-sorted array merge by absolute value |
-| 63 | ⬜ | 3750 | Minimum Number of Flips to Reverse Binary String | 77.1% | [LeetCode](https://leetcode.com/problems/minimum-number-of-flips-to-reverse-binary-string/) | - | Two pointers compare the string against its reverse from both ends |
-| 64 | ⬜ | 3794 | Reverse String Prefix | 89.5% | [LeetCode](https://leetcode.com/problems/reverse-string-prefix/) | - | Two pointers reverse characters within the given prefix length |
-| 65 | ⬜ | 3823 | Reverse Letters Then Special Characters in a String | 82.4% | [LeetCode](https://leetcode.com/problems/reverse-letters-then-special-characters-in-a-string/) | - | Two pointers converge from both ends, skipping specials and swapping letters |
-| 66 | ⬜ | 3884 | First Matching Character From Both Ends | 81.5% | [LeetCode](https://leetcode.com/problems/first-matching-character-from-both-ends/) | - | Two pointers converge from both ends, comparing characters directly |
-| 67 | ⬜ | 3936 | Minimum Swaps to Move Zeros to End | 60.5% | [LeetCode](https://leetcode.com/problems/minimum-swaps-to-move-zeros-to-end/) | - | Fast/slow pointers shift non-zero elements forward, same family as #283 |
-| 68 | ⬜ | 3940 | Limit Occurrences in Sorted Array | 73.4% | [LeetCode](https://leetcode.com/problems/limit-occurrences-in-sorted-array/) | - | Fast/slow pointers overwrite in place while capping the allowed occurrence count |
-| 69 | ⬜ | 3992 | Rearrange String to Avoid Character Pair | 78.2% | [LeetCode](https://leetcode.com/problems/rearrange-string-to-avoid-character-pair/) | - | A pointer scans adjacent characters, swapping ahead to break repeated pairs |
+| 48 | ⬜ | 2367 | Number of Arithmetic Triplets | 85.6% | [LeetCode](https://leetcode.com/problems/number-of-arithmetic-triplets/) | - | Two pointers scan the sorted array for equal-difference triplets |
+| 49 | ⬜ | 2441 | Largest Positive Integer That Exists With Its Negative | 74.5% | [LeetCode](https://leetcode.com/problems/largest-positive-integer-that-exists-with-its-negative/) | - | Two pointers from both ends of a value-sorted array find matching +/- pairs |
+| 50 | ⬜ | 2460 | Apply Operations to an Array | 74.8% | [LeetCode](https://leetcode.com/problems/apply-operations-to-an-array/) | - | Fast/slow pointers merge equal adjacent pairs, then shift zeros to the end |
+| 51 | ⬜ | 2465 | Number of Distinct Averages | 59.1% | [LeetCode](https://leetcode.com/problems/number-of-distinct-averages/) | - | After sorting, two pointers repeatedly pair the smallest with the largest |
+| 52 | ⬜ | 2511 | Maximum Enemy Forts That Can Be Captured | 41.8% | [LeetCode](https://leetcode.com/problems/maximum-enemy-forts-that-can-be-captured/) | - | Two pointers scan for a capturable `1...0...-1` pattern |
+| 53 | ⬜ | 2540 | Minimum Common Value | 60.7% | [LeetCode](https://leetcode.com/problems/minimum-common-value/) | - | Two pointers walk both sorted arrays together to the first common value |
+| 54 | ⬜ | 2562 | Find the Array Concatenation Value | 72.1% | [LeetCode](https://leetcode.com/problems/find-the-array-concatenation-value/) | - | Two pointers from both ends concatenate and sum each pair |
+| 55 | ⬜ | 2570 | Merge Two 2D Arrays by Summing Values | 81.7% | [LeetCode](https://leetcode.com/problems/merge-two-2d-arrays-by-summing-values/) | - | Two pointers merge two sorted arrays by matching ids, same family as #88 |
+| 56 | ⬜ | 2697 | Lexicographically Smallest Palindrome | 81.7% | [LeetCode](https://leetcode.com/problems/lexicographically-smallest-palindrome/) | - | Two pointers converge from both ends, picking the smaller of each mismatched pair |
+| 57 | ⬜ | 2824 | Count Pairs Whose Sum is Less than Target | 87.6% | [LeetCode](https://leetcode.com/problems/count-pairs-whose-sum-is-less-than-target/) | - | Sort the array, then two pointers converge while counting valid pairs |
+| 58 | ⬜ | 2903 | Find Indices With Index and Value Difference I | 60.1% | [LeetCode](https://leetcode.com/problems/find-indices-with-index-and-value-difference-i/) | - | A trailing pointer tracks the running min/max seen so far while scanning |
+| 59 | ⬜ | 2970 | Count the Number of Incremovable Subarrays I | 56.5% | [LeetCode](https://leetcode.com/problems/count-the-number-of-incremovable-subarrays-i/) | - | Two pointers/window scan for valid removable-subarray boundaries |
+| 60 | ⬜ | 3194 | Minimum Average of Smallest and Largest Elements | 85.1% | [LeetCode](https://leetcode.com/problems/minimum-average-of-smallest-and-largest-elements/) | - | Sort, then two pointers repeatedly pair the smallest with the largest remaining |
+| 61 | ⬜ | 3633 | Earliest Finish Time for Land and Water Rides I | 73.0% | [LeetCode](https://leetcode.com/problems/earliest-finish-time-for-land-and-water-rides-i/) | - | Two pointers over sorted ride-start times pick the earliest valid pairing |
+| 62 | ⬜ | 3643 | Flip Square Submatrix Vertically | 79.2% | [LeetCode](https://leetcode.com/problems/flip-square-submatrix-vertically/) | - | Two pointers (top row / bottom row) swap while flipping the submatrix |
+| 63 | ⬜ | 3667 | Sort Array By Absolute Value | 86.8% | [LeetCode](https://leetcode.com/problems/sort-array-by-absolute-value/) | - | Two pointers from both ends of the value-sorted array merge by absolute value |
+| 64 | ⬜ | 3750 | Minimum Number of Flips to Reverse Binary String | 77.1% | [LeetCode](https://leetcode.com/problems/minimum-number-of-flips-to-reverse-binary-string/) | - | Two pointers compare the string against its reverse from both ends |
+| 65 | ⬜ | 3794 | Reverse String Prefix | 89.5% | [LeetCode](https://leetcode.com/problems/reverse-string-prefix/) | - | Two pointers reverse characters within the given prefix length |
+| 66 | ⬜ | 3823 | Reverse Letters Then Special Characters in a String | 82.4% | [LeetCode](https://leetcode.com/problems/reverse-letters-then-special-characters-in-a-string/) | - | Two pointers converge from both ends, skipping specials and swapping letters |
+| 67 | ⬜ | 3884 | First Matching Character From Both Ends | 81.5% | [LeetCode](https://leetcode.com/problems/first-matching-character-from-both-ends/) | - | Two pointers converge from both ends, comparing characters directly |
+| 68 | ⬜ | 3936 | Minimum Swaps to Move Zeros to End | 60.5% | [LeetCode](https://leetcode.com/problems/minimum-swaps-to-move-zeros-to-end/) | - | Fast/slow pointers shift non-zero elements forward, same family as #283 |
+| 69 | ⬜ | 3940 | Limit Occurrences in Sorted Array | 73.4% | [LeetCode](https://leetcode.com/problems/limit-occurrences-in-sorted-array/) | - | Fast/slow pointers overwrite in place while capping the allowed occurrence count |
+| 70 | ⬜ | 3992 | Rearrange String to Avoid Character Pair | 78.2% | [LeetCode](https://leetcode.com/problems/rearrange-string-to-avoid-character-pair/) | - | A pointer scans adjacent characters, swapping ahead to break repeated pairs |
 
 ---
 
@@ -474,7 +475,7 @@ Loop exits (`slow==fast==42`, and `fast!=1`). **Return `false`.** ✅
 - ⬜ Not attempted
 - ✅ Solution submitted
 
-**Total Problems:** 69  
-**Solved:** 8/69  
+**Total Problems:** 70  
+**Solved:** 8/70  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
