@@ -30,7 +30,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
 | 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
 | 10 | ✅ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | [View](#206-reverse-linked-list) | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
-| 11 | ⬜ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | - | *(Prerequisite for #234)* Fast pointer moves 2x the speed of the slow pointer |
+| 11 | ✅ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | [View](#876-middle-of-the-linked-list) | *(Prerequisite for #234)* Fast pointer moves 2x the speed of the slow pointer |
 | 12 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
 | 13 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
 | 14 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
@@ -520,6 +520,61 @@ Loop ends (`c==null`). **Return `p = 3`** → list is now `3 → 2 → 1 → nul
 
 [⬆ Back to Top](#table-of-contents)
 
+### 876. Middle of the Linked List
+
+*(Prerequisite for #234 — find the middle, then reverse the second half to compare against the first)*
+
+**Approach:** Fast & Slow Pointers
+
+**Hint Video:** https://www.youtube.com/watch?v=nzaHG0dme4g
+
+```java
+/**
+ * Definition for singly-linked list.
+ * public class ListNode {
+ *     int val;
+ *     ListNode next;
+ *     ListNode() {}
+ *     ListNode(int val) { this.val = val; }
+ *     ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+ * }
+ */
+class Solution {
+    public ListNode middleNode(ListNode head) {
+        ListNode slow = head;
+        ListNode fast = head;
+        while(fast!=null && fast.next != null){
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        return slow;
+    }
+}
+```
+
+**Dry Run — Input:** `head = [1,2,3,4,5]` (odd length) → expected `3`
+
+| Iter | slow | fast |
+|------|------|------|
+| start | 1 | 1 |
+| 1 | 2 | 3 |
+| 2 | 3 | 5 |
+
+Loop check: `fast=5` is non-null, but `fast.next=null` → exits. **Return `slow=3`.** ✅
+
+**Dry Run — Input:** `head = [1,2,3,4,5,6]` (even length) → expected `4` (LeetCode's convention: return the *second* middle)
+
+| Iter | slow | fast |
+|------|------|------|
+| start | 1 | 1 |
+| 1 | 2 | 3 |
+| 2 | 3 | 5 |
+| 3 | 4 | null |
+
+Loop check: `fast=null` → exits. **Return `slow=4`** — correctly the second of the two middles (`3` and `4`). ✅
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -528,6 +583,6 @@ Loop ends (`c==null`). **Return `p = 3`** → list is now `3 → 2 → 1 → nul
 - ✅ Solution submitted
 
 **Total Problems:** 70  
-**Solved:** 9/70  
+**Solved:** 10/70  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
