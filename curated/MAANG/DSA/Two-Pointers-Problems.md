@@ -33,7 +33,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 11 | ✅ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | [View](#876-middle-of-the-linked-list) | *(Prerequisite for #234)* Fast pointer moves 2x the speed of the slow pointer |
 | 12 | ✅ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | [View](#234-palindrome-linked-list) | Fast/slow pointer finds the middle, then two pointers compare from both halves |
 | 13 | ⬜ | 246 | 🔒 Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
-| 14 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
+| 14 | ✅ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | [View](#283-move-zeroes) | Fast/slow pointers shift non-zero elements forward in place |
 | 15 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
 | 16 | ⬜ | 345 | Reverse Vowels of a String | 62.1% | [LeetCode](https://leetcode.com/problems/reverse-vowels-of-a-string/) | - | Two pointers converge from both ends, swapping only vowel positions |
 | 17 | ⬜ | 349 | Intersection of Two Arrays | 78.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays/) | - | Two pointers walk both sorted arrays together to find shared elements |
@@ -675,6 +675,50 @@ Returns `true`.
 
 [⬆ Back to Top](#table-of-contents)
 
+### 283. Move Zeroes
+
+**Approach:** Two Pointers (Fast & Slow) — compact non-zeros, then zero-fill the tail
+
+```java
+class Solution {
+    public void moveZeroes(int[] nums) {
+        int slow = 0;//moves only for non 0 elements
+        int fast = 0;//scans every element
+
+        //bring all non 0 elems in the start (maintain original order)
+        for(fast = 0; fast < nums.length; fast++){
+            if (nums[fast] != 0){
+                nums[slow] = nums [fast];
+                slow++;
+            }
+        }
+
+        //slow is the cnt of non-zero elements
+        //fill remaining (slow to nums.size) spots with 0
+        while (slow < nums.length){
+            nums[slow] = 0;
+            slow++;
+        }
+    }
+}
+```
+
+**Dry Run — Input:** `nums = [0,1,0,3,12]` → expected `[1,3,12,0,0]`
+
+| fast | nums[fast] | non-zero? | Action | slow after | nums state |
+|------|------------|-----------|--------|-------------|------------|
+| 0 | 0 | no | skip | 0 | [0,1,0,3,12] |
+| 1 | 1 | yes | `nums[0]=1`, `slow++` | 1 | [**1**,1,0,3,12] |
+| 2 | 0 | no | skip | 1 | [1,1,0,3,12] |
+| 3 | 3 | yes | `nums[1]=3`, `slow++` | 2 | [1,**3**,0,3,12] |
+| 4 | 12 | yes | `nums[2]=12`, `slow++` | 3 | [1,3,**12**,3,12] |
+
+Zero-fill pass (`slow=3` to `4`): `nums[3]=0`, `nums[4]=0` → `[1,3,12,0,0]`. ✅
+
+Time: O(n), Space: O(1). Relative order of non-zero elements preserved.
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -684,7 +728,7 @@ Returns `true`.
 - 🔒 LeetCode Premium (subscription required to view)
 
 **Total Problems:** 70  
-**Solved:** 11/70  
+**Solved:** 12/70  
 **Premium-locked:** 5 (#170, #246, #408, #1099, #1826)  
 **Status:** In Progress  
 **Last Updated:** 2026-09-10
