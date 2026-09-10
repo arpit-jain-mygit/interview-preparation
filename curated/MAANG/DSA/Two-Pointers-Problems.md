@@ -679,6 +679,8 @@ Returns `true`.
 
 **Approach:** Two Pointers (Fast & Slow) — compact non-zeros, then zero-fill the tail
 
+**Hint Video:** https://www.youtube.com/shorts/I86mP5PVBno?feature=share
+
 ```java
 class Solution {
     public void moveZeroes(int[] nums) {
