@@ -31,7 +31,7 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
 | 10 | ✅ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | [View](#206-reverse-linked-list) | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
 | 11 | ✅ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | [View](#876-middle-of-the-linked-list) | *(Prerequisite for #234)* Fast pointer moves 2x the speed of the slow pointer |
-| 12 | ⬜ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | - | Fast/slow pointer finds the middle, then two pointers compare from both halves |
+| 12 | ✅ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | [View](#234-palindrome-linked-list) | Fast/slow pointer finds the middle, then two pointers compare from both halves |
 | 13 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
 | 14 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
 | 15 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
@@ -575,6 +575,106 @@ Loop check: `fast=null` → exits. **Return `slow=4`** — correctly the second 
 
 [⬆ Back to Top](#table-of-contents)
 
+### 234. Palindrome Linked List
+
+**Approach:** Fast/slow to find middle (#876) + reverse second half (#206) + compare halves
+
+Combines the two prerequisites: find the middle with fast/slow pointers, reverse the second half in place, walk the first half and reversed second half together comparing values, then reverse the second half back to restore the original list.
+
+```java
+/**
+ * Definition for singly-linked list.
+ * public class ListNode {
+ *     int val;
+ *     ListNode next;
+ *     ListNode() {}
+ *     ListNode(int val) { this.val = val; }
+ *     ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+ * }
+ */
+class Solution {
+    public boolean isPalindrome(ListNode head) {
+        //find middle of the LL
+        ListNode slow = middleOfLL(head);
+
+        //reverse the second half LL
+        ListNode head2 = reverseLL(slow);
+
+        //after 2nd half LL is reversed, compare 1st half LL and 2nd half LL, node by node, if not matching, return false;
+        boolean isPalindrome = compareTwoLLs(head, head2);
+
+        //reverse again the second half so that its back to the original input LL
+        reverseLL(head2);
+
+        return isPalindrome;
+    }
+
+    //before reversal, LL head is head
+    //after reversal, LL head is prev
+    //leetcode #206
+    private ListNode reverseLL(ListNode head){
+        ListNode prev = null;
+        ListNode curr = head;
+        ListNode next = null;
+        while(curr!=null){
+            next = curr.next;
+            curr.next = prev;
+            prev = curr;
+            curr = next;
+        }
+        return prev;//prev is the head of reversed LL
+    }
+
+    //leetcode #876
+    private ListNode middleOfLL(ListNode head){
+        ListNode slow = head;
+        ListNode fast = head;
+        while(fast!=null && fast.next!=null){
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        return slow;//slow is the middle node
+    }
+
+    private boolean compareTwoLLs(ListNode head1, ListNode head2){
+        while(head1!=null && head2!=null){
+            if (head1.val!=head2.val) 
+                return false;
+            head1 = head1.next;
+            head2 = head2.next;
+        }
+        return true;
+    }
+}
+```
+
+**Dry Run — Input:** `head = [1,2,2,1]` → expected `true`
+
+Nodes `n1(1), n2(2), n3(2), n4(1)`.
+
+1. **Middle** (`middleOfLL`): `slow` ends at `n3` (first node of the second half).
+2. **Reverse from `n3`** (`reverseLL`): sets `n3.next=null`, `n4.next=n3` → `head2 = n4(1) → n3(2) → null`. First half still flows `n1 → n2 → n3` (the `n2→n3` link is untouched).
+3. **Compare** (`compareTwoLLs`, `head1=n1`, `head2=n4`):
+
+| Iter | head1 | head2 | `head1.val != head2.val`? |
+|------|-------|-------|-----------------------------|
+| 1 | n1(1) | n4(1) | no → advance |
+| 2 | n2(2) | n3(2) | no → advance |
+| 3 | n3 | null | loop exits (`head2==null`) |
+
+Returns `true`.
+4. **Restore** (`reverseLL(head2)`): reverses `n4→n3` back to `n3→n4`, list is `n1→n2→n3→n4` again.
+
+**Return `true`.** ✅
+
+**Dry Run — Input:** `head = [1,2,3]` → expected `false`
+
+1. Middle: `slow` ends at `n2(2)`.
+2. Reverse from `n2`: `head2 = n3(3) → n2(2) → null`; `n2.next=null`. First half: `n1(1) → n2`.
+3. Compare (`head1=n1`, `head2=n3`): iter 1 → `n1.val(1) != n3.val(3)` → **return `false`**.
+
+[⬆ Back to Top](#table-of-contents)
+
 ---
 
 ## Legend
@@ -583,6 +683,6 @@ Loop check: `fast=null` → exits. **Return `slow=4`** — correctly the second 
 - ✅ Solution submitted
 
 **Total Problems:** 70  
-**Solved:** 10/70  
+**Solved:** 11/70  
 **Status:** In Progress  
 **Last Updated:** 2026-08-21
