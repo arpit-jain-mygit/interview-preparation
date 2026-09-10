@@ -27,19 +27,19 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 5 | ✅ | 125 | Valid Palindrome | 54.1% | [LeetCode](https://leetcode.com/problems/valid-palindrome/) | [View](#125-valid-palindrome) | Two pointers converge from both ends, skipping non-alphanumeric characters |
 | 6 | ✅ | 141 | Linked List Cycle | 54.9% | [LeetCode](https://leetcode.com/problems/linked-list-cycle/) | [View](#141-linked-list-cycle) | Fast/slow pointers (Floyd's) detect a loop because they move at different speeds |
 | 7 | ✅ | 160 | Intersection of Two Linked Lists | 64.5% | [LeetCode](https://leetcode.com/problems/intersection-of-two-linked-lists/) | [View](#160-intersection-of-two-linked-lists) | Two pointers swap heads on reaching the end, equalizing total distance traveled |
-| 8 | ⬜ | 170 | Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
+| 8 | ⬜ | 170 | 🔒 Two Sum III - Data structure design | 39.2% | [LeetCode](https://leetcode.com/problems/two-sum-iii-data-structure-design/) | - | On sorted stored values, two pointers converge to find a pair summing to the target |
 | 9 | ✅ | 202 | Happy Number | 60.1% | [LeetCode](https://leetcode.com/problems/happy-number/) | [View](#202-happy-number) | Fast/slow pointers (Floyd's) detect cycling in the repeated digit-square-sum sequence |
 | 10 | ✅ | 206 | Reverse Linked List | 81.0% | [LeetCode](https://leetcode.com/problems/reverse-linked-list/) | [View](#206-reverse-linked-list) | *(Prerequisite for #234)* Prev/curr pointer pair walks the list, reversing links as it goes |
 | 11 | ✅ | 876 | Middle of the Linked List | 82.3% | [LeetCode](https://leetcode.com/problems/middle-of-the-linked-list/) | [View](#876-middle-of-the-linked-list) | *(Prerequisite for #234)* Fast pointer moves 2x the speed of the slow pointer |
 | 12 | ✅ | 234 | Palindrome Linked List | 58.6% | [LeetCode](https://leetcode.com/problems/palindrome-linked-list/) | [View](#234-palindrome-linked-list) | Fast/slow pointer finds the middle, then two pointers compare from both halves |
-| 13 | ⬜ | 246 | Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
+| 13 | ⬜ | 246 | 🔒 Strobogrammatic Number | 47.5% | [LeetCode](https://leetcode.com/problems/strobogrammatic-number/) | - | Two pointers converge from both ends, checking each rotationally-valid digit pair |
 | 14 | ⬜ | 283 | Move Zeroes | 64.3% | [LeetCode](https://leetcode.com/problems/move-zeroes/) | - | Fast/slow pointers shift non-zero elements forward in place |
 | 15 | ⬜ | 344 | Reverse String | 81.2% | [LeetCode](https://leetcode.com/problems/reverse-string/) | - | Two pointers swap characters from opposite ends, moving inward |
 | 16 | ⬜ | 345 | Reverse Vowels of a String | 62.1% | [LeetCode](https://leetcode.com/problems/reverse-vowels-of-a-string/) | - | Two pointers converge from both ends, swapping only vowel positions |
 | 17 | ⬜ | 349 | Intersection of Two Arrays | 78.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays/) | - | Two pointers walk both sorted arrays together to find shared elements |
 | 18 | ⬜ | 350 | Intersection of Two Arrays II | 60.2% | [LeetCode](https://leetcode.com/problems/intersection-of-two-arrays-ii/) | - | Two pointers walk both sorted arrays, matching elements including duplicates |
 | 19 | ⬜ | 392 | Is Subsequence | 49.4% | [LeetCode](https://leetcode.com/problems/is-subsequence/) | - | Two pointers advance through both strings in lockstep, one only on a match |
-| 20 | ⬜ | 408 | Valid Word Abbreviation | 37.0% | [LeetCode](https://leetcode.com/problems/valid-word-abbreviation/) | - | Two pointers walk the word and the abbreviation together |
+| 20 | ⬜ | 408 | 🔒 Valid Word Abbreviation | 37.0% | [LeetCode](https://leetcode.com/problems/valid-word-abbreviation/) | - | Two pointers walk the word and the abbreviation together |
 | 21 | ⬜ | 455 | Assign Cookies | 55.4% | [LeetCode](https://leetcode.com/problems/assign-cookies/) | - | Two pointers on sorted children and cookies greedily match smallest-fit pairs |
 | 22 | ⬜ | 541 | Reverse String II | 54.4% | [LeetCode](https://leetcode.com/problems/reverse-string-ii/) | - | A pointer marks each chunk boundary; an inner two-pointer swap reverses it |
 | 23 | ⬜ | 557 | Reverse Words in a String III | 84.1% | [LeetCode](https://leetcode.com/problems/reverse-words-in-a-string-iii/) | - | Two pointers reverse the characters within each word in place |
@@ -61,13 +61,13 @@ Source: https://leetcode.com/problem-list/two-pointers/ (Easy difficulty)
 | 34 | ⬜ | 942 | DI String Match | 81.3% | [LeetCode](https://leetcode.com/problems/di-string-match/) | - | Two pointers track a low/high bound, assigned based on each instruction |
 | 35 | ⬜ | 977 | Squares of a Sorted Array | 74.1% | [LeetCode](https://leetcode.com/problems/squares-of-a-sorted-array/) | - | Two pointers from both ends compare magnitudes, filling the result from the back |
 | 36 | ⬜ | 1089 | Duplicate Zeros | 54.0% | [LeetCode](https://leetcode.com/problems/duplicate-zeros/) | - | A read pointer scans while a second tracks the shifted write position |
-| 37 | ⬜ | 1099 | Two Sum Less Than K | 62.2% | [LeetCode](https://leetcode.com/problems/two-sum-less-than-k/) | - | Sort the array, then two pointers converge to maximize the sum under k |
+| 37 | ⬜ | 1099 | 🔒 Two Sum Less Than K | 62.2% | [LeetCode](https://leetcode.com/problems/two-sum-less-than-k/) | - | Sort the array, then two pointers converge to maximize the sum under k |
 | 38 | ⬜ | 1332 | Remove Palindromic Subsequences | 77.2% | [LeetCode](https://leetcode.com/problems/remove-palindromic-subsequences/) | - | Two pointers converge from both ends to check whether it's already a palindrome |
 | 39 | ⬜ | 1346 | Check If N and Its Double Exist | 42.0% | [LeetCode](https://leetcode.com/problems/check-if-n-and-its-double-exist/) | - | On a sorted array, two pointers check value/double pairs |
 | 40 | ⬜ | 1385 | Find the Distance Value Between Two Arrays | 72.2% | [LeetCode](https://leetcode.com/problems/find-the-distance-value-between-two-arrays/) | - | Two pointers over the sorted second array bound each comparison |
 | 41 | ⬜ | 1455 | Check If a Word Occurs As a Prefix of Any Word in a Sentence | 68.8% | [LeetCode](https://leetcode.com/problems/check-if-a-word-occurs-as-a-prefix-of-any-word-in-a-sentence/) | - | Two pointers scan sentence word boundaries and compare against the prefix |
 | 42 | ⬜ | 1768 | Merge Strings Alternately | 82.2% | [LeetCode](https://leetcode.com/problems/merge-strings-alternately/) | - | Two pointers advance through both strings, alternating characters |
-| 43 | ⬜ | 1826 | Faulty Sensor | 50.5% | [LeetCode](https://leetcode.com/problems/faulty-sensor/) | - | Two pointers compare both arrays in parallel, skipping past the mismatch |
+| 43 | ⬜ | 1826 | 🔒 Faulty Sensor | 50.5% | [LeetCode](https://leetcode.com/problems/faulty-sensor/) | - | Two pointers compare both arrays in parallel, skipping past the mismatch |
 | 44 | ⬜ | 1961 | Check If String Is a Prefix of Array | 52.9% | [LeetCode](https://leetcode.com/problems/check-if-string-is-a-prefix-of-array/) | - | Two pointers track position across the words array and the target string |
 | 45 | ⬜ | 2000 | Reverse Prefix of Word | 86.5% | [LeetCode](https://leetcode.com/problems/reverse-prefix-of-word/) | - | Two pointers reverse characters up to a found index |
 | 46 | ⬜ | 2108 | Find First Palindromic String in the Array | 84.1% | [LeetCode](https://leetcode.com/problems/find-first-palindromic-string-in-the-array/) | - | Two pointers converge from both ends to check each string |
@@ -681,8 +681,10 @@ Returns `true`.
 
 - ⬜ Not attempted
 - ✅ Solution submitted
+- 🔒 LeetCode Premium (subscription required to view)
 
 **Total Problems:** 70  
 **Solved:** 11/70  
+**Premium-locked:** 5 (#170, #246, #408, #1099, #1826)  
 **Status:** In Progress  
-**Last Updated:** 2026-08-21
+**Last Updated:** 2026-09-10
