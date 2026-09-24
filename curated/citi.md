@@ -101,6 +101,17 @@ A: Multi-cloud adds real cost (cross-cloud data transfer, duplicated infra, extr
 **Q: Docker vs. Kubernetes vs. serverless — how do you decide?**
 A: Match the workload shape: long-running, stateful, or needing fine-grained resource/scheduling control → Kubernetes. Short-lived, bursty, stateless → serverless. XCS's "hundreds of thousands of pods" and custom compute paradigms strongly imply K8s (or a K8s-like scheduler) is the right substrate, not serverless — the JD's own framing (guardrails, compute paradigms) suggests a purpose-built scheduling layer on top of K8s primitives.
 
+**Q: Walk me through the Databricks compute-cost reduction — what did you actually change, and how did you handle spot-instance interruptions?**
+*(⚠ constructed — not detailed in this repo; only your resume states 97.5% Databricks compute reduction across 500+ ETL jobs. Verify/personalize the specifics below before using them live.)*
+A: Two separate levers, not one:
+- **Job clusters instead of all-purpose clusters for every scheduled pipeline.** All-purpose clusters stay up and get shared across users/notebooks — fine for development, wasteful for production, since idle time still bills. Job clusters spin up per run and auto-terminate on completion, so 500+ ETL jobs stopped paying for idle compute between runs — this alone is typically the largest single lever in a Databricks cost redesign.
+- **Spot instances on the worker nodes only** — never the driver, and never on SLA-bound production paths, because losing the driver kills the whole job and an SLA miss defeats the point of saving compute cost. Workers are replaceable: if AWS reclaims a spot worker mid-job, Spark's built-in stage-retry re-schedules the lost tasks on a replacement node, so a well-partitioned job survives a spot interruption as a slower stage, not a failed job. Combined with checkpointing on longer-running stages so a lost worker doesn't force a full job restart.
+- **Result to state plainly (from resume, not the repo):** ~97.5% Databricks compute cost reduction. If pushed on mechanism, the honest answer is these two levers (job-cluster redesign + selective spot usage) compounding — job clusters remove idle-time waste, spot removes on-demand price premium on the now-much-smaller footprint.
+
+**Q: Tell me about a time a small inefficiency, multiplied by scale, became a real cost or performance problem.**
+*(⚠ constructed — a good fit for this is the same Databricks story reframed: one inefficient pattern copied across 500+ jobs.)*
+A: A per-job inefficiency (e.g. an all-purpose cluster sitting idle between scheduled runs, or a job cluster sized for peak rather than actual load) costs very little on a single job — but replicated unreflectively across 500+ ETL jobs, that small per-unit waste becomes the dominant line item on the infrastructure bill. The fix isn't job-by-job tuning, it's changing the *template* every job is built from — redesign the job-cluster pattern once, then roll it out across all 500+, so the fix multiplies the same way the original waste did. This is exactly the mindset the JD is describing when it says "small changes multiplied by millions of calculations have a high cost" — the lever is the shared pattern, not any single instance of it.
+
 ---
 
 ## 5. Data & Storage
@@ -133,6 +144,10 @@ A: Ran a small pilot (2 developers) rather than mandating org-wide change. In 4 
 **Q: How do you balance tech-debt paydown against feature pressure from the business?**
 A: Built a coalition around competing stakeholder motivations (leadership wanted competitive agility, product wanted features) by splitting a 100-engineer org 50/50 between modernization and feature work, with monthly dashboards showing modernization progress so it stayed visible rather than perpetually deprioritized. Result: a 12-year, 2M-LOC monolith shrunk 40%, 15 microservices extracted, feature velocity preserved throughout.
 
+**Q: How do you balance hands-on technical ownership with running the team's day-to-day (sprint planning, backlog, standups)?**
+*(⚠ constructed — not in the repo; this is one of the most likely questions for this specific role given the JD explicitly asks for both "hands-on technical leadership" and Scrum ceremony ownership.)*
+A: Treat ceremony overhead as something to make efficient, not something to opt out of — a tight daily standup and a well-groomed backlog protect your own focus time as much as anyone else's. The pattern that scales: delegate ceremony *facilitation* (a senior engineer or rotating lead can run standups/retros) while you stay the final call on architecture and code review, so ceremonies don't silently consume the hours that should go to the hardest technical problems. At the 70-engineer org level this meant setting standards and reviewing at the architecture level; at a single-team scale like XCS, expect to be more hands-on in code and design review day-to-day, with less need to delegate — a smaller team is exactly where "hands-on" and "leads the team" stop being in tension.
+
 **On JD-specific mechanics (sprint planning, backlog grooming, retro cadence):** thin in the prep material — answer these from direct SAFe Agile / 70-engineer-org experience rather than reciting anything scripted; this is exactly the kind of question where a real, specific recent example beats a rehearsed one.
 
 ---
@@ -163,6 +178,10 @@ A: Apply the same staged-capacity philosophy used on DCP — design for 2× capa
 **Q: What would you change if you rebuilt your biggest system from scratch?**
 A: Honest, not self-flagellating: stronger eventual-consistency guarantees communicated to users from day one (reduce confusion from status lag) — the event-sourcing trade-off itself was correct and you'd make it again. Also would reconsider the workflow-orchestration tool choice (a more cloud-native option) in hindsight, while noting the original choice's visual tooling was genuinely valuable for non-technical stakeholders at the time.
 
+**Q: Tell me about a stakeholder-driven scaling initiative you led — not just a technical redesign, but one where you had to coordinate across teams to hit a milestone.**
+*(⚠ constructed — not detailed in this repo; only your resume states template onboarding automated across 1,000 templates, 24 days → under 1 hour. Verify/personalize before using live.)*
+A: The shape of this story, to fill in with your real specifics: onboarding a new template (a new document type / data schema the extraction pipeline needs to support) was a ~24-day manual process — almost certainly involving manual schema definition, validation-rule authoring, and review/sign-off across multiple stakeholders (business/compliance/engineering) for each of 1,000 templates. Getting that under an hour is not a pure engineering fix — it requires: (1) turning the manual review checklist into automated validation rules the pipeline enforces directly, (2) a self-service authoring path so business stakeholders configure a new template without opening an engineering ticket, and (3) getting the stakeholders who owned the manual sign-off to trust the automated checks enough to remove themselves from the critical path — the actual coordination win, not just the automation. This maps directly onto the JD's "coordinate with stakeholders to ensure scaling efforts align with customer needs" responsibility — lead with the stakeholder-trust angle, not just the automation mechanism, since that's what the JD is actually testing for.
+
 **Q: How do you advocate for architectural investment when the business only wants features?**
 A: Reuse the coalition-building approach from §6 (Q4) — quantify the cost of *not* investing (velocity decay, incident cost) in terms the business side already cares about, and make progress visible on a recurring cadence so it doesn't get silently deprioritized.
 
@@ -176,6 +195,9 @@ A: Reuse the coalition-building approach from §6 (Q4) — quantify the cost of 
 - The muscle memory transfers directly: DCP's Kafka partition sizing, lag-driven autoscaling, and entity-mapping-at-scale work are all instances of the same underlying problem XCS owns — efficiently distributing large volumes of small work units across a resource pool. Say this explicitly; it's your strongest bridge.
 - On the domain gap (financial data extraction vs. risk-calculation engine): you've operated in a regulated, accuracy-critical financial environment (95%+ accuracy, sub-2s SLAs, full auditability) — the reliability bar and the finance-industry operating constraints are familiar even if the specific compute domain isn't. Don't overclaim quant/risk-calc expertise you don't have.
 - Have one honest, specific answer ready for "why Citi": pick something real about XiP/XiNG's scale or the technical problem itself (not generic "great company" language) — see §11 for questions that double as evidence you did your homework.
+
+**Q: What excites you about a risk-calculation platform specifically, versus the document-processing domain you've been in?**
+A: Name the actual shift honestly rather than pretending it isn't one: document-processing scale is about throughput and accuracy under human-review constraints (10K docs/day, 95%+ accuracy, L1/L2 approval workflows); XCS's scale is about raw compute orchestration — no human in the loop, the constraint is pods/nodes/memory and how cheaply you can multiply a calculation by hundreds of millions. That's a genuinely different, more purely technical problem, and it's the part that's the draw — less "manage the review workflow," more "make the engine itself faster and cheaper at a scale where a 1% inefficiency is a real number." Say this plainly rather than papering over the domain gap — it reads as self-aware rather than a rehearsed deflection.
 
 ---
 
