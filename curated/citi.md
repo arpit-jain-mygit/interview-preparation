@@ -244,6 +244,7 @@ A: **VoxAlchemy.ai** — voice/OCR-to-data pipeline: Gemini API for extraction, 
 - The JD says "risk & suitability" calculations — is XCS purely the compute/orchestration layer under both, or does suitability logic (compliance/regulatory-fit checks) impose different determinism or auditability requirements than pure risk pricing?
 - XiNG has expanded asset-class by asset-class since 2014 (fixed income → credit → commodities → equities → derivatives) — where does that maturity curve leave XCS today: still absorbing newly onboarded asset classes, or now purely optimizing an already-stable workload?
 - Is "hundreds of thousands of pods" the platform's total daily footprint across many concurrent calculations, or can a single calculation itself fan out to that scale — and if the latter, what keeps Kubernetes API-server/scheduler load from becoming the bottleneck at that fan-out?
+- What business deadline drives the specific 90-minute window (e.g. a market-open cutoff, a regulatory reporting deadline) — and is that window fixed regardless of workload growth, or does it get renegotiated as volumes scale?
 
 ---
 
@@ -309,3 +310,21 @@ A: Decompose along whatever axis is naturally independent — by instrument, sce
 
 **Q: The platform coordinates "hundreds of thousands of pods" daily — does a single calculation actually fan out to that many, and is there a practical ceiling?**
 A: Worth clarifying live rather than assuming (good candidate for §11) — "hundreds of thousands of pods" almost certainly describes the platform's total daily footprint across many concurrent calculations, not one job's fan-out. A single job spread across six figures of pods would hit real ceilings well before that: Kubernetes API-server load, scheduler throughput, and per-pod startup/image-pull overhead all degrade long before six-figure fan-out for one job. The actual engineering lever at that aggregate scale is usually pod/node **reuse** — a warm pool of pre-provisioned pods rather than cold-starting one per task — since at high task volume, pod-startup latency (scheduling + image pull + container init) can dominate over the calculation itself for short-running tasks.
+
+**Q: Do the back-of-envelope math on "250,000 compute-hours in a single 90-minute execution" — what does that actually imply about concurrency?**
+A: This is a direct back-of-envelope estimation exercise (see your own [chapter-2-back-of-envelope-estimation.md](chapter-2-back-of-envelope-estimation.md)) — walk the interviewer through it live rather than just stating the JD's numbers back:
+
+```
+250,000 compute-hours ÷ 1.5 hours (90 min wall-clock) ≈ 166,667
+
+→ roughly 166,667 compute-hours must be "in flight" concurrently,
+  every hour, throughout the entire 90-minute window.
+```
+
+That number — ~166,667 concurrent units of work — is the internal-consistency check worth stating out loud: it lines up almost exactly with the JD's separate claim of **"tens of thousands of compute nodes."** If each node carries roughly 4–16 concurrent cores/threads doing useful work, tens of thousands of nodes (say 15,000–40,000) comfortably covers a ~166,667 concurrency requirement. Pointing out that these two JD numbers cross-check each other is a stronger answer than reciting either one alone — it signals you actually reasoned about the scale rather than memorized the JD.
+
+**Q: How would you guarantee a fixed 90-minute completion deadline regardless of day-to-day workload variance — what happens on a day with more instruments/scenarios than usual?**
+A: A hard wall-clock SLA on a variable-sized workload means you can't just "run until done" — you need **elastic headroom sized for the worst realistic day**, not the average one, plus the ability to detect mid-run whether you're on pace and react before the deadline, not after. Concretely: track actual progress against a "must be X% complete by minute Y" pace line (not just "wait and see if it finishes"), and have a pre-arranged burst path — likely the public-cloud portion of the "private + public cloud" split — to add concurrent capacity within the window if the private/on-prem baseline alone won't finish in time. This is the same instinct as your DCP autoscaling answer (§3) — scale on a leading indicator of falling behind (pace/lag), not a lagging one (whether you already missed the deadline).
+
+**Q: Why split "tens of thousands of compute nodes" across private *and* public cloud rather than just running it all in one place?**
+A: Almost certainly a cost/elasticity split, not a redundancy one: private/on-prem infra has a fixed capital cost that's cheapest for **steady-state baseline load**, while public cloud is the right tool for **the peak** — bursting up tens of thousands of extra nodes for the ~90-minute execution window, then scaling back down, rather than owning enough on-prem hardware to cover a peak that only lasts 90 minutes a day. This is the same job-cluster-vs-all-purpose-cluster logic from your Databricks answer (§4) — don't pay for idle capacity year-round to cover a load that exists for 90 minutes — just applied at the level of whole clouds instead of individual clusters. Also worth naming the harder problem this split creates: reference/market data needed by every node has to be available cheaply on both sides of that boundary, or cross-cloud data-transfer cost and latency eat into the very cost savings the split was meant to capture.
