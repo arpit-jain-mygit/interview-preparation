@@ -7,6 +7,22 @@
 
 ---
 
+## XiP/XiNG Platform — What It Actually Is (Public Info)
+
+Verified via public reporting, not inferred from the JD — cross-checked across an industry trade article and two other live Citi job postings for the same XCS team at different levels (req 26975610 = this SVP role you're interviewing for; a parallel AVP req, 7+ yrs, identical platform language).
+
+- **XiNG** ("Xi Next Generation," pronounced "zing") = Citi's standardized cross-asset quant library and risk/pricing engine. Started ~2014 in the fixed-income desk, built on an older internal analytics library ("Xi"), originally a post-2008-crisis regulatory response.
+- **XiP** = the platform that runs XiNG at production scale — an API-services platform so the same valuation/risk data services are consumed consistently across business units, instead of each asset class building its own. **XCS ("XiP Compute Service") is the engine room inside XiP** — the compute orchestration layer specifically, which is exactly the team/role you're interviewing for.
+- **Not just risk — "risk & suitability" calculations.** The actual job-posting language is "1.5 billion risk & suitability calculations," not risk alone. Suitability is a compliance/regulatory-fit concept (is this trade appropriate for this client), not just quantitative pricing risk — worth a clarifying question (§11).
+- **Timeline**: ~6 years to expand from fixed income to credit, commodities, equities, risk/quant functions, equity mark-to-market accounting, and derivatives. By Q3 2024, "every trade at Citi goes through XiNG." CEO Jane Fraser cited it publicly on that quarter's earnings call as part of a broader simplification push (~1,250 legacy platforms retired since 2022).
+- **Architecture**: Kubernetes-based orchestration, hybrid multi-cloud — on-prem core plus dynamic bursting to multiple public clouds, with placement decided by resource availability, latency, and cost. Self-service: quants can build custom pricing models (e.g. pricing callable bonds) with minimal code, without needing engineering for every new model. Some multi-hour calculations are threaded across many Kubernetes pods. Delivered ~10x improvement in calculation execution time as the platform matured.
+- **Signal worth noting**: Citi is hiring across levels on this same XCS team concurrently (this SVP req + a parallel AVP req) — reads as active team growth, not a single backfill.
+- **Led by** Jon Lofthouse (CIO since Feb 2025) working physically alongside Andy Morton (then head of rates trading, now head of Markets) — the reporting specifically credits physical proximity between tech and trading-desk leadership as pivotal to how it got built.
+
+Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)](https://www.waterstechnology.com/data-management/7952400/xing-inside-citis-all-encompassing-risk-platform) · [Derivatives house of the year: Citi (Risk.net)](https://www.risk.net/awards/7962588/derivatives-house-of-the-year-citi) · [AVP req, same team](https://jobs.citi.com/job/pune/java-developer-distributed-systems-assistant-vice-president/287/99709913104)
+
+---
+
 ## Table of Contents
 
 1. [Role Snapshot & Fit](#1-role-snapshot--fit)
@@ -22,6 +38,7 @@
 11. [Questions to Ask Them](#11-questions-to-ask-them)
 12. [Key Numbers Cheat Sheet](#12-key-numbers-cheat-sheet)
 13. [Gaps — Own These Honestly](#13-gaps--own-these-honestly)
+14. [XiP-Specific Technical Questions](#14-xip-specific-technical-questions)
 
 ---
 
@@ -224,6 +241,8 @@ A: **VoxAlchemy.ai** — voice/OCR-to-data pipeline: Gemini API for extraction, 
 - What does the compute paradigm/scheduling layer actually look like above raw Kubernetes — is XCS built on K8s primitives directly, or a custom scheduler on top?
 - What does success look like for this role at the 6-month mark?
 - How large is the XCS team today, and roughly what fraction of the role is hands-on IC/architecture work vs. people management?
+- The JD says "risk & suitability" calculations — is XCS purely the compute/orchestration layer under both, or does suitability logic (compliance/regulatory-fit checks) impose different determinism or auditability requirements than pure risk pricing?
+- XiNG has expanded asset-class by asset-class since 2014 (fixed income → credit → commodities → equities → derivatives) — where does that maturity curve leave XCS today: still absorbing newly onboarded asset classes, or now purely optimizing an already-stable workload?
 
 ---
 
@@ -254,3 +273,29 @@ $400K/mo → $100K/mo incident cost        200+ engineers mentored, 70-engineer 
 - **Risk/quant calculation domain**: your scale experience is in document/data pipelines, not a calculation engine. Don't claim domain expertise you don't have — claim the transferable distributed-systems/scheduling mechanics instead (§3, §9).
 - **Director → Lead Engineer framing**: have the "trading breadth for depth" answer ready cold (§9) — this will very likely come up and a hesitant answer undercuts everything else.
 - **Sprint/backlog mechanics**: the prep repo has strong conflict-resolution and adoption stories but no granular "how I run a retro" content — answer this one from live memory, not from this doc.
+
+---
+
+## 14. XiP-Specific Technical Questions
+
+*(⚠ constructed from public reporting on XiP/XiNG — see background section above — plus your JD and resume. None of this is in your prep repo since it predates knowing the real platform; each question below is bridged to a real DCP/resume experience where one applies.)*
+
+These are sharper than generic "distributed systems" questions because they're built from XiP's actual, publicly reported architecture, not a generic JD reading.
+
+**Q: XiNG lets quants build custom pricing models with minimal code (self-service). How would you design a system that lets non-engineers submit compute-heavy calculation logic safely into a shared cluster?**
+A: The hard part isn't the submission API, it's isolation and resource fairness — a badly written quant model shouldn't be able to starve or crash other tenants' calculations. Bridge from your own experience with bulkhead isolation (DCP: thread-pool isolation per extraction engine, §3/§4) — same principle applies at the cluster level: resource quotas and priority classes per submitting team, a validation/dry-run step before a new model gets scheduling access to the full cluster, and a circuit breaker that quarantines a model consistently exceeding its resource budget rather than letting it degrade the whole platform.
+
+**Q: XiNG dynamically places workloads across on-prem and multiple public clouds based on resource availability, latency, and cost. How would you design that placement decision?**
+A: This is a cost/latency/compliance-constrained bin-packing problem, not a pure scheduling one — some risk data may be barred from leaving certain jurisdictions (data-residency constraints), which narrows the placement options before cost even enters the decision. Bridge from your own Databricks spot-instance economics (§4): the same "which workload can tolerate interruption/movement, which can't" split applies here — latency-sensitive, SLA-bound calculations stay on-prem or in a fixed cloud; bulk, interruption-tolerant batch work is the right candidate to burst to whichever public cloud is cheapest at that moment.
+
+**Q: Some calculations run for hours and are threaded across many Kubernetes pods. How do you decompose one long-running calculation into parallel work, and handle a partial failure mid-calculation?**
+A: This is the map-reduce shape — split the calculation into independent shards (by scenario, by instrument, by risk factor — whatever the natural parallel axis is), run them across pods, then aggregate. The distributed-systems question underneath is the same one you solved on DCP's event-sourcing design (§3): if one shard's pod dies mid-calculation, do you re-run just that shard, or restart the whole calculation? Cheap re-run of a single failed shard requires each shard's work to be checkpointed/idempotent — the same "check before processing" idempotency pattern from your transactional-outbox answer (§2), just applied to compute shards instead of message consumers.
+
+**Q: A risk/suitability number that feeds a regulatory filing needs to be reproducible — same inputs must always produce the same output. What's hard about guaranteeing that in a massively parallel system, and how would you address it?**
+A: Floating-point arithmetic is not associative — summing the same numbers in a different order (which is exactly what happens when parallel shard results get aggregated in a non-deterministic completion order) can produce a different final value at the margins. For a regulator-facing number, that's not a rounding curiosity, it's a correctness requirement. Fix by making aggregation order deterministic (fixed reduce order keyed by shard ID, not by completion order) or using a numerically stable/order-independent summation strategy, and — bridging from your own event-sourcing experience (§3, §5) — treating the calculation's inputs and the resulting output as an immutable, versioned, replayable record so a regulator can ask "reproduce the number you filed on date X" and get the literal same computation path back, not just a plausibly similar one.
+
+**Q: XRS (XiNG's risk store) serves "all new official risk and valuation results" — how would you design storage for write-heavy, authoritative calculation outputs coming from thousands of ephemeral, parallel compute pods?**
+A: This maps almost directly onto your DCP data architecture (§5): an authoritative, append-only event log as the source of truth (here, a versioned calculation-result event per shard/run) with a derived, queryable read-model built asynchronously on top — the same event-sourcing/CQRS split you already used for auditability reasons on DCP, just with calculation results instead of document-approval events as the thing being logged.
+
+**Q: The platform "distributes hundreds of millions of calculations" across "hundreds of TB of memory" — when you scale a compute cluster like this, what usually breaks first: CPU, memory, network, or scheduling overhead?**
+A: For a calculation-heavy workload (as opposed to DCP's I/O-bound extraction workers), memory and scheduling overhead are the more likely first bottlenecks, not raw CPU — many small pods each requesting memory can fragment node capacity (a node with 4GB free can't take a job needing 5GB even if total cluster memory is abundant), and at "hundreds of thousands of pods," the Kubernetes scheduler's own decision-making and API-server load can become a bottleneck before any single node does. Bridge from your own autoscaling philosophy (§3): scale and alert on the actual constraining resource (here, likely memory saturation and pod-scheduling latency) rather than a proxy metric like average CPU — the same "don't scale on CPU alone" lesson from DCP's Kafka consumer autoscaling, applied to a compute-bound rather than I/O-bound workload.
