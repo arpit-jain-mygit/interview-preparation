@@ -43,6 +43,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 16. [Microservices: When, Pitfalls, Culture, Patterns](#16-microservices-when-pitfalls-culture-patterns)
 17. [Conflict Scenarios for Behavioral Questions](#17-conflict-scenarios-for-behavioral-questions)
 18. [AWS: Likely Questions and DCP-Mapped Concepts](#18-aws-likely-questions-and-dcp-mapped-concepts)
+19. [Behavioral Q&A Index](#19-behavioral-qa-index)
 
 ---
 
@@ -803,3 +804,21 @@ DCP's real stack (§0/§11) is largely cloud-agnostic by design (Kubernetes, Kaf
 | 4-hour RTO from backup | **AWS Backup** | The AWS-native mechanism behind DCP's stated disaster-recovery target (§0/§11) |
 
 **How to use this table live:** don't present it as "DCP should have used more AWS services" — present it as "DCP's stack was deliberately cloud-portable, and here's specifically what the AWS-native equivalent of each piece would be and the real trade-off against it" — that shows fluency with the AWS ecosystem without contradicting the honest "we were regulated, so we stayed self-managed" framing above.
+
+---
+
+## 19. Behavioral Q&A Index
+
+**Full source:** [`behavioral-mock.md`](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/behavioral-mock.md) — 7 full STAR-structured answers with detailed timelines, numbers, and a "real behaviors demonstrated" breakdown for each. What's below is a one-line index into that file, not a replacement for it — read the source before the interview, this is just for fast recall of which question covers what.
+
+| # | Question | One-line summary | Key behaviors to show | Already expanded in this doc |
+|---|---|---|---|---|
+| **Q1** | Keep morale/performance high under a genuinely difficult stretch (4-hour outage, peak season, 60 engineers, teams blaming each other) | Fixed the system fast, then treated morale as something to actively rebuild — not assumed to bounce back on its own | Servant leadership, communication under pressure, retention focus | §7 (retention-through-mentorship story) |
+| **Q2** | Navigate conflict/dysfunction between two teams or leaders (legacy DB team vs. microservices team, actively hostile) | Diagnosed it as a coordination-process gap, not a personality clash, and built a lightweight artifact instead of a gatekeeping process | Active listening, reframing, mutual respect, process design | §6 and §15 (team-dysfunction story, full breakdown) |
+| **Q3** | Build trust/transparency in a fragmented global team (80 engineers across Madrid/NY/Singapore, each feeling sidelined differently) | Gave every office real ownership of something strategic, not just better communication | Accessibility, async-inclusion, empowerment, documentation | §7 (global-team-trust story) |
+| **Q4** | Advocate for unpopular/expensive technical debt paydown or architectural change | Quantified the cost of *not* acting in terms the business already cared about, built a coalition instead of mandating from the top | Quantify ROI, coalition-building, honest communication | §6 (tech-debt-paydown story) and §8 |
+| **Q5** | Make a difficult decision that hurt the team short-term but was necessary long-term (consolidating 3 tech stacks, PHP team's skills no longer needed) | Was honest about the real impact up front, then gave affected people real individual choices instead of one blanket decision | Transparency, humanity (real options offered), long-term thinking | §7 (reskilling story) |
+| **Q6** | Drive adoption of a new process/technology that met resistance (zero CI/CD, team resistant) | Ran a small pilot, let the pilot's own data convert skeptics rather than arguing the case abstractly | Pilot approach, data-driven, support/coaching, gradual rollout | §6 (CI/CD adoption story) |
+| **Q7** | Balance competing priorities from different stakeholders (customers want speed, execs want SLA redundancy, product wants 20 features, engineering wants test coverage — all "must-have") | Built a transparent impact/cost matrix, negotiated a realistic capacity split with each stakeholder individually, then delivered exactly what was committed | Framework-based thinking, stakeholder communication, realistic commitment, delivery | **Not yet expanded elsewhere in this doc** — closest existing analog is §17 Conflict 2 (features vs. keeping-the-lights-on), but Q7 has its own numbers/matrix approach worth reading directly from the source |
+
+**Note on Q7 specifically**, since it's the one not already folded in elsewhere: the source answer builds an explicit impact-vs-cost matrix (business impact, engineering cost in story points, timeline) across all four competing asks, negotiates each stakeholder down to something realistic individually (e.g., product agrees to 10 high-impact features instead of 20 mediocre ones), and only commits to 190 of 250 available capacity points — deliberately leaving a buffer for unknown work rather than over-committing. That "leave a buffer, don't commit 100% of capacity" instinct is a detail worth pulling out directly even though a full write-up isn't duplicated here.
