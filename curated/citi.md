@@ -42,6 +42,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 15. [Additional Details](#15-additional-details)
 16. [Microservices: When, Pitfalls, Culture, Patterns](#16-microservices-when-pitfalls-culture-patterns)
 17. [Conflict Scenarios for Behavioral Questions](#17-conflict-scenarios-for-behavioral-questions)
+18. [AWS: Likely Questions and DCP-Mapped Concepts](#18-aws-likely-questions-and-dcp-mapped-concepts)
 
 ---
 
@@ -713,3 +714,69 @@ Sketched at STAR-shape level — expand any of these into a full story on reques
 - **Dependency/vendor conflict — a team you depend on won't prioritize your blocker.** Your roadmap is blocked on a change owned by another team (or an external vendor/library maintainer) with its own competing priorities. Resolution shape: don't just escalate loudly — quantify your blocker's downstream cost in terms *their* leadership cares about, offer to co-own the fix (submit the PR yourself, or build a temporary adapter) rather than only asking them to drop everything, and treat the workaround as a way to buy time, not a permanent excuse to avoid landing the real fix.
 - **Security/Compliance vs. deadline.** Security or Compliance blocks a release over a finding you believe is genuinely low-risk, on a tight deadline. Resolution shape: don't fight the blocker directly — get specific about actual exploitability/impact with them rather than asserting "trust me," propose a scoped mitigation that addresses the real risk without the full fix (a compensating control, reduced blast radius, or a time-boxed exception with a committed remediation date), and never unilaterally override a security gate. Especially worth having ready given Citi's regulated environment and the "risk & suitability" compliance angle already noted in the background section above.
 - **Peer-level architecture disagreement with no authority over the other person.** A disagreement with a lead/staff engineer on a *different* team, where you can't just decide because you don't manage them — a different dynamic from the §7 "senior engineer resistance" story, where you *did* have authority as their manager. Resolution shape: the same "move the argument from opinion to requirements" approach as §6's tech-stack decision, plus one extra step neither of you can skip when there's no shared manager in the room — agree in advance on who the actual tie-breaker is (a shared architecture review board, a mutual skip-level, or a pre-agreed reversible/two-way-door test) before the disagreement hardens into a standoff.
+
+---
+
+## 18. AWS: Likely Questions and DCP-Mapped Concepts
+
+**Honest starting point, worth stating proactively rather than being caught by:** the real S&P Global Ratings work was a fully regulatory environment, so AWS usage skewed heavily toward **EC2 and self-managed Kubernetes**, deliberately avoiding most of AWS's fully-managed layer (RDS, MSK, Lambda, DynamoDB) — because the regulatory environment required retaining direct control over the full stack (patching cadence, OS/container hardening, audit logging granularity) that a managed service's shared-responsibility boundary abstracts away. This is a defensible answer, not a weakness to downplay — and it's architecturally close to what XCS itself appears to be doing: building custom "compute paradigms and guardrails" on top of primitives rather than adopting a generic managed layer wholesale (§0 background). The **AWS Certified Solutions Architect (2022)** certification on the resume gives breadth at the architectural/conceptual level; the honest framing is strong hands-on production depth on EC2/Kubernetes/networking/IAM fundamentals, with less hands-on mileage specifically on the higher-level managed PaaS services.
+
+### Likely Questions at This Level
+
+Not entry-level AWS trivia ("what's the difference between S3 and EBS") — at 10+ years and a Lead-level role, expect architecture, trade-off, and judgment questions:
+
+**Q: Walk me through how you'd architect a system on AWS for a regulated financial environment.**
+A: Lead with AWS's own **Well-Architected Framework** vocabulary (below) rather than a generic answer — VPC design with workloads in private subnets, no direct public internet egress (traffic to AWS services routed via **VPC endpoints/PrivateLink** instead of the public internet), IAM least-privilege roles scoped per service rather than broad account-level permissions, **KMS** customer-managed keys (not AWS-managed defaults) for encryption at rest so the organization controls key rotation and access policy, and **CloudTrail** + **AWS Config** for continuous audit logging and compliance-drift detection — the AWS-native equivalents of the immutable audit log and RBAC requirements already covered in the DCP material (§11 pattern table).
+
+**Q: Why did your team run self-managed EC2/Kubernetes instead of AWS's managed services for a regulated workload?**
+A: The honest answer above, delivered directly rather than defensively: managed services trade control for convenience, and a regulated environment specifically needs the control — direct control over patch timing (some audits require a specific patching cadence, which a managed service's own maintenance windows don't guarantee), full visibility into what's actually running (some compliance frameworks require attestation of the exact software stack, harder to produce when AWS manages an opaque layer of it), and audit logging at a granularity some managed services don't expose. It's a deliberate trade-off, not an oversight — and worth noting this exact tension (control vs. convenience) is presumably part of why XCS provides its own "compute paradigms and guardrails" rather than using a generic managed compute layer as-is.
+
+**Q: How do you handle service-to-service authentication on AWS/Kubernetes without static credentials?**
+A: **IAM Roles for Service Accounts (IRSA)** on EKS — a pod is associated with an IAM role via its Kubernetes service account, and AWS issues short-lived, automatically-rotated credentials scoped to that role, rather than a static access key sitting in a config file or secret store waiting to be leaked or to go stale.
+
+**Q: How do you approach cost optimization on AWS at scale?**
+A: The same shape of answer as the Databricks cost story (§4/§15) — right-size before reserving, then commit capacity for what's genuinely steady-state: **Savings Plans/Reserved Instances** for predictable baseline load, **Spot Instances** for interruption-tolerant workloads (never for anything SLA-bound or stateful without checkpointing — same rule as the Databricks driver/worker split), and **Compute Optimizer** plus **Cost Explorer/Trusted Advisor** for ongoing visibility so oversized defaults don't silently compound the way they did in the small-inefficiency-at-scale story (§15) — cost visibility is the recurring root-cause theme across every cost story in this doc, and it applies identically here.
+
+**Q: Multi-AZ vs. multi-region — how do you decide, and what does it do to RTO/RPO?**
+A: Multi-AZ (multiple data centers within one region, low-latency private links between them) is the default for high availability against a single data-center failure — cheap enough that there's rarely a reason not to. Multi-region is a much bigger jump in cost and complexity (cross-region data replication latency and cost, active-active vs. active-passive design, DNS failover), and is only worth it if the failure mode you're protecting against is a *whole-region* outage specifically — same "what are you actually buying with the extra cost" framing as the multi-cloud answer in §15.
+
+**Q: How do you secure data at rest and in transit for regulated financial data on AWS?**
+A: **KMS** for encryption-at-rest key management (customer-managed keys, not AWS defaults, for full control over rotation and access policy), TLS everywhere in transit, **S3 Block Public Access** enabled account-wide as a default-deny rather than relying on per-bucket policy discipline, and **GuardDuty**/**Security Hub** for continuous threat detection rather than periodic manual review.
+
+**Q: EKS specifics — how do you run production Kubernetes on AWS?**
+A: Node groups (EC2 instances you manage the lifecycle of, more control) vs. **Fargate profiles** (no node management, AWS runs the pods — the same node-free trade-off as the Fargate answer in §15); **Karpenter** over the older Cluster Autoscaler for faster, more flexible node provisioning; a **private EKS API endpoint** (not internet-reachable) for a regulated cluster, reached only via VPN/Direct Connect or a bastion.
+
+**Q: Explain the shared responsibility model, and why it matters for what your team is actually accountable for.**
+A: AWS secures *of* the cloud (physical infrastructure, hypervisor, managed-service internals); the customer secures *in* the cloud (data, IAM configuration, network configuration, OS/container patching on anything self-managed, application-level security). This is the precise reasoning behind the "why self-managed over fully-managed" answer above — the more AWS manages, the less falls inside the customer's half of that boundary, which is exactly what a regulated environment sometimes can't accept, since some audits require *the organization itself* to attest to controls AWS would otherwise own.
+
+### AWS Well-Architected Framework — Quick Reference
+
+Given the Solutions Architect certification, expect this vocabulary to be a natural fit to reach for, and possibly asked about directly. Six pillars, one line each:
+1. **Operational Excellence** — run and monitor systems to deliver business value, and continuously improve supporting processes.
+2. **Security** — protect data, systems, and assets through risk assessment and mitigation.
+3. **Reliability** — recover from failure, dynamically acquire resources to meet demand, and mitigate disruptions.
+4. **Performance Efficiency** — use resources efficiently, and keep that efficiency as demand and technology evolve.
+5. **Cost Optimization** — avoid unnecessary cost — this is the pillar underlying every cost story already in this doc (Databricks spot/job-cluster, small-inefficiency-at-scale, multi-cloud tradeoffs).
+6. **Sustainability** — minimize environmental impact of running workloads.
+
+### AWS Technologies Mapped to DCP (If It Ran Primarily on AWS)
+
+DCP's real stack (§0/§11) is largely cloud-agnostic by design (Kubernetes, Kafka, PostgreSQL, MongoDB, Redis, Elasticsearch) rather than AWS-managed-service-specific — consistent with the regulated-environment framing above. This table maps what the AWS-managed equivalent *would* be for each, and — where relevant — why DCP likely chose the self-managed/portable option instead:
+
+| DCP component | AWS-managed equivalent | Why DCP likely stayed self-managed/portable instead |
+|---|---|---|
+| Kubernetes orchestration | **EKS** (managed control plane) — see §15's ECR/EKS/ECS/Fargate breakdown | Even with EKS, DCP would likely self-manage node groups for full control — matches the general pattern here |
+| Kafka | **MSK** (Managed Streaming for Kafka) | Same control/audit reasoning as the general framing above — self-managed Kafka on EKS keeps version, patch, and config fully in-house |
+| PostgreSQL | **RDS for PostgreSQL** | RDS abstracts patching/backups conveniently, but a regulated org may want direct control over patch timing and audit-log granularity |
+| MongoDB (event log) | **DynamoDB** (AWS's native NoSQL) | DCP explicitly needs MongoDB's flexible document schema; DynamoDB is also AWS-proprietary — a portable choice matters more in a multi-cloud context (like Citi's own private+public split) than a single-vendor one |
+| Redis cache | **ElastiCache for Redis** | Same convenience-vs-control trade-off as RDS above |
+| Elasticsearch (entity search) | **OpenSearch Service** | AWS's managed fork of Elasticsearch — same trade-off pattern |
+| HashiCorp Vault (secrets) | **Secrets Manager** | Vault is portable across clouds; Secrets Manager is AWS-only — relevant again for a multi-cloud/hybrid context |
+| Prometheus + Jaeger + Splunk | **CloudWatch + X-Ray** | AWS-native observability; DCP's actual stack is portable across AWS/Azure by design |
+| Camunda BPMN (workflow) | **Step Functions** | Step Functions is code/JSON-defined, not the visual BPMN tooling DCP explicitly valued for non-technical stakeholder visibility (§11) — a real, defensible reason to prefer Camunda even where Step Functions would technically work |
+| S3 sourcing channel | **S3** (already used directly) | DCP's own sourcing already lists S3 as one ingestion channel — this one's already AWS-native, not a hypothetical mapping |
+| RBAC / IAM enforcement | **IAM** (+ IRSA for pod-level identity) | Underlies the API Gateway's RBAC enforcement described in §11 |
+| Public-internet-free access to AWS services | **VPC Endpoints / PrivateLink** | The mechanism that would let a regulated DCP call S3/KMS/etc. without traversing the public internet |
+| 4-hour RTO from backup | **AWS Backup** | The AWS-native mechanism behind DCP's stated disaster-recovery target (§0/§11) |
+
+**How to use this table live:** don't present it as "DCP should have used more AWS services" — present it as "DCP's stack was deliberately cloud-portable, and here's specifically what the AWS-native equivalent of each piece would be and the real trade-off against it" — that shows fluency with the AWS ecosystem without contradicting the honest "we were regulated, so we stayed self-managed" framing above.
