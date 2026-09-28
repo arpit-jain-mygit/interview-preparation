@@ -39,6 +39,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 12. [Key Numbers Cheat Sheet](#12-key-numbers-cheat-sheet)
 13. [Gaps — Own These Honestly](#13-gaps--own-these-honestly)
 14. [XiP-Specific Technical Questions](#14-xip-specific-technical-questions)
+15. [Additional Details](#15-additional-details)
 
 ---
 
@@ -65,7 +66,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 A: Chose Spring Boot 2.7+ for microservices maturity — mature Kafka and PostgreSQL drivers, and AOP for cross-cutting concerns. Used AOP as a Decorator-pattern cross-cut to add logging/caching/retry uniformly across all 6 services rather than duplicating that logic in each one.
 
 **Q: How do you make a Kafka consumer safe to retry without double-processing?**
-A: Kafka alone can't protect database updates — "at-least-once" delivery means a consumer can see the same message twice. Solved with the **transactional outbox pattern**: state change and "intent to publish" are written atomically in one local transaction, then a separate publisher process reads the outbox and emits the Kafka event. Consumers are also idempotent — check-before-processing — so a redelivered message is a safe no-op, not a duplicate write.
+A: Kafka alone can't protect database updates — "at-least-once" delivery means a consumer can see the same message twice. Solved with the **[transactional outbox pattern](#transactional-outbox-pattern)**: state change and "intent to publish" are written atomically in one local transaction, then a separate publisher process reads the outbox and emits the Kafka event. Consumers are also **[idempotent](#idempotent-consumers-vs-the-outbox-solving-double-processing)** — check-before-processing — so a redelivered message is a safe no-op, not a duplicate write.
 
 **Q: Walk me through your design pattern usage on a real system.**
 A: From DCP: Factory (choosing SparkAir vs Cognize vs Deepmine extraction engine), Adapter (normalizing PDF/Excel/CSV parsers to one interface), Strategy (manual vs AI extraction strategies), State (document lifecycle: SOURCED → EXTRACTED → APPROVED → PUBLISHED), Chain of Responsibility (validation chain: format → business rules → quality), Circuit Breaker + Saga + Event Sourcing + CQRS at the microservices level.
@@ -79,7 +80,7 @@ A: From DCP: Factory (choosing SparkAir vs Cognize vs Deepmine extraction engine
 This is the category closest to what XCS actually does — lean on it hard.
 
 **Q: Why Kafka instead of direct service-to-service calls?**
-A: Decoupling, buffering against traffic spikes, parallel processing across partitions, replay to rebuild read models, and fan-out — quality/audit/analytics consumers each read the same event independently without coupling to the producer. Partition by `documentId` to preserve per-document ordering. Prefer at-least-once delivery with idempotent consumers, because losing a financial document is worse than safely detecting a duplicate.
+A: Decoupling, buffering against traffic spikes, parallel processing across partitions, replay to rebuild read models, and fan-out — quality/audit/analytics consumers each read the same event independently without coupling to the producer. Partition by `documentId` to preserve per-document ordering. Prefer at-least-once delivery with **[idempotent consumers](#idempotent-consumers-vs-the-outbox-solving-double-processing)**, because losing a financial document is worse than safely detecting a duplicate.
 
 **Q: How do you size partitions and consumers for a known throughput target, and plan for growth?**
 A (DCP sizing exercise): Peak incoming rate 100 docs/sec, one consumer handles 5 docs/sec → 20 consumers today. At 2× growth, 200÷5 = 40 consumers. Provisioned **48 partitions** so there's headroom for the consumer group to scale without a partition-count migration. This directly maps onto XCS's "distribute hundreds of millions of calculations" problem — size the partition/shard count for the growth horizon, not just today's load.
@@ -137,7 +138,7 @@ A: A per-job inefficiency (e.g. an all-purpose cluster sitting idle between sche
 A: PostgreSQL for ACID metadata and complex approval-rule queries; MongoDB for flexible per-document-type schema and as the event-sourcing log; Redis for sub-50ms cache + pub/sub invalidation; Elasticsearch for full-text entity search and quality-analytics aggregations. Each store chosen for its access pattern, not a single "one database" default.
 
 **Q: How do you guarantee durability / zero data loss?**
-A: Idempotent processing (check-before-processing on every handler) + transactional outbox (atomic state+intent write, separate publisher) + 3-node MongoDB replica set and PostgreSQL HA with <30s failover. 4-hour RTO / 1-hour RPO from S3 backup.
+A: **[Idempotent](#idempotent-consumers-vs-the-outbox-solving-double-processing)** processing (check-before-processing on every handler) + **[transactional outbox](#transactional-outbox-pattern)** (atomic state+intent write, separate publisher) + 3-node MongoDB replica set and PostgreSQL HA with <30s failover. 4-hour RTO / 1-hour RPO from S3 backup.
 
 **Q: Experience with the Bronze/Silver/Gold data-lake pattern?**
 A: Yes — Bronze (raw) → Silver (cleaned/deduplicated) → Gold (aggregate analytics) via Apache Spark, including distributed deduplication at ~1B document scale.
@@ -328,3 +329,41 @@ A: A hard wall-clock SLA on a variable-sized workload means you can't just "run 
 
 **Q: Why split "tens of thousands of compute nodes" across private *and* public cloud rather than just running it all in one place?**
 A: Almost certainly a cost/elasticity split, not a redundancy one: private/on-prem infra has a fixed capital cost that's cheapest for **steady-state baseline load**, while public cloud is the right tool for **the peak** — bursting up tens of thousands of extra nodes for the ~90-minute execution window, then scaling back down, rather than owning enough on-prem hardware to cover a peak that only lasts 90 minutes a day. This is the same job-cluster-vs-all-purpose-cluster logic from your Databricks answer (§4) — don't pay for idle capacity year-round to cover a load that exists for 90 minutes — just applied at the level of whole clouds instead of individual clusters. Also worth naming the harder problem this split creates: reference/market data needed by every node has to be available cheaply on both sides of that boundary, or cross-cloud data-transfer cost and latency eat into the very cost savings the split was meant to capture.
+
+---
+
+## 15. Additional Details
+
+Plain-English expansions of terms used above — linked from wherever they first appear in the main sections (§2, §3, §5).
+
+### Transactional Outbox Pattern
+
+**The problem it solves:** you need to do two things together — save something to your database AND tell everyone else about it (via a message/event) — but a database write and a message-queue publish are two separate systems. You can't wrap them in one atomic transaction. So you're stuck picking one of two broken options:
+- Save to DB first, then publish the event → if the app crashes right after the save, the event never goes out, and other services never find out the change happened.
+- Publish the event first, then save to DB → if the DB write then fails, you've told everyone about something that never actually happened.
+
+**The fix — the "outbox":** instead of publishing the event directly to Kafka/queue, write the event into a regular table in the *same database*, in the *same transaction* as the actual data change. Since it's one transaction in one database, it's atomic — either both the data change and the "event to send" row are saved together, or neither is (ordinary DB rollback guarantees this for free).
+
+A separate, simple background process then reads that outbox table and actually publishes those rows to Kafka, marking them done once sent. If that publisher crashes mid-way, no data is lost — the unsent rows just sit in the table, waiting to be picked up again.
+
+**Analogy:** instead of handing a letter directly to a courier who might drop it, you put the letter in your own mailbox (the same trusted place as everything else) at the same moment you write it. A mail carrier comes by regularly and picks up whatever's sitting there. Even if the mail carrier is late or misses a day, your letter isn't lost — it's still in your mailbox.
+
+**One-liner for the interview:** *"Kafka can't protect your database update — the outbox pattern makes the DB write and the 'I need to tell Kafka about this' intent atomic, then a separate process does the actual publishing."*
+
+### Idempotent Consumers vs. the Outbox (Solving Double-Processing)
+
+These solve two different halves of the same problem — one on the sending side, one on the receiving side.
+
+- **Transactional outbox** = makes sure the event reliably gets *sent* in the first place, matching what actually happened in the database. A producer-side fix.
+- **Idempotent consumer** = makes sure that if the *same event arrives twice* at the receiving end, nothing bad happens. A consumer-side fix.
+
+**Why would the same event arrive twice at all?** Because systems like Kafka use "at-least-once" delivery — a deliberate choice, not a flaw. The alternative, "at-most-once," can silently drop a message if something fails, and for financial data, losing a message is worse than seeing it twice. Duplicates happen in ordinary ways: a consumer processes a message, crashes *before* telling Kafka "I'm done with this one," restarts, and Kafka — having no record it was handled — redelivers the exact same message.
+
+**So a consumer has to defend itself.** The core idea: design the processing logic so that handling a message once and handling it five times produce the *exact same end result*. Common techniques:
+- **Check-before-processing**: before acting, look up "have I already handled a message with this ID?" — skip if yes.
+- **Unique DB constraint**: insert with a unique key on the message's ID, so a duplicate insert just fails harmlessly (catch and ignore it).
+- **Upserts instead of increments**: write "set status = APPROVED" instead of "add 1 to the counter" — doing that twice leaves the same end state either way, whereas "add 1" twice doubles the count.
+
+**Simple analogy:** the outbox is making sure you actually drop the letter in the mailbox instead of forgetting to. Idempotency is what happens if the mail carrier, unsure whether they already delivered it, drops the same letter in your mailbox twice — you want opening it twice to change nothing (e.g. a status update you already applied), not cause harm (e.g. a check you'd cash twice).
+
+**Why you need both, not just one:** the outbox pattern doesn't prevent duplicates — it only prevents *lost* events. Kafka's own retry/redelivery behavior can still hand the consumer the same message more than once regardless of how well the producer published it. Outbox solves "did it get sent at all"; idempotency solves "what if it got sent (or redelivered) more than once." You need both to get an end-to-end safe result on top of an at-least-once system.
