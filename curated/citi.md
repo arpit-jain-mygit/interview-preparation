@@ -729,6 +729,28 @@ The mistake most "migrate to microservices" answers make is presenting it as a b
 - **Team/service boundaries were decided together, not sequentially** — ties directly to §16's culture section above: because DCP's service boundaries followed business capability from the start, team ownership could map onto them cleanly at each phase, rather than discovering a Conway's-Law mismatch midway through the migration.
 - **The hardest, most stateful piece is sequenced last, not first** — a common failure mode in real migrations is starting with the hardest, most tightly-coupled part because it feels like the "real" problem; DCP's actual phase order does the opposite, and that ordering is itself a defensible answer to "how do you sequence a migration."
 
+### Roadmap: Legacy/Monolith to Microservices (General Version, Not DCP-Specific)
+
+⚠ *(general industry-standard framing — Strangler Fig/incremental-extraction practice, not sourced from your repo. Use this version when the question is generic ("walk me through how you'd migrate a monolith") rather than "tell me about a project you did this on" — the DCP-wired version above is the stronger answer whenever a real project story is what's being asked for.)*
+
+**Phase 0 — Stabilize before you cut anything.** The most common real-world mistake is starting extraction before the monolith is even safe to change: add test coverage and observability (logging, metrics, tracing) to the areas you're about to touch *first*, so you can tell whether an extraction broke something. You can't safely cut a piece out of a system you can't currently verify.
+
+**Phase 1 — Map the domain, not the code.** Identify bounded contexts via domain modeling (what are the real business capabilities, and where do they naturally stop touching each other), not by looking at existing class/package structure — a monolith's internal folder layout usually reflects technical layering (controllers, services, DAOs), not business boundaries, and copying that structure into "microservices" just recreates the same coupling with network calls added.
+
+**Phase 2 — Pick the first extraction deliberately, not by complexity.** The right first candidate is usually the piece that's simultaneously low-risk (few dependents, low blast radius if something goes wrong) and genuinely painful to leave inside the monolith (a component that scales differently than the rest, or changes far more often than everything around it) — not the most architecturally "interesting" piece, and not the most tightly coupled piece either. Prove the extraction pattern works on something forgiving before using it on something critical.
+
+**Phase 3 — Apply the Strangler Fig pattern at the edge.** Put a facade/proxy/API gateway in front of the monolith so callers don't know or care whether a given request is served by the monolith or the new extracted service. Route the chosen slice of traffic to the new service; everything else keeps flowing through the monolith unchanged. This is what makes the migration incremental and reversible rather than a scheduled cutover event.
+
+**Phase 4 — Solve the data problem explicitly — it's the hard part, not the code.** The extracted service usually has to keep reading/writing the monolith's existing database at first (for safety and speed), then migrate toward owning its own data store once trust is established. The transition typically needs one of: dual writes (write to both old and new stores, reconcile), change data capture (stream the monolith DB's changes into the new service's store), or an event-driven sync — and each of those reintroduces the distributed-transaction problem (sagas, eventual consistency, compensating actions — §2/§16 above) that a single database transaction used to give you for free. Underestimating this step is the single most common reason monolith-to-microservices migrations blow their timeline.
+
+**Phase 5 — Extract incrementally, one bounded context at a time, each with its own rollback plan.** Never do a second extraction while the first one is still unproven — each cut should have a clear, pre-defined success/rollback criterion (error rate, latency, data-consistency checks) decided *before* the cut, not judged after the fact by feel.
+
+**Phase 6 — Decommission the corresponding piece of the monolith once a domain is fully and stably extracted.** Don't leave the old code path lingering "just in case" indefinitely — a dead code path in the monolith that nobody remembers is still there is a latent risk (someone eventually calls it by accident, or a security patch misses it because nobody thought it still mattered).
+
+**Phase 7 — Evolve team ownership in step with each extraction, not after it.** As each service comes out, assign it a clear owning team immediately — an extracted service with no clear owner is worse than not extracting it at all, since it now has all the operational overhead of a separate service with none of the accountability benefit. This is the same Conway's Law point from earlier in this section, applied to the migration itself rather than to steady-state operation.
+
+**The one-sentence version, if asked to summarize the whole approach:** shrink the monolith one bounded context at a time, behind a facade that makes each cut invisible to callers, with the data-migration problem solved deliberately rather than assumed away, and never start the next extraction until the current one has proven itself.
+
 ---
 
 ## 17. Conflict Scenarios for Behavioral Questions
