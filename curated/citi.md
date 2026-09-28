@@ -522,7 +522,7 @@ XCS's actual setup ("private + public cloud") is the **hybrid** kind, not multi-
 
 **Cost nuance worth stating if pushed:** a pool isn't free — you pay the underlying cloud VM cost for instances sitting idle in the pool (even though you're not yet paying the Databricks-runtime/DBU cost on top, since Spark isn't running). So a pool is a deliberate middle ground: cheaper than an always-on all-purpose cluster (no runtime cost while idle), but not as cheap as a fully cold job cluster with zero idle spend — you're trading a small, known idle cost for a large, predictable reduction in start latency.
 
-**Sizing the pool to the actual workload pattern, not flat 24/7:** for a scheduled batch window (say, an overnight run), pre-warm the pool to roughly the peak concurrent job-cluster count *just before* that window starts, and let it drain back down once the batch finishes — rather than keeping the pool warm around the clock. This is the same "pay for the peak, not for idle time all day" logic as the private/public cloud bursting answer above (§14) — just applied one layer lower, at the instance-pool level instead of the whole-cloud level.
+**Sizing the pool to the actual workload pattern, not flat 24/7:** for a scheduled batch window (say, an overnight run), pre-warm the pool to roughly the peak concurrent job-cluster count *just before* that window starts, and let it drain back down once the batch finishes — rather than keeping the pool warm around the clock. This is the same "pay for the peak, not for idle time all day" logic as the private/public cloud bursting answer above (§14) — just applied one layer lower, at the instance-pool level instead of the whole-cloud level. **[Can this pre-warming itself be scheduled? →](#can-instance-pool-warm-up-be-scheduled)**
 
 **Other levers that reduce cold start further, worth knowing by name:**
 - **A pre-baked machine image** with the Databricks Runtime and common libraries already installed, instead of installing them fresh at every cluster start — skips redundant downloads/installs that would otherwise repeat identically on every single cold start.
@@ -530,3 +530,16 @@ XCS's actual setup ("private + public cloud") is the **hybrid** kind, not multi-
 - **Sharing one job cluster across multiple tasks in a single workflow run** (Databricks Workflows/multi-task jobs) — pay the cold-start cost once per *workflow run*, not once per *task*, when several tasks in a pipeline can safely share the same cluster.
 
 **How to frame the trade-off if asked directly:** not every job needs this optimization — for a job with a generous SLA, a few minutes of cold start is a rounding error worth accepting in exchange for zero idle cost. Reserve instance pools (the added complexity and the small idle-cost premium) specifically for the jobs where startup latency actually threatens a deadline or where cold-start time, multiplied across many frequent runs, adds up to meaningful wasted wall-clock time — segment by job frequency and SLA tightness rather than applying one policy to all 500+ jobs uniformly.
+
+### Can Instance-Pool Warm-Up Be Scheduled?
+
+*(⚠ worth confirming against current Databricks docs before stating with full confidence live — product details shift; the architecture below is the standard pattern, not a guaranteed exact Databricks feature name.)*
+
+**Short answer: not directly — the pool itself isn't something recreated on a schedule.** A Databricks instance pool is a *persistent* resource (an ID, node type, max capacity) you create once — it doesn't get spun up fresh each day the way a job cluster does. What actually varies over time is how many idle instances that pool is told to keep ready (its `min_idle_instances` setting) — and *that* number is what's worth scheduling around a batch window, not the pool's existence.
+
+**There's no native "schedule the warm-up" toggle on the pool itself.** What teams do instead, two common patterns:
+
+1. **External cron hitting the Instance Pools API** — a scheduled process (could itself be a Databricks Job, which *does* have native cron scheduling) calls the pool's "edit" API shortly before the batch window to raise `min_idle_instances`, then calls it again afterward to bring it back to zero — so idle instances aren't paid for around the clock, only pre-warmed right before the peak.
+2. **A scheduled "priming" job** — a trivial scheduled job (using a Databricks Job's own native cron scheduler, which pools themselves lack) that launches and quickly finishes a small job cluster from the pool a few minutes before the real batch starts. That launch pulls instances into the pool as a side effect — same warm-up outcome, without touching the pool's API config directly.
+
+**The underlying idea either way:** you're scheduling the pool's *readiness level*, not the pool's *existence* — the pool is always there as a resource; only how "hot" it's kept changes with time, on a schedule you build yourself rather than one Databricks provides out of the box.
