@@ -705,29 +705,114 @@ A: ⚠ *(general principle)* — a "shared utils" library is fine when it carrie
 
 ### Roadmap: Legacy/Monolith to Microservices, Wired to the DCP Story
 
-⚠ *(source-grounded, not fabricated: the phase structure below is DCP's real "Phased Delivery Approach" from `DATA_COLLECTION_PLATFORM_HLD.md`, and the Strangler Fig framing is DCP's own documented pattern choice from `ARCHITECTURE_DESIGN_QA.md`. One honest framing note: DCP's "legacy" starting point, per its own narrative, was manual/semi-automated financial-document processing — not necessarily a single literal Java monolith — so if an interviewer probes for a specific legacy *codebase* being replaced, be ready to speak to that generically rather than overclaiming a monolith that isn't in your source material.)*
+⚠ *(the phase structure is source-grounded — DCP's real "Phased Delivery Approach" from `DATA_COLLECTION_PLATFORM_HLD.md`, and the Strangler Fig framing is DCP's own documented pattern choice from `ARCHITECTURE_DESIGN_QA.md`. The mnemonic scaffolding below — Blast Radius, Quadrant Matrix, DAMP-N-COSMOS, ACES-DCBE, LMT, NAACS — comes from a general enterprise-modernization framework, retrofitted onto DCP's real facts wherever the repo has them. Dollar figures in that source framework are enterprise-scale ($70M+ investment, 100+ apps) and do **not** apply to DCP — DCP's real numbers are used instead wherever a number appears below. One honest framing note carried over: DCP's "legacy" starting point was manual/semi-automated financial-document processing, not necessarily a single literal Java monolith codebase — be ready to speak to that generically if pressed on a specific legacy system.)*
 
-The mistake most "migrate to microservices" answers make is presenting it as a big-bang cutover. DCP's own real delivery plan is a cleaner answer precisely because it wasn't one — it's a sequence of low-risk increments, each one narrower than the last, with the old process still running as the safety net until each slice earns its way off it.
+#### Why: The "Blast Radius" of the Manual Process
 
-**Phase 0 — Diagnose before cutting anything.** Map the legacy process end-to-end first: DCP's starting point was manual, error-prone financial-document handling with no automation — slow, inconsistent, and not something that could scale with volume. Before writing any service, identify the natural seams along *business capability*, not technical layers — this is exactly DCP's eventual service boundary (Sourcing, Extraction, Rules/Quality, Workflow, Approval, Dissemination; §11 table) — and define success numerically up front (DCP's real targets: 10K+ docs/day, <2s latency, 99% uptime, >95% accuracy) so "is this phase done" is a measured answer, not a vibe.
+The mnemonic (B-L-A-S-T-R) is built for a literal monolithic codebase, but it retrofits cleanly onto DCP's actual starting pain — a single manual, undifferentiated financial-document process with no separable pieces:
+- **B**ottleneck — manual data entry couldn't keep pace; DCP needed a path from 5K→10K+ docs/day without a from-scratch redesign at each step.
+- **L**ocked together — one undifferentiated process meant a change to how any single document type was handled risked the whole pipeline; there was no natural place to make an isolated change.
+- **A**ll-or-nothing — no fault isolation: a backlog or error anywhere stalled everything downstream of it, because nothing was separable.
+- **S**cales inefficiently — more manual reviewers scales roughly linearly with cost; DCP's actual extraction-worker autoscaling (5→50 pods on Kafka lag) scales sublinearly with cost by design.
+- **T**ech frozen — staying manual meant no path to AI-assisted extraction, no modern observability, no automated quality routing.
+- **R**eliability bad — no isolation meant one failure mode could cascade into a full-pipeline backlog rather than a contained, recoverable incident.
 
-**Phase 1 — Build the walking skeleton, not the whole system.** Matches DCP's real Phase 1: core Spring Boot services, the data layer, and basic workflows — stood up end-to-end on a thin slice, before any real production volume touches it. The point isn't to have something complete; it's to prove the architecture holds together across its full path (ingest → process → store) before betting the migration on it.
+#### Which: The Quadrant Matrix, Applied to DCP's Real Components
 
-**Phase 2 — Strangle one thin slice, and run it in parallel with the legacy process.** Matches DCP's real Phase 2: a single document source and a single extraction vendor (SparkAir) routed through the new system, while every other source and vendor stays on the old process untouched. This is the literal Strangler Fig pattern DCP documents using — new traffic diverted to the new path, old traffic keeps flowing through the legacy path, until the new slice has earned enough trust to take more.
+The framework's "high value / high pain first" prioritization matches exactly what DCP's real Strangler Fig sequencing did — not a coincidence, since this is a standard, defensible way to justify *why* extraction went first:
 
-**Phase 3 — Widen the vine.** Matches DCP's real Phase 3: additional source connectors and entity/taxonomy management (Soniq) added once the first slice has proven itself. Each new source is its own small, low-risk increment — not a redo of the architecture — which is the actual mechanism by which "strangling" a legacy system stays low-risk at every step instead of being one disguised big-bang cutover split into phases on paper only.
+| Quadrant | DCP component | Why it landed there |
+|---|---|---|
+| **Q1 — do first** | Extraction (SparkAir, single source) | Highest value (nothing downstream works without it) and highest pain (manual extraction was the core bottleneck) — matches the real Phase 2 starting point |
+| **Q2 — do second** | Workflow/Approval (Camunda, L1/L2) | High value (compliance-critical, can't be skipped) but lower *initial* pain since a human-driven process, however slow, was already functioning — matches the real Phase 4 sequencing |
+| **Q3 — do third** | Dissemination (multi-destination publishing) | Real pain (format/destination variability) but lower overall platform value than extraction or approval — a reasonable later slice |
+| **Deprioritized, not skipped** | GenAI extraction improvements, full event-sourced lineage, advanced analytics | Genuinely valuable, but not core capability — correctly sequenced last (real Phase 5), since building differentiators before the foundation is trustworthy just means optimizing a system that doesn't reliably work yet |
 
-**Phase 4 — Take on the harder, stateful part last, deliberately.** Matches DCP's real Phase 4: the L1/L2 human-review workflow and Camunda-based orchestration were built *after* extraction/sourcing were solid, not first. This sequencing is a deliberate risk choice: the automatic, choreography-style pipeline (sourcing→extraction→quality) is easier to get right and easier to roll back than a stateful, human-in-the-loop workflow with timers, escalation, and rework — so it's built and trusted first, and the harder orchestration work only starts once the foundation underneath it is already proven.
+#### When: The Phased Roadmap (DCP's Real Phase 1-5, Framed as a Timeline)
 
-**Phase 5 — Layer in the differentiators last, not first.** Matches DCP's real Phase 5: GenAI extraction improvements, full event-sourced lineage, and advanced analytics arrive only once the core pipeline is already trustworthy. These are optimizations and differentiators, not core capability — building them before the foundation is solid means optimizing a system that doesn't reliably work yet, which is a common and avoidable migration mistake.
+The mistake most "migrate to microservices" answers make is presenting it as a big-bang cutover. DCP's own real delivery plan is a cleaner answer precisely because it wasn't one — it's a sequence of low-risk increments, each narrower than the last, with the old process running as the safety net until each slice earns its way off it. Mapped onto a foundation → accelerate → complete arc (the same shape as the general framework's Year 1/2/3, using DCP's actual phase content instead of invented app-counts or dollar figures):
 
-**Phase 6 (the natural conclusion, not explicitly itemized in the source plan) — Retire the legacy path, slice by slice.** Once a given document type or source consistently hits the Phase 0 success numbers on the new system, that specific slice's legacy manual process is formally decommissioned — not all at once, but source-by-source and type-by-type, the same granularity it was strangled in at Phase 2/3. The legacy path isn't deleted the moment the new system exists; it's deleted only once its specific replacement has individually earned that trust.
+**Foundation (Phase 0-2):**
+- **Phase 0 — Diagnose before cutting anything.** Map the legacy process end-to-end; DCP's starting point was manual, error-prone document handling with no automation. Identify seams along *business capability*, not technical layers — DCP's eventual boundary (Sourcing, Extraction, Rules/Quality, Workflow, Approval, Dissemination; §11 table) — and define success numerically up front (DCP's real targets: 10K+ docs/day, <2s latency, 99% uptime, >95% accuracy).
+- **Phase 1 — Build the walking skeleton.** DCP's real Phase 1: core Spring Boot services, data layer, basic workflows, stood up end-to-end on a thin slice before real production volume touches it — proving the architecture holds together before betting the migration on it.
+- **Phase 2 — Strangle one thin slice, run it parallel to the legacy process.** DCP's real Phase 2: a single document source and a single extraction vendor (SparkAir) routed through the new system, everything else untouched on the old process. The literal Strangler Fig pattern DCP documents — new traffic diverted, old traffic keeps flowing, until the new slice earns enough trust to take more.
+
+**Accelerate (Phase 3):**
+- **Phase 3 — Widen the vine.** DCP's real Phase 3: additional source connectors and entity/taxonomy management (Soniq) added once the first slice proved itself. Each new source is its own small increment, not a redo of the architecture — the actual mechanism that keeps "strangling" low-risk at every step, instead of a disguised big-bang split into phases on paper only.
+
+**Complete (Phase 4-6):**
+- **Phase 4 — Take on the harder, stateful part last, deliberately.** DCP's real Phase 4: the L1/L2 human-review workflow and Camunda orchestration, built *after* extraction/sourcing were solid. The automatic, choreography-style pipeline is easier to get right and roll back than a stateful, human-in-the-loop workflow with timers, escalation, and rework — so it's trusted first, and the harder orchestration work starts only once the foundation underneath it is proven.
+- **Phase 5 — Layer in the differentiators last.** DCP's real Phase 5: GenAI extraction improvements, full event-sourced lineage, and advanced analytics — arriving only once the core pipeline is already trustworthy.
+- **Phase 6 (the natural conclusion, not itemized in the source plan) — Retire the legacy path, slice by slice.** Once a document type or source consistently hits the Phase 0 success numbers on the new system, that slice's legacy manual process is formally decommissioned — source-by-source and type-by-type, the same granularity it was strangled in, not all at once.
+
+#### ROI: Using DCP's Real Numbers, Not Enterprise-Scale Figures
+
+⚠ *The general framework's investment/return figures ($70M invested, $300M returned over 3 years, 100+ apps) describe an enterprise-wide, multi-year modernization program — an entirely different scale than a single platform like DCP, and are not DCP's numbers. The shape of the argument (front-loaded investment → break-even → recurring return) still applies; the figures below are DCP's own, from the resume/repo, not a rescaled version of the enterprise figures.*
+
+- **The investment side:** building the walking skeleton and the first strangled slice (Phase 0-2) is pure cost before any return shows up — the same "negative-ROI investment phase" shape the framework describes, just without a specific dollar figure attached in DCP's own material.
+- **The return, once operating:** $500K+ annual savings from eliminated manual data entry, $2M+ in new Ratings products enabled on top of the platform, ~60% reduction in manual review load through confidence-based routing, and a running platform cost of **$28K/year for 10K docs/day** (scaling to 20K/day on the same architecture and cost) — i.e., the marginal cost of *growth* on the new system is far below the marginal cost of adding manual reviewers ever was.
+- **The practical answer if asked "how do you know it paid off":** compare the recurring $500K+/year savings and $2M+ enabled revenue against a $28K/year run cost — the platform's own operating cost is a rounding error next to what it enables, which is the actual argument for "was this worth building," not a specific multi-year ROI percentage that isn't in the source material.
+
+#### Golden Rules: "DAMP-N-COSMOS," Mapped to What DCP Actually Does
+
+Nearly every letter maps to a real, already-documented DCP practice rather than a generic principle — worth stating that explicitly, since it shows the rules weren't just memorized, they were followed:
+
+| Letter | Rule | DCP's real instance |
+|---|---|---|
+| **D** | Decentralization — own your data | Database-per-service (§11): Approval owns decisions, Extraction owns extracted data, Workflow owns task state |
+| **A** | Async communication | Kafka choreography for the automatic pipeline (Sourcing→Extraction→Quality), not synchronous chained calls |
+| **M** | Monitoring | Splunk (2TB/day logs) + Prometheus (metrics) + Jaeger (50ms-granularity tracing) — §0/§11 |
+| **P** | Patterns, don't invent | The full §11 pattern table — circuit breaker, saga, CQRS, event sourcing, bulkhead, all chosen for a named business/technical failure, not novelty |
+| **N** | Network is unreliable | Circuit breaker on SparkAir + timeout + retry-with-backoff+jitter + fallback to Cognize — assume failure, design for it |
+| **C** | Contracts are sacred | API Gateway (Spring Cloud Gateway) as the one controlled entry point; internal services stay private behind it |
+| **O** | Ownership — one team, one service | Service boundaries drawn along business capability specifically so team ownership maps cleanly (§16 culture section) |
+| **S** | Saga for distributed transactions | Approve → publish → notify, with a documented compensating transaction if publish fails after approval (below) |
+| **M** | Minimal — single responsibility | Each of the 6 services owns one business capability, not a grab-bag of unrelated concerns |
+| **O** | Operations — automate everything | Blue-green + canary deploys, CI/CD via Azure DevOps with SonarQube/security scanning/load testing (§4/§15) |
+| **S** | Security — defense in depth | RBAC, AES-256 at rest, TLS in transit, Vault-managed secrets with quarterly rotation (§11 Security & Compliance) |
+
+#### Patterns: "ACES-DCBE," Mapped to DCP's Real Pattern Table
+
+Full detail already in §11 above — this is the same content, just organized under the mnemonic for fast recall:
+- **A**PI Gateway → Spring Cloud Gateway, single entry point for L1/L2 UI traffic
+- **C**ircuit Breaker → SparkAir → Cognize fallback chain when the primary extraction API degrades
+- **E**vent Sourcing → immutable document-lifecycle events (SOURCED → EXTRACTED → APPROVED → PUBLISHED) for full audit lineage
+- **S**ervice Discovery → Kubernetes DNS locating Extraction/Workflow/Approval pods as they scale and redeploy
+- **D**atabase per Service → PostgreSQL (metadata), MongoDB (documents/event log), each owned by its service
+- **C**aching → Redis for entity-mapping lookups (85% hit rate) and session state
+- **B**ulkhead → separate worker/thread pools per extraction engine so slow entity mapping can't starve document review
+- **E** (Saga) → the approve→publish→notify business transaction, detailed next
+
+#### Observability: "LMT," Mapped to DCP's Real Stack
+
+Already documented in §0/§11 — retrofitting the mnemonic for recall speed: **L**ogs (Splunk, 2TB/day, correlation IDs), **M**etrics (Prometheus — extraction accuracy, Kafka lag, latency), **T**races (Jaeger, 50ms granularity across all 6 services). The debug-in-three-steps pattern the framework describes maps directly onto a real DCP scenario: metrics show extraction latency spiking → trace shows which hop (e.g., the extraction service call to SparkAir) is slow → logs show the specific cause (e.g., a malformed-PDF retry loop) — going metric → trace → log in that order is what turns "why is this slow" from a multi-hour log-correlation exercise into a targeted, fast diagnosis.
+
+#### Security: "NAACS," Mapped to DCP's Real Security Model
+
+Already documented in §11's Security & Compliance section — retrofitting the mnemonic: **N**etwork (Istio mTLS between services, the closest DCP equivalent to VPC-style network isolation), **A**uthentication + **A**uthorization (RBAC enforced at the API Gateway, L1 vs. L2 permission boundaries), **C**ryptography (AES-256 at rest in MongoDB, TLS 1.2+ in transit), **S**ecrets (HashiCorp Vault, quarterly key rotation). Defense-in-depth framing worth stating explicitly: if one layer is breached, the remaining layers still hold — the same principle behind the incident-reduction defense-in-depth story in §4/§15, just applied to security instead of deploy safety.
+
+#### Saga: The "Undo Steps" Pattern, Using DCP's Real Compensating Transaction
+
+DCP's actual saga (§11 table): **Approve document → publish data → notify downstream users** — no single database transaction can span Approval, S3, and Notification, so it's modeled as a sequence of local transactions instead. The real DCP failure case: publication fails *after* approval already succeeded — the documented response is to mark the document `APPROVED_NOT_PUBLISHED`, then either retry publication or revoke the approval depending on policy, rather than pretending a completed approval can be technically rolled back across services. That's the "sad path" version of the happy-path saga — DCP chose **orchestration** (not pure choreography) for this specific saga because the workflow has real branching, timers, and human escalation (L1→L2→rework), which is exactly the "complex, many-steps → orchestration" rule from the general framework, applied correctly here.
+
+#### DDD: "Business First," Using DCP's Real Bounded Contexts
+
+Already the backbone of DCP's actual design (§11): boundaries drawn around business capability, not technology or database tables. DCP's real instance of "one bounded context = one microservice = one team": Extraction owns the full extraction lifecycle (its own events, its own data, its own team); Approval owns the full review/authorization lifecycle likewise. The framework's "don't do this" warning (technology-based or database-based service names, e.g. `PaymentService`/`UserService` named after a table) is exactly the failure mode DCP's actual naming avoided — its services are named after business responsibilities (Sourcing, Extraction, Approval), not technical layers.
 
 **What makes this roadmap actually low-risk, worth stating explicitly if asked "why wouldn't this just be a slow big-bang":**
 - **Dual-running, not a hard cutover** — the legacy process and the new system run side-by-side for each slice until the new one is trusted, so there's always a fallback while confidence is being built.
 - **Every phase has a numeric exit criterion** — defined in Phase 0, not decided ad hoc later, so "are we ready to widen scope" is answerable with data.
 - **Team/service boundaries were decided together, not sequentially** — ties directly to §16's culture section above: because DCP's service boundaries followed business capability from the start, team ownership could map onto them cleanly at each phase, rather than discovering a Conway's-Law mismatch midway through the migration.
 - **The hardest, most stateful piece is sequenced last, not first** — a common failure mode in real migrations is starting with the hardest, most tightly-coupled part because it feels like the "real" problem; DCP's actual phase order does the opposite, and that ordering is itself a defensible answer to "how do you sequence a migration."
+
+#### One-Page Recall Card, DCP Version
+
+If only five things survive under interview pressure:
+1. **Why:** Blast Radius — manual process = bottleneck, locked-together, all-or-nothing, scales badly, tech-frozen, unreliable.
+2. **Which/When:** Extraction first (highest value + highest pain), then Workflow, then Dissemination, differentiators (GenAI/analytics) last — foundation → accelerate → complete, mirroring DCP's real Phase 1-5.
+3. **What (Golden Rules):** if nothing else — own your data, use async, monitor everything. DCP does all three for real, not aspirationally.
+4. **How (Patterns + Observability + Security):** ACES-DCBE for the architecture patterns, LMT for how you'd debug it, NAACS for how you'd secure it — all three already real, documented DCP practice (§11), not a wishlist.
+5. **Business case:** $28K/year run cost unlocking $500K+/year savings and $2M+ in enabled products — the platform's operating cost is a rounding error next to what it enables.
 
 ### Roadmap: Legacy/Monolith to Microservices (General Version, Not DCP-Specific)
 
