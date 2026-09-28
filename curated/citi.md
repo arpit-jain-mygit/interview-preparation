@@ -404,10 +404,48 @@ These solve two different halves of the same problem — one on the sending side
 
 **"Extraction workers auto-scale 5→50 pods"** — a concrete example of HPA in action: the extraction service normally runs with just 5 copies, but under heavy load, Kubernetes can automatically grow that up to 50 copies, then shrink back down once the load passes. You're not manually watching and adding servers — the system reacts on its own.
 
-**"Blue-green deployments with canary rollout 10%→50%→100% over 30 minutes, instant rollback"** — two ideas combined:
+**"Blue-green deployments with canary rollout 10%→50%→100% over 30 minutes, instant rollback"** — two ideas combined (**[mechanically, how the actual traffic switch works →](#blue-green--canary-how-the-traffic-switch-actually-works)**):
 - **Blue-green**: keep two identical environments — "blue" (the current live version) and "green" (the new version). Deploy the new version to green *without* it receiving real traffic yet, so you can test it safely while blue keeps serving users.
 - **Canary rollout**: once green looks healthy, don't flip all traffic to it at once — send it 10% of real traffic first, watch for errors, then 50%, then 100%, over 30 minutes. If something's wrong, only a small slice of users were ever affected, and you can switch back to blue *instantly* since it never stopped running. *Analogy: before serving a new recipe to the whole restaurant, you serve it to a few tables first, watch if anyone sends it back, then gradually put it on more tables — you never took the old, working recipe off the menu until you were sure.*
 
 **"Docker multi-stage builds, ~150MB/service"** — a technique for building container images in two steps: one "stage" has all the heavy tools needed to compile/build the code, but only the small, final output gets copied into the actual image that ships — the build tools themselves are thrown away. Result: a lean ~150MB image instead of a bloated one carrying compilers and build caches it'll never need in production. Smaller images mean faster deploys and a smaller attack surface. *Analogy: you use a full workshop full of tools to build a piece of furniture, but you only ship the finished furniture to the customer — not the workshop.*
 
 **"CI/CD via Azure DevOps: SonarQube, security scanning, load testing"** — every code change goes through an automated pipeline before reaching production: **SonarQube** scans the code itself for bugs, bad patterns, and quality issues; **security scanning** checks the code and its dependencies for known vulnerabilities; **load testing** verifies the service can actually handle expected traffic before it ships. None of these steps require a human to remember to run them — they're automatic gates the code must pass through every time.
+
+### Blue-Green & Canary: How the Traffic Switch Actually Works
+
+This goes one layer deeper than the analogy above — the actual mechanism for moving real user traffic between versions.
+
+**Blue-green: it's a label-selector flip, not a traffic shift.** A Kubernetes **Service** doesn't point at specific pods — it points at *any pod matching a label*, and that indirection is the whole trick:
+
+```
+Service "app-svc"  →  selector: version=blue  →  routes to blue pods (v1)
+```
+
+Both versions run simultaneously as separate pods (`version: blue`, `version: green`), but only one label is "live." To switch, patch the Service's selector:
+
+```
+kubectl patch service app-svc -p '{"spec":{"selector":{"version":"green"}}}'
+```
+
+The Service's IP/DNS name never changes — only which pods it points to — so clients never see a difference; Kubernetes just starts sending *new* connections to green instead of blue, instantly, in one atomic step. **Rollback = patch the selector back to blue.** Since blue's pods are deliberately kept running (not deleted) after the switch, rollback is truly instant, not a redeploy. One nuance: in-flight requests to blue need to finish before those pods are torn down — handled by **connection draining** (the load balancer stops sending *new* requests to a pod marked for termination but lets its current requests finish) plus a Kubernetes `preStop` hook that briefly delays shutdown.
+
+**Canary needs weighted routing, not just replica counts.** Two ways to do it:
+
+- **Crude (no service mesh)**: put both versions behind the *same* Service (same label, no version distinction) and control the ratio via replica count — e.g. 9 pods of v1 + 1 pod of v2 ≈ a 90/10 split, since Kubernetes spreads requests ~evenly across all matching pods. Moving to 50/50 means changing replica counts — clunky, since it couples "traffic %" to "pod count."
+- **Precise (Istio, what's actually used at this scale)**: each version gets its own Istio **DestinationRule subset**, and a **VirtualService** controls the split directly by weight, independent of pod count:
+
+```yaml
+http:
+- route:
+  - destination: {host: app-svc, subset: v1}
+    weight: 90
+  - destination: {host: app-svc, subset: v2}
+    weight: 10
+```
+
+Moving 10%→50%→100% is just editing that `weight` field three times — no pods added or removed.
+
+**The 30-minute monitoring loop is automated, not a person watching a dashboard.** A tool like **Argo Rollouts** owns the weight changes: between each step it queries Prometheus for error rate/latency, waits out a fixed soak time, and either auto-advances to the next weight or auto-aborts (weight back to 0%, rollback) if metrics breach a threshold. That's the real implementation of "canary with instant rollback" — a controller doing the checking, not a stopwatch.
+
+**One extra wrinkle:** if a user's session needs to stay on the *same* version throughout a canary (not get bounced between old/new mid-session), Istio supports **consistent-hash routing** on a cookie or user ID instead of random weighted routing — same weight-based mechanism, just made "sticky" per user.
