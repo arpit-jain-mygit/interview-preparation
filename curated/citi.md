@@ -687,6 +687,32 @@ Straight from your own prep material — already interview-ready, condensed here
 - **When is a "modular monolith" actually the right call instead of microservices?** — worth having this as a real alternative, not just a strawman, given the "when NOT needed" answer above.
 - **How do you avoid a shared library becoming the new hidden coupling point?** — a "shared utils" library carrying business logic (not just generic infrastructure code) quietly recreates the shared-database anti-pattern at the code level — every service depending on it becomes coupled to its release cadence and its bugs.
 
+### Roadmap: Legacy/Monolith to Microservices, Wired to the DCP Story
+
+⚠ *(source-grounded, not fabricated: the phase structure below is DCP's real "Phased Delivery Approach" from `DATA_COLLECTION_PLATFORM_HLD.md`, and the Strangler Fig framing is DCP's own documented pattern choice from `ARCHITECTURE_DESIGN_QA.md`. One honest framing note: DCP's "legacy" starting point, per its own narrative, was manual/semi-automated financial-document processing — not necessarily a single literal Java monolith — so if an interviewer probes for a specific legacy *codebase* being replaced, be ready to speak to that generically rather than overclaiming a monolith that isn't in your source material.)*
+
+The mistake most "migrate to microservices" answers make is presenting it as a big-bang cutover. DCP's own real delivery plan is a cleaner answer precisely because it wasn't one — it's a sequence of low-risk increments, each one narrower than the last, with the old process still running as the safety net until each slice earns its way off it.
+
+**Phase 0 — Diagnose before cutting anything.** Map the legacy process end-to-end first: DCP's starting point was manual, error-prone financial-document handling with no automation — slow, inconsistent, and not something that could scale with volume. Before writing any service, identify the natural seams along *business capability*, not technical layers — this is exactly DCP's eventual service boundary (Sourcing, Extraction, Rules/Quality, Workflow, Approval, Dissemination; §11 table) — and define success numerically up front (DCP's real targets: 10K+ docs/day, <2s latency, 99% uptime, >95% accuracy) so "is this phase done" is a measured answer, not a vibe.
+
+**Phase 1 — Build the walking skeleton, not the whole system.** Matches DCP's real Phase 1: core Spring Boot services, the data layer, and basic workflows — stood up end-to-end on a thin slice, before any real production volume touches it. The point isn't to have something complete; it's to prove the architecture holds together across its full path (ingest → process → store) before betting the migration on it.
+
+**Phase 2 — Strangle one thin slice, and run it in parallel with the legacy process.** Matches DCP's real Phase 2: a single document source and a single extraction vendor (SparkAir) routed through the new system, while every other source and vendor stays on the old process untouched. This is the literal Strangler Fig pattern DCP documents using — new traffic diverted to the new path, old traffic keeps flowing through the legacy path, until the new slice has earned enough trust to take more.
+
+**Phase 3 — Widen the vine.** Matches DCP's real Phase 3: additional source connectors and entity/taxonomy management (Soniq) added once the first slice has proven itself. Each new source is its own small, low-risk increment — not a redo of the architecture — which is the actual mechanism by which "strangling" a legacy system stays low-risk at every step instead of being one disguised big-bang cutover split into phases on paper only.
+
+**Phase 4 — Take on the harder, stateful part last, deliberately.** Matches DCP's real Phase 4: the L1/L2 human-review workflow and Camunda-based orchestration were built *after* extraction/sourcing were solid, not first. This sequencing is a deliberate risk choice: the automatic, choreography-style pipeline (sourcing→extraction→quality) is easier to get right and easier to roll back than a stateful, human-in-the-loop workflow with timers, escalation, and rework — so it's built and trusted first, and the harder orchestration work only starts once the foundation underneath it is already proven.
+
+**Phase 5 — Layer in the differentiators last, not first.** Matches DCP's real Phase 5: GenAI extraction improvements, full event-sourced lineage, and advanced analytics arrive only once the core pipeline is already trustworthy. These are optimizations and differentiators, not core capability — building them before the foundation is solid means optimizing a system that doesn't reliably work yet, which is a common and avoidable migration mistake.
+
+**Phase 6 (the natural conclusion, not explicitly itemized in the source plan) — Retire the legacy path, slice by slice.** Once a given document type or source consistently hits the Phase 0 success numbers on the new system, that specific slice's legacy manual process is formally decommissioned — not all at once, but source-by-source and type-by-type, the same granularity it was strangled in at Phase 2/3. The legacy path isn't deleted the moment the new system exists; it's deleted only once its specific replacement has individually earned that trust.
+
+**What makes this roadmap actually low-risk, worth stating explicitly if asked "why wouldn't this just be a slow big-bang":**
+- **Dual-running, not a hard cutover** — the legacy process and the new system run side-by-side for each slice until the new one is trusted, so there's always a fallback while confidence is being built.
+- **Every phase has a numeric exit criterion** — defined in Phase 0, not decided ad hoc later, so "are we ready to widen scope" is answerable with data.
+- **Team/service boundaries were decided together, not sequentially** — ties directly to §16's culture section above: because DCP's service boundaries followed business capability from the start, team ownership could map onto them cleanly at each phase, rather than discovering a Conway's-Law mismatch midway through the migration.
+- **The hardest, most stateful piece is sequenced last, not first** — a common failure mode in real migrations is starting with the hardest, most tightly-coupled part because it feels like the "real" problem; DCP's actual phase order does the opposite, and that ordering is itself a defensible answer to "how do you sequence a migration."
+
 ---
 
 ## 17. Conflict Scenarios for Behavioral Questions
