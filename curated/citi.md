@@ -659,6 +659,24 @@ Yes — but it's two different things Postgres does very differently, worth sepa
 
 **One-line answer if asked directly:** "Postgres has native single-server partitioning for query performance and maintenance, but sharding across multiple Postgres servers needs an extension like Citus or DIY application-level routing — it's not something vanilla Postgres does on its own."
 
+### Do Stateful WebSockets Work with Stateless Microservices?
+
+Yes — but it requires a specific pattern to reconcile the two: isolate the statefulness into one thin layer and keep everything else stateless, rather than making the whole stack stateful.
+
+**The core pattern: a dedicated, stateful "gateway" tier in front of otherwise-stateless services.**
+
+Don't let every microservice hold WebSocket connections directly. Instead:
+
+1. **One (or a small pool of) WebSocket gateway service(s)** is the only thing that's actually stateful — its job is *just* holding open sockets. Everything behind it (business logic, data services, notification services) stays fully stateless and talks to the gateway over normal request/response (HTTP/gRPC) or async messaging.
+2. **Sticky sessions apply only to that gateway layer**, not the whole stack. A live TCP connection is physically pinned to one process — you can't load-balance an already-open socket across instances — so the gateway tier needs session affinity (the same Istio consistent-hash routing on a cookie/user-ID already covered in the Blue-Green/Canary section above applies here too). Every other service downstream never needs this.
+3. **Externalize the state that matters, keep only the raw socket local.** Presence info, "which room is this user in," etc. shouldn't live in the gateway's local memory — push it into Redis or a shared store. The *only* thing truly local to one gateway instance is the open TCP connection itself; everything else is queryable/shared.
+4. **Cross-instance delivery via pub/sub.** When a stateless business service needs to push a message to a user, it doesn't know (or care) which gateway instance holds that user's live connection. It publishes to a shared channel (Redis Pub/Sub, Kafka) tagged by user/connection ID; every gateway instance subscribes, and whichever one actually holds that live socket delivers it. This decouples "who wants to send" from "who's physically holding the connection."
+5. **Connections are disposable, which is actually consistent with microservices philosophy.** When a gateway instance dies (deploy, crash, scale-down), its connections drop and clients reconnect — likely landing on a *different* instance. The connection is ephemeral and re-creatable, even though it's pinned for its own lifetime — the same "instances are cattle, not pets" idea microservices already lean on, just applied to a socket instead of a whole service.
+
+**Real-world precedent:** this is literally how Discord and Slack are built — a dedicated "Gateway"/edge tier is the only stateful piece holding live connections, while the rest of the backend is stateless microservices talking to it via message queues.
+
+**The lighter-weight alternative:** if bidirectional communication isn't strictly required, SSE avoids most of this complexity — it's HTTP-based and doesn't need the same connection-affinity infrastructure (see "How SSE is 'stateless'" above — this is exactly why it scales more easily than WebSockets).
+
 ---
 
 ## 16. Microservices: When, Pitfalls, Culture, Patterns
@@ -1300,7 +1318,7 @@ What's below is a 1-3 sentence summary of each topic with a direct link to its f
 
 | Topic | What it covers |
 |---|---|
-| **[Long-Polling vs. WebSockets vs. SSE](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#long-polling-vs-websockets-vs-server-sent-events)** | Long-polling (simple, high latency, wasteful) vs. WebSockets (true bidirectional real-time, hard to scale, needs sticky sessions) vs. SSE (server-push only, easiest to scale since it's still HTTP) — with a decision tree and ready interview-scenario answers. |
+| **[Long-Polling vs. WebSockets vs. SSE](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#long-polling-vs-websockets-vs-server-sent-events)** | Long-polling (simple, high latency, wasteful) vs. WebSockets (true bidirectional real-time, hard to scale, needs sticky sessions) vs. SSE (server-push only, easiest to scale since it's still HTTP) — with a decision tree and ready interview-scenario answers. [Do stateful WebSockets even work with stateless microservices? →](#do-stateful-websockets-work-with-stateless-microservices) |
 | **[How SSE is "stateless"](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#how-sse-is-stateless-)** | A useful walk-back: SSE isn't truly stateless, it's just *simpler* state than WebSockets (no per-client message history, no bidirectional tracking) — that's what actually makes it easy to scale without sticky sessions, not literal statelessness. |
 | **[Serverless beyond functions](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#explain-serverless-concept-rgarding-functions-containers-and-databases-i-used-to-think-only-functions-can-be-serverless)** | Serverless isn't just Lambda; it's an operational model (no server management, pay-per-use, auto-scaling) that applies equally to containers (Fargate), databases (DynamoDB), storage (S3), and queues (SQS). Also clarifies: serverless databases are fully persistent, not ephemeral. |
 | **[Cold start problem for serverless functions](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#how-to-solve-cold-start-problem-for-serverless-functions)** | Concrete fixes ranked by cost/effort: provisioned concurrency (100% fix, $$$$), a 5-minute CloudWatch warmup ping (80% fix, ~$2/month), or a faster-starting runtime (Go/Node over Java). |
