@@ -678,6 +678,31 @@ Don't let every microservice hold WebSocket connections directly. Instead:
 
 **The lighter-weight alternative:** if bidirectional communication isn't strictly required, SSE avoids most of this complexity — it's HTTP-based and doesn't need the same connection-affinity infrastructure (see "How SSE is 'stateless'" above — this is exactly why it scales more easily than WebSockets).
 
+### The N+1 Problem, Explained Simply
+
+**N+1 = 1 query to get a list, then N more queries — one per item in that list — to get each item's related data, when far fewer would do.**
+
+**Analogy:** you want a class roster of 100 students, plus each student's teacher's name. You fetch the 100 students in one query — fine. But then, for *each* student individually, you separately ask "who's your teacher?" instead of getting that info as part of the original fetch. That's 1 query (get students) + 100 queries (one per student for their teacher) = 101 database trips, when a single query with a join could've gotten everything in one round trip.
+
+**Why it happens in JPA specifically:** by default, a `@OneToMany` relationship (e.g. a user's list of posts) is **lazy** — JPA doesn't fetch the related records until your code actually touches them. So this looks completely innocent:
+
+```java
+List<User> users = userRepository.findAll();  // 1 query
+
+for (User user : users) {
+    System.out.println(user.getPosts());  // fires a NEW query, every single time
+}
+```
+
+Each `.getPosts()` call inside the loop silently fires its own query, because JPA was deferring that fetch until the first time it was asked for — and now it's being asked N times, once per user.
+
+**Why it's sneaky, not obvious:** the code looks completely normal — just a for-loop calling a getter. With 5 test users, it's 6 queries and nobody notices. With 10,000 real users, it's 10,001 queries and the endpoint that "worked fine in dev" grinds to a crawl in production. It hides until real scale, which is exactly why it's a classic interview question.
+
+**The three fixes, in order of how commonly they're used:**
+1. **`JOIN FETCH` in JPQL** — write the query to explicitly join parent and children in one SQL statement, scoped to just that one repository method. The most common and precise fix.
+2. **`@EntityGraph`** — a more declarative way to say "for this specific method, also eagerly fetch these related fields," without writing raw JPQL.
+3. **`FetchType.EAGER`** — change the relationship's default to always fetch children immediately. Works, but it's global (every access of that entity now always pulls the children, even when not needed) — usually the least preferred of the three.
+
 ---
 
 ## 16. Microservices: When, Pitfalls, Culture, Patterns
@@ -1386,7 +1411,7 @@ What's below is a 1-2 sentence summary of each topic with a direct link to its f
 | **[21. Spring Data JPA](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/Spring-framework.md#21-what-is-spring-data-jpa)** | A layer on top of JPA/Hibernate that eliminates most DAO boilerplate — define a repository interface, Spring generates the implementation (CRUD, and custom queries from the method name alone). |
 | **[22. JPA vs Hibernate](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/Spring-framework.md#22-what-is-the-difference-between-jpa-and-hibernate)** | JPA is the specification (interfaces/annotations); Hibernate is the most common implementation of it — you code against JPA's API, Hibernate does the work underneath (swappable in theory for another JPA provider). |
 | **[23. Lazy vs Eager Loading](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/Spring-framework.md#23-what-is-lazy-loading-and-eager-loading)** | Lazy fetches related entities only when actually accessed (extra query later, on demand); Eager fetches them immediately as part of the original query. Lazy is the safer default for collections, to avoid loading data you may never use. |
-| **[24. N+1 Problem in JPA](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/Spring-framework.md#24-what-is-n1-problem-in-jpa)** | Loading N parent entities, then lazily accessing a related collection on each, triggers 1 query for the parents plus N more (one per parent) for their children. Fixes: `FetchType.EAGER`, `JOIN FETCH` in JPQL, or `@EntityGraph`. |
+| **[24. N+1 Problem in JPA](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/Spring-framework.md#24-what-is-n1-problem-in-jpa)** | Loading N parent entities, then lazily accessing a related collection on each, triggers 1 query for the parents plus N more (one per parent) for their children. Fixes: `FetchType.EAGER`, `JOIN FETCH` in JPQL, or `@EntityGraph`. [Explained simply →](#the-n1-problem-explained-simply) |
 
 ### 21.5 Observability
 
