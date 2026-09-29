@@ -646,6 +646,19 @@ Multi-AZ and multi-region sound like "the same idea, just bigger" — they're no
 
 **The one-sentence version if asked to summarize:** multi-AZ trades a small, well-solved latency cost for near-total protection against a single-datacenter failure; multi-region trades a much larger cost and a genuinely harder set of problems (physics-limited replication, split-brain, DNS-limited failover speed, doubled operational surface) for protection against a failure mode — a whole region going down — that's rare enough that it's only worth taking on when the business impact of that specific rare event justifies it.
 
+### Is Sharding/Partitioning Applicable to an RDBMS Like Postgres?
+
+Yes — but it's two different things Postgres does very differently, worth separating cleanly.
+
+**Table partitioning (native, single-server) — built in.** Since PostgreSQL 10, declarative partitioning (`PARTITION BY RANGE`, `LIST`, or `HASH`) lets you define one logical table that Postgres physically stores as multiple separate tables underneath. Benefits: **partition pruning** (a query filtering on the partition key only scans the relevant partition, not the whole table), cheap bulk operations (`DROP TABLE` an old partition instead of a slow `DELETE`), and tiered storage (move cold partitions to cheaper disks). This solves query performance and maintenance pain on a large table — but it all still runs on **one server**. It doesn't buy more write throughput or let you outgrow one machine's capacity.
+
+**Sharding (multiple servers) — not native, needs help.** Splitting data across independent Postgres servers isn't something core Postgres does by itself. Real options:
+1. **[Citus](https://www.citusdata.com/)** — a Postgres extension (now Microsoft-owned), the standard production answer. Adds a coordinator + worker-node architecture on top of real Postgres, giving actual distributed sharding while keeping full SQL/Postgres compatibility.
+2. **DIY application-level sharding** — the app decides which of N separate Postgres instances a row belongs to (hash/range/list on a shard key) and does the routing itself. This is exactly the pain already covered in **[Why SQL horizontal scaling is costly](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Databases.md#why-and-how-scaling-out-sql-dbs-horizontally-is-costly)** — cross-shard joins break, foreign keys break, ACID transactions across shards need 2PC, and resharding as data grows unevenly is a risky, manual operation.
+3. **Postgres-wire-compatible distributed databases** — CockroachDB, YugabyteDB — not Postgres itself, but built from scratch to shard natively, at the cost of not actually being Postgres under the hood.
+
+**One-line answer if asked directly:** "Postgres has native single-server partitioning for query performance and maintenance, but sharding across multiple Postgres servers needs an extension like Citus or DIY application-level routing — it's not something vanilla Postgres does on its own."
+
 ---
 
 ## 16. Microservices: When, Pitfalls, Culture, Patterns
@@ -1244,7 +1257,7 @@ What's below is a 1-3 sentence summary of each topic with a direct link to its f
 ### Caching & Partitioning
 
 - **[Caching (the WIRE framework)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#caching)** — Write (through/around/back), Invalidation (purge/refresh/ban/TTL/stale-while-revalidate), Read (aside/through), Eviction (LRU/LFU/FIFO/etc.) — plus the core distinction: invalidation removes stale data proactively, eviction removes data reactively under memory pressure.
-- **[Data Partitioning](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#data-partitioning)** — horizontal (shard rows), vertical (split columns by hot/cold), hybrid — plus the real operational costs each creates (cross-shard joins, broken foreign keys, hot-shard rebalancing) and their workarounds.
+- **[Data Partitioning](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#data-partitioning)** — horizontal (shard rows), vertical (split columns by hot/cold), hybrid — plus the real operational costs each creates (cross-shard joins, broken foreign keys, hot-shard rebalancing) and their workarounds. **[Is this applicable to an RDBMS like Postgres? →](#is-shardingpartitioning-applicable-to-an-rdbms-like-postgres)**
 - **[Consistent Hashing](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#consistent-hashing)** — why naive `hash(key) % servers` breaks everything on scale-up, and how a hash ring with virtual nodes fixes it: adding/removing a server only shifts one adjacent range's data instead of remapping everything.
 - **[Bloom Filters](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#bloom-filters)** — a probabilistic "definitely NO / maybe YES" membership check ~30,000x smaller than a hash set — skips expensive DB/network lookups when false positives are acceptable (URL safety, username availability), never for anything requiring 100% accuracy (money, medical, legal).
 - **[Diff b/w CDN and Cache](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#diff-bw-cdn-and-cache)** — cache fixes slow *computation* (DB query 100ms→1ms via Redis); CDN fixes slow *geography* (200ms→10ms serving from the nearest edge). Different bottlenecks, almost always used together.
