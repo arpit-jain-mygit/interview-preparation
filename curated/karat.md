@@ -164,6 +164,272 @@ for (String s : list) {
 
 Done at a **boundary** where the caller has no meaningful way to recover, and you don't want the checked exception polluting every method signature up the call stack. Example: a repository method internally calls JDBC code that throws `SQLException` (checked); if a typical caller (a service method) can't actually do anything different based on that exception besides log it and fail the request, wrapping it (`throw new RuntimeException("...", e)`, or a custom unchecked exception) keeps the checked exception contained at the layer that understands it, while letting it still propagate (with its original cause preserved via the constructor) to a top-level handler. This is exactly why Spring's own data-access exceptions (`DataAccessException` and subtypes) are all unchecked — Spring deliberately wraps every checked `SQLException` so application code isn't forced to catch it everywhere.
 
+#### MCQ Practice (Segment 1) — 5 Questions per Topic
+
+**Topic 1: Checked vs Unchecked Exceptions**
+
+1. Which of the following is **not** required to be declared or caught by the compiler?
+   a) `IOException`  b) `SQLException`  c) `NullPointerException`  d) `InterruptedException`
+   **Answer: c** — it's a `RuntimeException` (unchecked); the other three are checked.
+
+2. What's the main downside of overusing checked exceptions in a public API?
+   a) They can't carry a cause  b) They force every method up the call stack to declare or catch them, even when the caller can't recover  c) They can only be thrown, never caught  d) They're slower to construct
+   **Answer: b**
+
+3. Which is the best use case for a checked exception?
+   a) A programming bug like passing null where a value is required  b) An out-of-bounds array index  c) A recoverable condition, like a file that might not exist, where the caller can retry or fall back  d) Division by zero
+   **Answer: c**
+
+4. A method declares `throws Exception`. What's the problem with this?
+   a) Nothing, it's correct  b) It's too broad — callers can't distinguish recoverable conditions from bugs and must catch everything indiscriminately  c) `Exception` can't be thrown  d) It blocks `RuntimeException`s
+   **Answer: b**
+
+5. Spring's `DataAccessException` hierarchy is deliberately:
+   a) Checked, so every DAO caller must handle SQL errors explicitly  b) Unchecked, wrapping the checked `SQLException` so application code isn't forced to catch it everywhere  c) Abstract and cannot be thrown  d) The same class as `SQLException`
+   **Answer: b**
+
+**Topic 2: Effectively Final**
+
+1. A local variable is "effectively final" when:
+   a) It's declared with the `final` keyword  b) It's never reassigned after its first assignment, even without `final`  c) It's a primitive type only  d) It's declared inside a lambda
+   **Answer: b**
+
+2. Why can't a lambda capture a local variable that gets reassigned later in the enclosing method?
+   a) Lambdas can only capture static variables  b) The lambda might run later (e.g. on another thread) and would see an inconsistent value, so Java requires a fixed, stable capture  c) Lambdas can't read local variables at all  d) It's a pure syntax limitation
+   **Answer: b**
+
+3. Which snippet fails to compile?
+   a) `int x = 5; Runnable r = () -> print(x);`  b) `int x = 5; x = 10; Runnable r = () -> print(x);`  c) `final int x = 5; Runnable r = () -> print(x);`  d) `int x = 5; if (x > 0) {} Runnable r = () -> print(x);`
+   **Answer: b**
+
+4. Can a mutable instance field be accessed inside a lambda defined in an instance method?
+   a) No, never  b) Yes — effectively-final applies only to local variables/parameters, not instance or static fields  c) Only if the field is `volatile`  d) Only if the field is also `final`
+   **Answer: b**
+
+5. What practical risk does the effectively-final rule prevent?
+   a) Memory leaks from unused lambdas  b) A race/stale-value bug from a lambda capturing a variable that changes after capture, especially across threads  c) Slower lambda execution  d) Serialization errors
+   **Answer: b**
+
+**Topic 3: How Spring Wires Beans**
+
+1. What happens when multiple beans of the same type exist and `@Autowired` has no qualifier?
+   a) Picks the first one alphabetically  b) Fails with an ambiguous-dependency error unless disambiguated by name/`@Qualifier`/`@Primary`  c) Creates a new instance  d) Picks one at random
+   **Answer: b**
+
+2. Why is constructor injection generally preferred over field injection?
+   a) It's faster at runtime  b) It makes dependencies explicit/required, allows `final` fields, and is easier to unit test without a container  c) Field injection no longer works  d) It's required for `@Service` beans
+   **Answer: b**
+
+3. What's the default Spring bean scope?
+   a) `prototype`  b) `singleton`  c) `request`  d) `session`
+   **Answer: b**
+
+4. A `prototype`-scoped bean is injected into a `singleton`-scoped bean via plain `@Autowired`. What happens?
+   a) A new prototype instance is created every time the singleton's method runs  b) The singleton captures ONE prototype instance at creation time and reuses that same instance forever  c) Spring throws an exception at startup  d) The prototype becomes a singleton automatically
+   **Answer: b**
+
+5. How do `@Component`, `@Service`, `@Repository`, and `@Controller` differ?
+   a) Only `@Component` actually registers a bean  b) They're all `@Component` meta-annotations — specialized ones add semantic meaning (and sometimes extra behavior, like exception translation for `@Repository`) but register a bean the same way  c) `@Service` is prototype-scoped by default  d) Only `@Controller` is component-scanned
+   **Answer: b**
+
+**Topic 4: Why Transactional Is Ignored on `new` or Self-Invocation**
+
+1. `@Transactional` is implemented using:
+   a) Compile-time bytecode instrumentation  b) An AOP proxy that wraps the real bean and starts/commits/rolls back around the method call  c) A JVM annotation processor with no proxy  d) Reflection only
+   **Answer: b**
+
+2. Why does `@Transactional` have no effect on an object created with `new SomeService()`?
+   a) `new` objects are always thread-safe so transactions aren't needed  b) There's no Spring-managed proxy around it, so nothing intercepts the call to start a transaction  c) `new` throws an exception for `@Transactional` classes  d) It requires the class to be `final`
+   **Answer: b**
+
+3. A Spring bean `OrderService` calls `this.saveWithAudit()`, another `@Transactional(REQUIRES_NEW)` method in the *same* class. What happens?
+   a) A new independent transaction is created as expected  b) The annotation is ignored because the call bypasses the external proxy (self-invocation)  c) Spring throws a runtime exception  d) It behaves identically to calling it from another bean
+   **Answer: b**
+
+4. What's the standard fix for the self-invocation problem?
+   a) Mark the method `static`  b) Move the `@Transactional` method to a different bean/class and call it from there, through the proxy  c) Add `synchronized`  d) There's no fix
+   **Answer: b**
+
+5. Which proxy mechanisms does Spring use for `@Transactional`?
+   a) Only CGLIB  b) JDK dynamic proxies (if the bean implements an interface) or CGLIB subclass proxies (otherwise)  c) Only reflection, no proxy  d) A custom Spring-only compiler
+   **Answer: b**
+
+**Topic 5: The equals and hashCode Contract**
+
+1. The contract requires that if `a.equals(b)` is true, then:
+   a) `a == b` must also be true  b) `a.hashCode()` must equal `b.hashCode()`  c) `b.equals(a)` can be false  d) `a` and `b` must never be the same class
+   **Answer: b**
+
+2. Is the reverse also required — same hash code implies `equals()` must be true?
+   a) Yes, always  b) No — equal hash codes can occur between unequal objects ("collision"), which hash-based collections already handle via `equals()` within that bucket  c) Only for Strings  d) Only if `hashCode()` is overridden
+   **Answer: b**
+
+3. A class overrides `equals()` to compare only an `id` field but doesn't override `hashCode()` at all. What breaks?
+   a) Nothing  b) Two objects that are `.equals()` can land in different `HashMap` buckets, so `map.get()` with an "equal" key can fail to find the value  c) `hashCode()` throws an exception  d) `equals()` stops working entirely
+   **Answer: b**
+
+4. In the real Karat bug, `Trade.equals()`/`hashCode()` used only the `symbol` field. The effect in a `HashSet` was:
+   a) Trades were sorted by symbol  b) Distinct trades with the same symbol but different side/quantity/price were treated as duplicates and collapsed into one entry  c) A `ConcurrentModificationException`  d) No effect
+   **Answer: b**
+
+5. What's the safest way to generate correct `equals()`/`hashCode()`?
+   a) Only override `equals()`, never `hashCode()`  b) Use `Objects.equals()`/`Objects.hash()` (or an IDE/Lombok generator) against every field that defines identity  c) Use the default `Object` implementation always  d) Use the memory address directly
+   **Answer: b**
+
+**Topic 6: HashMap vs HashSet vs TreeMap**
+
+1. `TreeMap` determines "sameness" of keys using:
+   a) `hashCode()`/`equals()`  b) `compareTo()` (or a supplied `Comparator`) — returning 0 means "the same key," regardless of `equals()`  c) Reference equality only  d) Insertion order
+   **Answer: b**
+
+2. Typical `get()` complexity: `HashMap` vs. `TreeMap`?
+   a) O(1) average for `HashMap`, O(log n) for `TreeMap`  b) O(log n) for both  c) O(1) for both  d) O(n) for `HashMap`, O(1) for `TreeMap`
+   **Answer: a**
+
+3. If `compareTo()` says two objects are "equal" (returns 0) but `equals()` disagrees, and both are added to a `TreeSet`:
+   a) Both are added — `TreeSet` uses `equals()`  b) Only one is kept — `TreeSet`/`TreeMap` treat `compareTo()==0` as duplicate, silently dropping the second  c) An exception is thrown  d) `TreeSet` falls back to `hashCode()`
+   **Answer: b**
+
+4. Best choice for "give me all entries between key X and key Y, in order"?
+   a) `HashMap`  b) `HashSet`  c) `TreeMap` (via `headMap`/`tailMap`/`subMap`)  d) `LinkedList`
+   **Answer: c**
+
+5. Why do `HashMap`/`HashSet` give no ordering guarantee?
+   a) They're implemented as linked lists  b) Elements are placed into buckets based on `hashCode()`, which has no relation to natural/insertion order  c) Java forbids ordering in hash structures  d) They iterate in reverse insertion order
+   **Answer: b**
+
+**Topic 7: Why Immutable Objects Are Thread-Safe**
+
+1. What makes an object truly immutable?
+   a) All fields private  b) All fields `final`, set only in the constructor, no setters, and any mutable fields passed in/out are defensively copied  c) No methods besides getters  d) Marked with an enforced `@Immutable` keyword
+   **Answer: b**
+
+2. Why don't immutable objects need synchronization to be shared safely across threads?
+   a) The JVM auto-synchronizes them  b) Since no thread can ever change the object's state after construction, no thread can see a stale or half-updated value from another thread's write  c) They're always in CPU cache  d) They aren't actually thread-safe
+   **Answer: b**
+
+3. A class has all `final` fields, but one is a mutable `List` passed via the constructor and stored directly (no defensive copy). Is it truly immutable?
+   a) Yes, the reference is final  b) No — the caller can still mutate the list's contents after construction, breaking the guarantee  c) Yes, Lists are always immutable  d) Depends only on whether it's sorted
+   **Answer: b**
+
+4. Which JDK class is a canonical immutable, thread-safe example?
+   a) `StringBuilder`  b) `ArrayList`  c) `String`  d) `HashMap`
+   **Answer: c**
+
+5. How does immutability relate to the "D - DESIGN IT OUT" race-condition pattern elsewhere in this prep?
+   a) It isn't related  b) Both eliminate races by removing concurrent mutation — one by confining mutation to a single thread, the other by removing mutation entirely  c) Immutability requires a message queue  d) It only works for primitives
+   **Answer: b**
+
+**Topic 8: `volatile` vs `synchronized` vs `AtomicInteger`**
+
+1. Which of these correctly uses `volatile`?
+   a) `volatile int count = 0; count++;`  b) `volatile boolean shutdown = false; ... if (shutdown) {}`  c) `volatile List<String> list; list.add("x");`  d) `volatile int total; total = total + 5;`
+   **Answer: b**
+
+2. Why doesn't `volatile` fix a race condition on `count++`?
+   a) `volatile` provides no guarantee at all  b) `count++` is really three steps (read, add, write); `volatile` makes each step visible but doesn't stop two threads interleaving between the steps  c) `volatile` only works on booleans  d) `count++` is already atomic
+   **Answer: b**
+
+3. `AtomicInteger.incrementAndGet()` is safe under concurrency because:
+   a) It uses a lock that blocks all threads system-wide  b) It uses a CAS (compare-and-swap) instruction to atomically update the value, retrying if another thread updated it first  c) It's just a `volatile` field  d) It's `synchronized` on the object's monitor
+   **Answer: b**
+
+4. You need to atomically update two related fields (`balance` and `lastUpdated`) together. Best tool?
+   a) Two independent `AtomicInteger`/`AtomicLong` fields  b) `volatile` on both  c) `synchronized` (or a `Lock`) around the block updating both — no single `Atomic*` class covers two fields together  d) Not possible safely in Java
+   **Answer: c**
+
+5. Main cost of `synchronized` compared to `volatile`/`AtomicInteger`?
+   a) Can't be used with primitives  b) Lock contention — threads block and wait, and careless multi-lock use risks deadlock  c) Never guarantees visibility  d) Can't be used inside methods
+   **Answer: b**
+
+**Topic 9: Reference Equality vs Equals, String Pool**
+
+1. `String a = "hi"; String b = "hi";` — what does `a == b` evaluate to, and why?
+   a) false, strings are never pooled  b) true, both literals resolve to the same object in the String pool  c) true, but only on 32-bit JVMs  d) undefined
+   **Answer: b**
+
+2. `String a = "hi"; String c = new String("hi");` — what does `a == c` evaluate to?
+   a) true, content is identical  b) false — `new String()` forces a new heap object outside the pool, even though `a.equals(c)` is true  c) compile error  d) true, but `.equals()` is false
+   **Answer: b**
+
+3. Why is `==` risky for comparing `Integer` objects instead of `int` primitives?
+   a) `Integer` never implements `equals()` correctly  b) Autoboxed Integers are cached only in a small range (default -128 to 127); outside it, equal values can be different objects  c) `==` always throws NPE on `Integer`  d) `Integer`s can't be compared at all
+   **Answer: b**
+
+4. What's the single safest rule for comparing object content?
+   a) Always use `==` for performance  b) Always use `.equals()` for content comparison; reserve `==` for checking literal reference identity  c) Use `.equals()` only for Strings  d) Use `hashCode()` comparison instead
+   **Answer: b**
+
+5. Does the String pool optimization apply to `String s = "h" + someVariable` built at runtime?
+   a) Yes, always pooled identically to literals  b) No — runtime-computed strings aren't automatically interned (without calling `.intern()`), so `==` with a literal can unexpectedly be false  c) Only if the variable is `final`  d) Only on old JDKs
+   **Answer: b**
+
+**Topic 10: Interfaces vs Abstract Classes**
+
+1. What's true about multiple inheritance in Java?
+   a) A class can extend multiple abstract classes but implement only one interface  b) A class can implement multiple interfaces but extend only one class  c) Neither supports any multiple inheritance  d) Both support unlimited multiple inheritance
+   **Answer: b**
+
+2. Since Java 8, interfaces can have:
+   a) Only abstract method signatures  b) `default` and `static` methods with actual implementation, in addition to abstract signatures  c) Instance fields with mutable state  d) Constructors
+   **Answer: b**
+
+3. When should you pick an abstract class over an interface?
+   a) When unrelated classes just need to share a method signature  b) When there's a genuine "is-a" hierarchy and real shared state/implementation to reuse among subclasses  c) When a class must implement multiple unrelated contracts  d) Abstract classes should always be avoided
+   **Answer: b**
+
+4. Can an abstract class have a constructor?
+   a) No, never  b) Yes — subclasses call it via `super()`, even though the abstract class can't be instantiated directly  c) Only with no abstract methods  d) Only in Java 8+
+   **Answer: b**
+
+5. Why are `Comparable` and `Runnable` interfaces, not abstract classes?
+   a) Java disallows abstract classes with a single method  b) Many unrelated classes need to promise the same single capability without being forced into one shared class hierarchy  c) Interfaces are faster at runtime  d) It's arbitrary
+   **Answer: b**
+
+**Topic 11: `ConcurrentModificationException`**
+
+1. What triggers CME in a single-threaded for-each loop?
+   a) Reading a collection's size  b) Structurally modifying (add/remove) the collection while iterating it with a plain `Iterator`/for-each, detected via a changed modification count  c) Modifying an element's value in place  d) Using `TreeMap` instead of `HashMap`
+   **Answer: b**
+
+2. Which of these correctly removes matching elements during iteration without throwing CME?
+   a) `for (String s : list) { if (cond(s)) list.remove(s); }`  b) `list.removeIf(cond);`  c) `for (int i=0; i<list.size(); i++) { if (cond(list.get(i))) list.remove(i); }`  d) `list.forEach(s -> { if (cond(s)) list.remove(s); });`
+   **Answer: b**
+
+3. Why does `it.remove()` (the `Iterator`'s own method) avoid the exception while `list.remove(s)` inside the loop doesn't?
+   a) It doesn't avoid it either  b) `Iterator.remove()` updates the iterator's own tracking of the modification count in sync — `list.remove()` changes the collection without informing the iterator  c) `it.remove()` only works on arrays  d) `list.remove()` is always preferred anyway
+   **Answer: b**
+
+4. Is `CopyOnWriteArrayList` reasonable for frequent concurrent reads with rare writes?
+   a) No, never safe for iteration  b) Yes — it snapshots the array on each write so iterators never see concurrent modification, at the cost of copying the whole array per write  c) Identical to `ArrayList` with no tradeoffs  d) Only works with primitives
+   **Answer: b**
+
+5. Does CME only occur with multiple threads?
+   a) Yes, purely multi-threading  b) No — it most commonly happens in single-threaded code, modifying a collection directly while iterating it in the same thread  c) Only with `TreeMap`  d) Never in single-threaded code
+   **Answer: b**
+
+**Topic 12: Wrapping Checked Exceptions in `RuntimeException`**
+
+1. What's preserved when you write `throw new RuntimeException("msg", e);`?
+   a) Nothing — the original exception and stack trace are lost  b) The original exception is preserved as the "cause," accessible via `getCause()`, including its original stack trace  c) Only the message string  d) The wrapping changes the original exception's type permanently
+   **Answer: b**
+
+2. Why would a repository layer wrap a checked `SQLException` into an unchecked exception before it reaches the service layer?
+   a) To hide the error from logs entirely  b) So a typical caller, who can't meaningfully recover from a SQL failure anyway, isn't forced to declare/catch it at every layer up the stack  c) `SQLException` can't be caught at all  d) To make it faster to construct
+   **Answer: b**
+
+3. Spring's `DataAccessException` hierarchy is an example of:
+   a) A checked exception hierarchy requiring explicit handling everywhere  b) Exactly this wrapping pattern — translating various checked, vendor-specific SQL exceptions into a consistent unchecked hierarchy  c) A deprecated pattern no longer used  d) A set of interfaces, not exceptions
+   **Answer: b**
+
+4. What's a downside of overusing the wrap-into-`RuntimeException` pattern?
+   a) It always loses the original stack trace  b) If overused indiscriminately, it can hide genuinely recoverable conditions a caller could have handled differently, by making everything look unrecoverable  c) It's impossible to log the wrapped exception  d) It prevents the JVM from exiting on uncaught exceptions
+   **Answer: b**
+
+5. In `new RuntimeException(message, cause)`, what does `cause` do if the exception is later uncaught?
+   a) It's ignored by default exception printing  b) A full stack trace print includes the "Caused by:" chain, showing the original exception too  c) It replaces the message entirely  d) It must be re-thrown separately to be visible
+   **Answer: b**
+
 ### Segment 2 — Bug-Fix on a Given Codebase (~15–20 min)
 Practice spotting and fixing these bug *shapes* fast (confirmed pattern: a failing test, find root cause, fix):
 - `equals()`/`hashCode()` using only a partial set of fields → distinct objects collapse in a `HashSet`/`HashMap` (the real Trade reconciliation bug)
