@@ -471,6 +471,8 @@ Each problem below is buggy code plus a failing test, exactly like the real Kara
 The failing test — `reconcile()` should return trades from the feed that aren't yet booked, but returns an empty list:
 
 ```java
+import java.util.*;
+
 class Trade {
     String symbol;
     String side;      // BUY or SELL
@@ -508,37 +510,52 @@ class TradeReconciler {
     }
 }
 
-// Failing test:
-// incomingFeed = [ Trade("AAPL","BUY",100,150.0), Trade("AAPL","SELL",50,151.0) ]
-// bookedLedger  = [ Trade("AAPL","BUY",100,150.0) ]
-// Expected: unbooked contains the AAPL SELL trade (it's genuinely not booked)
-// Actual:   unbooked is EMPTY — both trades are "equal" because equals()/hashCode() only look at symbol
+public class Solution {
+    public static void main(String[] argv) {
+        List<Trade> incomingFeed = List.of(
+            new Trade("AAPL", "BUY", 100, 150.0),
+            new Trade("AAPL", "SELL", 50, 151.0)
+        );
+        List<Trade> bookedLedger = List.of(
+            new Trade("AAPL", "BUY", 100, 150.0)
+        );
+
+        List<Trade> unbooked = new TradeReconciler().reconcile(incomingFeed, bookedLedger);
+        System.out.println("Unbooked trades: " + unbooked.size());
+        // Expected: 1 (the AAPL SELL trade is genuinely not booked)
+    }
+}
 ```
 
 ##### Problem 2
 *(→ [Solution](#solution-2-string-to-numeric-parsing-bug))*
 
 ```java
-class PriceFeed {
-    double computeTotal(String[] priceStrings) {
+public class Solution {
+    static double computeTotal(String[] priceStrings) {
         double total = 0;
         for (String p : priceStrings) {
             total += Float.parseFloat(p);
         }
         return total;
     }
-}
 
-// Failing test:
-// priceStrings = {"150.25", "N/A", "99.50"}
-// Expected: total = 249.75 (skip unparseable entries)
-// Actual:   throws NumberFormatException on "N/A", test never reaches the assertion
+    public static void main(String[] argv) {
+        String[] priceStrings = {"150.25", "N/A", "99.50"};
+        System.out.println("Total: " + computeTotal(priceStrings));
+        // Expected: 249.75 (unparseable entries like "N/A" should be skipped)
+    }
+}
 ```
 
 ##### Problem 3
 *(→ [Solution](#solution-3-transactional-ignored-because-built-with-new))*
 
 ```java
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
 class RatingService {
     @Transactional
@@ -547,6 +564,7 @@ class RatingService {
         RatingHistoryBuilder builder = new RatingHistoryBuilder();
         builder.record(rating);
     }
+    void validate(Rating rating) { }
 }
 
 class RatingHistoryBuilder {
@@ -557,33 +575,50 @@ class RatingHistoryBuilder {
     }
 }
 
-// Failing test:
-// A bad rating.getScore() throws inside record()
-// Expected: only the history-record attempt rolls back; the earlier validate()'d rating still commits
-// Actual:   the exception rolls back the ENTIRE outer transaction — everything is lost
+class Rating {
+    private final int score;
+    Rating(int score) { this.score = score; }
+    int getScore() { return score; }
+}
+
+public class Solution {
+    public static void main(String[] argv) {
+        // NOTE: observing the real effect below needs a live Spring ApplicationContext —
+        // this main() only shows the call chain that the container would wrap in proxies.
+        RatingService service = new RatingService();
+        service.rate(new Rating(-5));
+        // Expected (inside a real Spring container): only the history-record attempt
+        // rolls back; the earlier validate()'d rating still commits.
+        // Actual (inside a real Spring container): the exception rolls back the
+        // ENTIRE outer transaction — everything is lost.
+    }
+}
 ```
 
 ##### Problem 4
 *(→ [Solution](#solution-4-reference-equality-instead-of-equals))*
 
 ```java
-class OrderLookup {
-    boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
+public class Solution {
+    static boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
         return incomingId == lastProcessedId;
     }
-}
 
-// Failing test:
-// incomingId = new String("ORD-1001")   // built at runtime, e.g. from a parsed request body
-// lastProcessedId = "ORD-1001"          // a literal
-// Expected: isDuplicateOrderId returns true (same order ID)
-// Actual:   returns false — different String objects, == compares references, not content
+    public static void main(String[] argv) {
+        String incomingId = new String("ORD-1001");   // built at runtime, e.g. from a parsed request body
+        String lastProcessedId = "ORD-1001";           // a literal
+        System.out.println("Is duplicate: " + isDuplicateOrderId(incomingId, lastProcessedId));
+        // Expected: true (same order ID)
+    }
+}
 ```
 
 ##### Problem 5
 *(→ [Solution](#solution-5-mutable-key-mutated-after-insertion))*
 
 ```java
+import java.util.*;
+
 class AccountKey {
     String region;
     int accountNumber;
@@ -599,16 +634,15 @@ class AccountKey {
     @Override public int hashCode() { return Objects.hash(region, accountNumber); }
 }
 
-class BalanceCache {
-    Map<AccountKey, Double> cache = new HashMap<>();
-
-    void test() {
+public class Solution {
+    public static void main(String[] argv) {
+        Map<AccountKey, Double> cache = new HashMap<>();
         AccountKey key = new AccountKey("APAC", 42);
         cache.put(key, 1000.0);
         key.region = "EMEA";
         Double balance = cache.get(new AccountKey("APAC", 42));
+        System.out.println("Balance: " + balance);
         // Expected: 1000.0
-        // Actual:   null — the key's hashCode changed, so it now lives in the wrong bucket
     }
 }
 ```
@@ -617,6 +651,13 @@ class BalanceCache {
 *(→ [Solution](#solution-6-wrong-comparator-implementation))*
 
 ```java
+import java.util.*;
+
+class Trade {
+    double price;
+    Trade(double price) { this.price = price; }
+}
+
 class TradeByPriceComparator implements Comparator<Trade> {
     @Override
     public int compare(Trade a, Trade b) {
@@ -624,52 +665,73 @@ class TradeByPriceComparator implements Comparator<Trade> {
     }
 }
 
-// Failing test:
-// trades with prices 100.3 and 100.7 → (int)(100.3 - 100.7) = (int)(-0.4) = 0 ("equal," wrong)
-// Expected: sorted ascending by price, 100.3 before 100.7
-// Actual:   sort is unstable/wrong because compare() returns 0 for genuinely different prices
+public class Solution {
+    public static void main(String[] argv) {
+        List<Trade> trades = new ArrayList<>(List.of(new Trade(100.7), new Trade(100.3)));
+        trades.sort(new TradeByPriceComparator());
+        for (Trade t : trades) System.out.println(t.price);
+        // Expected: 100.3 printed before 100.7
+    }
+}
 ```
 
 ##### Problem 7
 *(→ [Solution](#solution-7-off-by-one-loop-bound))*
 
 ```java
-class MovingAverage {
-    double average(int[] prices, int windowSize) {
+public class Solution {
+    static double average(int[] prices, int windowSize) {
         int sum = 0;
         for (int i = 0; i <= windowSize; i++) {
             sum += prices[i];
         }
         return (double) sum / windowSize;
     }
-}
 
-// Failing test:
-// prices = {10, 20, 30, 40}, windowSize = 3
-// Expected: average of {10,20,30} = 20.0
-// Actual:   either wrong average (includes prices[3]=40) or ArrayIndexOutOfBoundsException if windowSize == prices.length - 1
+    public static void main(String[] argv) {
+        int[] prices = {10, 20, 30, 40};
+        System.out.println("Average: " + average(prices, 3));
+        // Expected: 20.0 (average of the first 3 prices: 10, 20, 30)
+    }
+}
 ```
 
 ##### Problem 8
 *(→ [Solution](#solution-8-missing-null-check))*
 
 ```java
-class CustomerService {
-    String getPreferredRegion(Customer customer) {
-        return customer.getProfile().getRegion().toUpperCase();
-    }
+class CustomerProfile {
+    private final String region;
+    CustomerProfile(String region) { this.region = region; }
+    String getRegion() { return region; }
 }
 
-// Failing test:
-// customer.getProfile() returns null for a newly-registered customer with no profile yet
-// Expected: getPreferredRegion returns a safe default, e.g. "UNKNOWN"
-// Actual:   throws NullPointerException — intermittent in production because it only happens for incomplete profiles
+class Customer {
+    private final CustomerProfile profile;
+    Customer(CustomerProfile profile) { this.profile = profile; }
+    CustomerProfile getProfile() { return profile; }
+}
+
+public class Solution {
+    static String getPreferredRegion(Customer customer) {
+        return customer.getProfile().getRegion().toUpperCase();
+    }
+
+    public static void main(String[] argv) {
+        Customer newCustomer = new Customer(null);   // no profile yet
+        System.out.println("Region: " + getPreferredRegion(newCustomer));
+        // Expected: "UNKNOWN" (a safe default for an incomplete profile)
+    }
+}
 ```
 
 ##### Problem 9
 *(→ [Solution](#solution-9-simpledateformat-shared-across-threads))*
 
 ```java
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 class ReportGenerator {
     private static final SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -678,48 +740,74 @@ class ReportGenerator {
     }
 }
 
-// Failing test (run under concurrent load, e.g. 50 threads calling formatDate simultaneously):
-// Expected: every call returns a correctly formatted date string
-// Actual:   intermittently throws NumberFormatException or returns a garbled/wrong date,
-//           because SimpleDateFormat mutates internal Calendar fields and isn't synchronized
+public class Solution {
+    public static void main(String[] argv) throws InterruptedException {
+        ReportGenerator generator = new ReportGenerator();
+        int threadCount = 50;
+        Thread[] threads = new Thread[threadCount];
+        for (int i = 0; i < threadCount; i++) {
+            threads[i] = new Thread(() -> System.out.println(generator.formatDate(new Date())));
+            threads[i].start();
+        }
+        for (Thread t : threads) t.join();
+        // Expected: every line prints a correctly formatted date string
+        // (run repeatedly under load to observe the intermittent corruption)
+    }
+}
 ```
 
 ##### Problem 10
 *(→ [Solution](#solution-10-java-streams-misuse))*
 
 ```java
-class InventoryService {
-    void markLowStockItems(List<Item> items) {
+import java.util.*;
+
+class Item {
+    int quantity;
+    boolean lowStock;
+    Item(int quantity) { this.quantity = quantity; }
+    int getQuantity() { return quantity; }
+    void setLowStock(boolean v) { this.lowStock = v; }
+    boolean isLowStock() { return lowStock; }
+}
+
+public class Solution {
+    static void markLowStockItems(List<Item> items) {
         items.stream()
              .filter(i -> i.getQuantity() < 10)
              .peek(i -> i.setLowStock(true));
     }
-}
 
-// Failing test:
-// items contain one item with quantity = 5
-// Expected: that item's isLowStock() is true after markLowStockItems() runs
-// Actual:   isLowStock() is still false — the stream pipeline was never actually executed,
-//           because `peek` is an intermediate op and there's no terminal op (forEach/collect/count) to trigger it
+    public static void main(String[] argv) {
+        List<Item> items = new ArrayList<>(List.of(new Item(5)));
+        markLowStockItems(items);
+        System.out.println("Low stock: " + items.get(0).isLowStock());
+        // Expected: true
+    }
+}
 ```
 
 ##### Problem 11
 *(→ [Solution](#solution-11-list-passed-by-reference-and-mutated-by-callee))*
 
 ```java
-class ReportBuilder {
-    List<String> buildSummary(List<String> lineItems) {
+import java.util.*;
+
+public class Solution {
+    static List<String> buildSummary(List<String> lineItems) {
         Collections.sort(lineItems);
         lineItems.removeIf(s -> s.isBlank());
         return lineItems;
     }
-}
 
-// Failing test:
-// List<String> original = new ArrayList<>(List.of("b", "", "a"));
-// List<String> summary = reportBuilder.buildSummary(original);
-// Expected: `original` is untouched (still ["b", "", "a"]); `summary` is the cleaned, sorted copy
-// Actual:   `original` itself is now sorted and blank-filtered too — the caller's own list was silently mutated
+    public static void main(String[] argv) {
+        List<String> original = new ArrayList<>(List.of("b", "", "a"));
+        List<String> summary = buildSummary(original);
+        System.out.println("Original: " + original);
+        System.out.println("Summary:  " + summary);
+        // Expected: Original stays ["b", "", "a"]; Summary is the cleaned, sorted copy
+    }
+}
 ```
 
 ---
@@ -729,20 +817,62 @@ class ReportBuilder {
 ##### Solution 1: equals and hashCode Using Only Partial Fields
 
 ```java
-@Override
-public boolean equals(Object o) {
-    if (this == o) return true;
-    if (!(o instanceof Trade)) return false;
-    Trade other = (Trade) o;
-    return quantity == other.quantity
-        && Double.compare(price, other.price) == 0
-        && symbol.equals(other.symbol)
-        && side.equals(other.side);
+import java.util.*;
+
+class Trade {
+    String symbol;
+    String side;
+    int quantity;
+    double price;
+
+    Trade(String symbol, String side, int quantity, double price) {
+        this.symbol = symbol;
+        this.side = side;
+        this.quantity = quantity;
+        this.price = price;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Trade)) return false;
+        Trade other = (Trade) o;
+        return quantity == other.quantity
+            && Double.compare(price, other.price) == 0
+            && symbol.equals(other.symbol)
+            && side.equals(other.side);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(symbol, side, quantity, price);
+    }
 }
 
-@Override
-public int hashCode() {
-    return Objects.hash(symbol, side, quantity, price);
+class TradeReconciler {
+    List<Trade> reconcile(List<Trade> incomingFeed, List<Trade> bookedLedger) {
+        Set<Trade> booked = new HashSet<>(bookedLedger);
+        List<Trade> unbooked = new ArrayList<>();
+        for (Trade t : incomingFeed) {
+            if (!booked.contains(t)) unbooked.add(t);
+        }
+        return unbooked;
+    }
+}
+
+public class Solution {
+    public static void main(String[] argv) {
+        List<Trade> incomingFeed = List.of(
+            new Trade("AAPL", "BUY", 100, 150.0),
+            new Trade("AAPL", "SELL", 50, 151.0)
+        );
+        List<Trade> bookedLedger = List.of(
+            new Trade("AAPL", "BUY", 100, 150.0)
+        );
+
+        List<Trade> unbooked = new TradeReconciler().reconcile(incomingFeed, bookedLedger);
+        System.out.println("Unbooked trades: " + unbooked.size());   // prints 1 — correct
+    }
 }
 ```
 **Why it works:** identity now depends on every field that actually distinguishes two trades. The AAPL BUY and AAPL SELL trades no longer collide — `reconcile()` correctly returns the unbooked SELL. Target complexity stays O(n + m) time, O(m) space (unchanged — this is purely a correctness fix, not a performance one).
@@ -750,17 +880,24 @@ public int hashCode() {
 ##### Solution 2: String to Numeric Parsing Bug
 
 ```java
-double computeTotal(String[] priceStrings) {
-    double total = 0;
-    for (String p : priceStrings) {
-        if (p == null || p.isBlank()) continue;
-        try {
-            total += Float.parseFloat(p);
-        } catch (NumberFormatException e) {
-            // skip unparseable entries like "N/A"
+public class Solution {
+    static double computeTotal(String[] priceStrings) {
+        double total = 0;
+        for (String p : priceStrings) {
+            if (p == null || p.isBlank()) continue;
+            try {
+                total += Float.parseFloat(p);
+            } catch (NumberFormatException e) {
+                // skip unparseable entries like "N/A"
+            }
         }
+        return total;
     }
-    return total;
+
+    public static void main(String[] argv) {
+        String[] priceStrings = {"150.25", "N/A", "99.50"};
+        System.out.println("Total: " + computeTotal(priceStrings));   // prints 249.75 — correct
+    }
 }
 ```
 **Why it works:** unparseable or missing entries are explicitly skipped instead of crashing the whole computation — the loop keeps going and the valid entries still sum correctly.
@@ -770,6 +907,11 @@ double computeTotal(String[] priceStrings) {
 See the full walkthrough in [citi.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug).
 
 ```java
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
 class RatingService {
     private final RatingHistoryBuilder historyBuilder;
@@ -783,6 +925,7 @@ class RatingService {
         validate(rating);
         historyBuilder.record(rating);   // call goes through the real Spring proxy now
     }
+    void validate(Rating rating) { }
 }
 
 @Component   // now a real Spring bean
@@ -792,14 +935,37 @@ class RatingHistoryBuilder {
         if (rating.getScore() < 0) throw new IllegalArgumentException("bad score");
     }
 }
+
+class Rating {
+    private final int score;
+    Rating(int score) { this.score = score; }
+    int getScore() { return score; }
+}
+
+public class Solution {
+    public static void main(String[] argv) {
+        // NOTE: this shows the correct WIRING — to actually observe the fixed transactional
+        // behavior, both beans need to be resolved from a real Spring ApplicationContext
+        // (constructor injection), not constructed with `new`.
+        System.out.println("RatingHistoryBuilder is now a real @Component, injected via the constructor.");
+    }
+}
 ```
 **Why it works:** `RatingHistoryBuilder` is now a container-managed bean, injected via the constructor. Spring wraps it in a real AOP proxy, so `REQUIRES_NEW` actually creates an independent transaction. A failure in `record()` now rolls back only its own transaction — the outer `rate()` transaction (and whatever it already did) is unaffected.
 
 ##### Solution 4: Reference Equality Instead of equals
 
 ```java
-boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
-    return incomingId.equals(lastProcessedId);   // content comparison, not reference
+public class Solution {
+    static boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
+        return incomingId.equals(lastProcessedId);   // content comparison, not reference
+    }
+
+    public static void main(String[] argv) {
+        String incomingId = new String("ORD-1001");
+        String lastProcessedId = "ORD-1001";
+        System.out.println("Is duplicate: " + isDuplicateOrderId(incomingId, lastProcessedId));   // prints true — correct
+    }
 }
 ```
 **Why it works:** `.equals()` compares the actual characters, not whether both variables happen to point at the same pooled/cached object — so it correctly matches `"ORD-1001"` regardless of whether either String came from a literal or was built at runtime.
@@ -807,6 +973,8 @@ boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
 ##### Solution 5: Mutable Key Mutated After Insertion
 
 ```java
+import java.util.*;
+
 class AccountKey {
     final String region;          // make fields final
     final int accountNumber;
@@ -814,7 +982,24 @@ class AccountKey {
         this.region = region;
         this.accountNumber = accountNumber;
     }
-    // no setters — equals()/hashCode() unchanged
+    @Override public boolean equals(Object o) {
+        if (!(o instanceof AccountKey)) return false;
+        AccountKey k = (AccountKey) o;
+        return accountNumber == k.accountNumber && region.equals(k.region);
+    }
+    @Override public int hashCode() { return Objects.hash(region, accountNumber); }
+    // no setters
+}
+
+public class Solution {
+    public static void main(String[] argv) {
+        Map<AccountKey, Double> cache = new HashMap<>();
+        AccountKey key = new AccountKey("APAC", 42);
+        cache.put(key, 1000.0);
+        // key.region is final — there's no setter to mutate it after insertion
+        Double balance = cache.get(new AccountKey("APAC", 42));
+        System.out.println("Balance: " + balance);   // prints 1000.0 — correct
+    }
 }
 ```
 **Why it works:** once `region` and `accountNumber` are `final` with no setters, the key is immutable — nobody can change it after it's been inserted, so its `hashCode()` can never drift away from the bucket it was originally placed in. (This is the same idea as [A7 — Why Immutable Objects Are Thread-Safe](#a7-why-immutable-objects-are-thread-safe): removing the possibility of mutation removes the whole class of bug.)
@@ -822,10 +1007,25 @@ class AccountKey {
 ##### Solution 6: Wrong Comparator Implementation
 
 ```java
+import java.util.*;
+
+class Trade {
+    double price;
+    Trade(double price) { this.price = price; }
+}
+
 class TradeByPriceComparator implements Comparator<Trade> {
     @Override
     public int compare(Trade a, Trade b) {
         return Double.compare(a.price, b.price);   // correct, no precision loss
+    }
+}
+
+public class Solution {
+    public static void main(String[] argv) {
+        List<Trade> trades = new ArrayList<>(List.of(new Trade(100.7), new Trade(100.3)));
+        trades.sort(new TradeByPriceComparator());
+        for (Trade t : trades) System.out.println(t.price);   // prints 100.3 then 100.7 — correct
     }
 }
 ```
@@ -834,12 +1034,19 @@ class TradeByPriceComparator implements Comparator<Trade> {
 ##### Solution 7: Off-by-One Loop Bound
 
 ```java
-double average(int[] prices, int windowSize) {
-    int sum = 0;
-    for (int i = 0; i < windowSize; i++) {   // strict < , stays inside the window
-        sum += prices[i];
+public class Solution {
+    static double average(int[] prices, int windowSize) {
+        int sum = 0;
+        for (int i = 0; i < windowSize; i++) {   // strict < , stays inside the window
+            sum += prices[i];
+        }
+        return (double) sum / windowSize;
     }
-    return (double) sum / windowSize;
+
+    public static void main(String[] argv) {
+        int[] prices = {10, 20, 30, 40};
+        System.out.println("Average: " + average(prices, 3));   // prints 20.0 — correct
+    }
 }
 ```
 **Why it works:** the loop now sums exactly `windowSize` elements (indices `0` to `windowSize - 1`), matching what "a window of size N" actually means, instead of reading one extra element past it.
@@ -847,11 +1054,30 @@ double average(int[] prices, int windowSize) {
 ##### Solution 8: Missing Null Check
 
 ```java
-String getPreferredRegion(Customer customer) {
-    if (customer == null) return "UNKNOWN";
-    CustomerProfile profile = customer.getProfile();
-    if (profile == null || profile.getRegion() == null) return "UNKNOWN";
-    return profile.getRegion().toUpperCase();
+class CustomerProfile {
+    private final String region;
+    CustomerProfile(String region) { this.region = region; }
+    String getRegion() { return region; }
+}
+
+class Customer {
+    private final CustomerProfile profile;
+    Customer(CustomerProfile profile) { this.profile = profile; }
+    CustomerProfile getProfile() { return profile; }
+}
+
+public class Solution {
+    static String getPreferredRegion(Customer customer) {
+        if (customer == null) return "UNKNOWN";
+        CustomerProfile profile = customer.getProfile();
+        if (profile == null || profile.getRegion() == null) return "UNKNOWN";
+        return profile.getRegion().toUpperCase();
+    }
+
+    public static void main(String[] argv) {
+        Customer newCustomer = new Customer(null);
+        System.out.println("Region: " + getPreferredRegion(newCustomer));   // prints UNKNOWN — correct
+    }
 }
 ```
 **Why it works:** every link in the chain (`customer` → `profile` → `region`) is checked before being dereferenced, so an incomplete profile returns a safe, well-defined default instead of crashing.
@@ -859,10 +1085,28 @@ String getPreferredRegion(Customer customer) {
 ##### Solution 9: SimpleDateFormat Shared Across Threads
 
 ```java
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+
 class ReportGenerator {
     String formatDate(Date date) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");  // java.time, immutable & thread-safe
         return date.toInstant().atZone(ZoneId.systemDefault()).format(formatter);
+    }
+}
+
+public class Solution {
+    public static void main(String[] argv) throws InterruptedException {
+        ReportGenerator generator = new ReportGenerator();
+        int threadCount = 50;
+        Thread[] threads = new Thread[threadCount];
+        for (int i = 0; i < threadCount; i++) {
+            threads[i] = new Thread(() -> System.out.println(generator.formatDate(new Date())));
+            threads[i].start();
+        }
+        for (Thread t : threads) t.join();
+        // every line prints a correctly formatted date string, every time — no corruption
     }
 }
 ```
@@ -871,10 +1115,29 @@ class ReportGenerator {
 ##### Solution 10: Java Streams Misuse
 
 ```java
-void markLowStockItems(List<Item> items) {
-    items.stream()
-         .filter(i -> i.getQuantity() < 10)
-         .forEach(i -> i.setLowStock(true));   // forEach is a terminal operation — triggers execution
+import java.util.*;
+
+class Item {
+    int quantity;
+    boolean lowStock;
+    Item(int quantity) { this.quantity = quantity; }
+    int getQuantity() { return quantity; }
+    void setLowStock(boolean v) { this.lowStock = v; }
+    boolean isLowStock() { return lowStock; }
+}
+
+public class Solution {
+    static void markLowStockItems(List<Item> items) {
+        items.stream()
+             .filter(i -> i.getQuantity() < 10)
+             .forEach(i -> i.setLowStock(true));   // forEach is a terminal operation — triggers execution
+    }
+
+    public static void main(String[] argv) {
+        List<Item> items = new ArrayList<>(List.of(new Item(5)));
+        markLowStockItems(items);
+        System.out.println("Low stock: " + items.get(0).isLowStock());   // prints true — correct
+    }
 }
 ```
 **Why it works:** Java streams are lazy — nothing runs until a terminal operation (`forEach`, `collect`, `count`, etc.) is called. `peek()` is only an intermediate operation meant for side-effect debugging *alongside* a terminal op, not a replacement for one. Adding `forEach` (or any terminal op) actually executes the pipeline.
@@ -882,11 +1145,22 @@ void markLowStockItems(List<Item> items) {
 ##### Solution 11: List Passed by Reference and Mutated by Callee
 
 ```java
-List<String> buildSummary(List<String> lineItems) {
-    List<String> copy = new ArrayList<>(lineItems);   // defensive copy first
-    Collections.sort(copy);
-    copy.removeIf(s -> s.isBlank());
-    return copy;
+import java.util.*;
+
+public class Solution {
+    static List<String> buildSummary(List<String> lineItems) {
+        List<String> copy = new ArrayList<>(lineItems);   // defensive copy first
+        Collections.sort(copy);
+        copy.removeIf(s -> s.isBlank());
+        return copy;
+    }
+
+    public static void main(String[] argv) {
+        List<String> original = new ArrayList<>(List.of("b", "", "a"));
+        List<String> summary = buildSummary(original);
+        System.out.println("Original: " + original);   // unchanged: [b, , a]
+        System.out.println("Summary:  " + summary);     // cleaned: [a, b]
+    }
 }
 ```
 **Why it works:** operating on a fresh copy means the caller's original list is never touched — `Collections.sort()` and `removeIf()` only affect the local `copy`, so the method returns a cleaned result without any side effect on data the caller still owns a reference to.
@@ -944,8 +1218,16 @@ Expected: 2
 ```
 
 ```java
-int countCompleteJourneys(String events) {
-    // TODO
+public class Solution {
+    static int countCompleteJourneys(String events) {
+        // TODO
+        return 0;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(countCompleteJourneys("EEXXE"));
+        // Expected: 2
+    }
 }
 ```
 
@@ -960,8 +1242,16 @@ Example: "{[(])}"  → false
 ```
 
 ```java
-boolean isValid(String s) {
-    // TODO
+public class Solution {
+    static boolean isValid(String s) {
+        // TODO
+        return false;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(isValid("{[()]}"));   // Expected: true
+        System.out.println(isValid("{[(])}"));   // Expected: false
+    }
 }
 ```
 
@@ -976,8 +1266,16 @@ Example: "()()"    → 1
 ```
 
 ```java
-int maxDepth(String s) {
-    // TODO
+public class Solution {
+    static int maxDepth(String s) {
+        // TODO
+        return 0;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(maxDepth("((()))"));   // Expected: 3
+        System.out.println(maxDepth("()()"));     // Expected: 1
+    }
 }
 ```
 
@@ -991,8 +1289,18 @@ Example: nums = [2,7,11,15], target = 9  → [0,1]
 ```
 
 ```java
-int[] twoSum(int[] nums, int target) {
-    // TODO
+import java.util.*;
+
+public class Solution {
+    static int[] twoSum(int[] nums, int target) {
+        // TODO
+        return new int[0];
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(Arrays.toString(twoSum(new int[]{2,7,11,15}, 9)));
+        // Expected: [0, 1]
+    }
 }
 ```
 
@@ -1007,8 +1315,18 @@ Expected: [["eat","tea","ate"], ["tan","nat"], ["bat"]]   (order of groups/items
 ```
 
 ```java
-List<List<String>> groupAnagrams(String[] strs) {
-    // TODO
+import java.util.*;
+
+public class Solution {
+    static List<List<String>> groupAnagrams(String[] strs) {
+        // TODO
+        return new ArrayList<>();
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(groupAnagrams(new String[]{"eat","tea","tan","ate","nat","bat"}));
+        // Expected: [[eat, tea, ate], [tan, nat], [bat]]  (order may vary)
+    }
 }
 ```
 
@@ -1022,8 +1340,15 @@ Example: "swiss"  → 'w'
 ```
 
 ```java
-char firstNonRepeating(String s) {
-    // TODO
+public class Solution {
+    static char firstNonRepeating(String s) {
+        // TODO
+        return '\0';
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(firstNonRepeating("swiss"));   // Expected: w
+    }
 }
 ```
 
@@ -1038,8 +1363,15 @@ Example: nums = [1,5,7,-1,5], target = 6  → 3
 ```
 
 ```java
-int countPairsWithSum(int[] nums, int target) {
-    // TODO
+public class Solution {
+    static int countPairsWithSum(int[] nums, int target) {
+        // TODO
+        return 0;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(countPairsWithSum(new int[]{1,5,7,-1,5}, 6));   // Expected: 3
+    }
 }
 ```
 
@@ -1053,8 +1385,15 @@ Example: prices = [7,1,5,3,6,4]  → 5   (buy at 1, sell at 6)
 ```
 
 ```java
-int maxProfit(int[] prices) {
-    // TODO
+public class Solution {
+    static int maxProfit(int[] prices) {
+        // TODO
+        return 0;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(maxProfit(new int[]{7,1,5,3,6,4}));   // Expected: 5
+    }
 }
 ```
 
@@ -1069,8 +1408,21 @@ Expected: [[1,6],[8,10],[15,18]]
 ```
 
 ```java
-List<int[]> mergeIntervals(List<int[]> intervals) {
-    // TODO
+import java.util.*;
+
+public class Solution {
+    static List<int[]> mergeIntervals(List<int[]> intervals) {
+        // TODO
+        return new ArrayList<>();
+    }
+
+    public static void main(String[] argv) {
+        List<int[]> intervals = new ArrayList<>(List.of(
+            new int[]{1,3}, new int[]{2,6}, new int[]{8,10}, new int[]{15,18}
+        ));
+        for (int[] iv : mergeIntervals(intervals)) System.out.println(Arrays.toString(iv));
+        // Expected: [1, 6] / [8, 10] / [15, 18]
+    }
 }
 ```
 
@@ -1084,8 +1436,15 @@ Example: nums = [2,1,5,1,3,2], k = 3  → 9   (subarray [5,1,3])
 ```
 
 ```java
-int maxSubarraySum(int[] nums, int k) {
-    // TODO
+public class Solution {
+    static int maxSubarraySum(int[] nums, int k) {
+        // TODO
+        return 0;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(maxSubarraySum(new int[]{2,1,5,1,3,2}, 3));   // Expected: 9
+    }
 }
 ```
 
@@ -1099,8 +1458,18 @@ Example: nums = [1,2,2,4]  → [2,3]
 ```
 
 ```java
-int[] findDuplicateAndMissing(int[] nums) {
-    // TODO
+import java.util.*;
+
+public class Solution {
+    static int[] findDuplicateAndMissing(int[] nums) {
+        // TODO
+        return new int[0];
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(Arrays.toString(findDuplicateAndMissing(new int[]{1,2,2,4})));
+        // Expected: [2, 3]
+    }
 }
 ```
 
@@ -1121,6 +1490,14 @@ class RangeSummer {
     }
     int sum(int l, int r) {
         // TODO
+        return 0;
+    }
+}
+
+public class Solution {
+    public static void main(String[] argv) {
+        RangeSummer rs = new RangeSummer(new int[]{1,2,3,4,5});
+        System.out.println(rs.sum(1, 3));   // Expected: 9
     }
 }
 ```
@@ -1136,8 +1513,16 @@ Example: "abc"          → "abc"   (compressed form "a1b1c1" is longer, so keep
 ```
 
 ```java
-String compress(String s) {
-    // TODO
+public class Solution {
+    static String compress(String s) {
+        // TODO
+        return s;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(compress("aabcccccaaa"));   // Expected: a2bc5a3
+        System.out.println(compress("abc"));            // Expected: abc
+    }
 }
 ```
 
@@ -1152,8 +1537,16 @@ Example: "rat", "car"        → false
 ```
 
 ```java
-boolean isAnagram(String a, String b) {
-    // TODO
+public class Solution {
+    static boolean isAnagram(String a, String b) {
+        // TODO
+        return false;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(isAnagram("listen", "silent"));   // Expected: true
+        System.out.println(isAnagram("rat", "car"));          // Expected: false
+    }
 }
 ```
 
@@ -1167,8 +1560,15 @@ Example: "the sky is blue"  → "blue is sky the"
 ```
 
 ```java
-String reverseWords(String s) {
-    // TODO
+public class Solution {
+    static String reverseWords(String s) {
+        // TODO
+        return s;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(reverseWords("the sky is blue"));   // Expected: blue is sky the
+    }
 }
 ```
 
@@ -1182,8 +1582,19 @@ Example: nums = [1,2,3,4,5,6,7], k = 3  → [5,6,7,1,2,3,4]
 ```
 
 ```java
-void rotate(int[] nums, int k) {
-    // TODO
+import java.util.*;
+
+public class Solution {
+    static void rotate(int[] nums, int k) {
+        // TODO
+    }
+
+    public static void main(String[] argv) {
+        int[] nums = {1,2,3,4,5,6,7};
+        rotate(nums, 3);
+        System.out.println(Arrays.toString(nums));
+        // Expected: [5, 6, 7, 1, 2, 3, 4]
+    }
 }
 ```
 
@@ -1194,18 +1605,24 @@ void rotate(int[] nums, int k) {
 ##### Algo Solution 1: Toll-Booth Complete Journeys Counting
 
 ```java
-int countCompleteJourneys(String events) {
-    int open = 0, complete = 0;
-    for (char c : events.toCharArray()) {
-        if (c == 'E') {
-            open++;
-        } else if (c == 'X' && open > 0) {
-            open--;
-            complete++;
+public class Solution {
+    static int countCompleteJourneys(String events) {
+        int open = 0, complete = 0;
+        for (char c : events.toCharArray()) {
+            if (c == 'E') {
+                open++;
+            } else if (c == 'X' && open > 0) {
+                open--;
+                complete++;
+            }
+            // an 'X' with open == 0 is an orphan exit — ignored
         }
-        // an 'X' with open == 0 is an orphan exit — ignored
+        return complete;   // any leftover `open` entries never got a matching X — ignored too
     }
-    return complete;   // any leftover `open` entries never got a matching X — ignored too
+
+    public static void main(String[] argv) {
+        System.out.println(countCompleteJourneys("EEXXE"));   // prints 2 — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(1) space. **Why it works:** `open` tracks entries not yet closed; `complete` only increments on an actual matching close, so orphan exits and unfinished entries are naturally excluded without any extra bookkeeping.
@@ -1213,17 +1630,26 @@ int countCompleteJourneys(String events) {
 ##### Algo Solution 2: Valid Parentheses
 
 ```java
-boolean isValid(String s) {
-    Deque<Character> stack = new ArrayDeque<>();
-    Map<Character, Character> pairs = Map.of(')', '(', ']', '[', '}', '{');
-    for (char c : s.toCharArray()) {
-        if (pairs.containsValue(c)) {
-            stack.push(c);
-        } else if (pairs.containsKey(c)) {
-            if (stack.isEmpty() || stack.pop() != pairs.get(c)) return false;
+import java.util.*;
+
+public class Solution {
+    static boolean isValid(String s) {
+        Deque<Character> stack = new ArrayDeque<>();
+        Map<Character, Character> pairs = Map.of(')', '(', ']', '[', '}', '{');
+        for (char c : s.toCharArray()) {
+            if (pairs.containsValue(c)) {
+                stack.push(c);
+            } else if (pairs.containsKey(c)) {
+                if (stack.isEmpty() || stack.pop() != pairs.get(c)) return false;
+            }
         }
+        return stack.isEmpty();
     }
-    return stack.isEmpty();
+
+    public static void main(String[] argv) {
+        System.out.println(isValid("{[()]}"));   // prints true — correct
+        System.out.println(isValid("{[(])}"));   // prints false — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(n) space. **Why it works:** a stack naturally captures "most recently opened, must be closed first" — pushing on open, popping and checking on close, and requiring an empty stack at the end to reject any unclosed brackets.
@@ -1231,13 +1657,20 @@ boolean isValid(String s) {
 ##### Algo Solution 3: Maximum Nesting Depth of Brackets
 
 ```java
-int maxDepth(String s) {
-    int depth = 0, max = 0;
-    for (char c : s.toCharArray()) {
-        if (c == '(') { depth++; max = Math.max(max, depth); }
-        else if (c == ')') depth--;
+public class Solution {
+    static int maxDepth(String s) {
+        int depth = 0, max = 0;
+        for (char c : s.toCharArray()) {
+            if (c == '(') { depth++; max = Math.max(max, depth); }
+            else if (c == ')') depth--;
+        }
+        return max;
     }
-    return max;
+
+    public static void main(String[] argv) {
+        System.out.println(maxDepth("((()))"));   // prints 3 — correct
+        System.out.println(maxDepth("()()"));     // prints 1 — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(1) space. **Why it works:** depth only needs a running counter, not an actual stack — tracking the current open count and recording its peak is enough.
@@ -1245,14 +1678,22 @@ int maxDepth(String s) {
 ##### Algo Solution 4: Two Sum
 
 ```java
-int[] twoSum(int[] nums, int target) {
-    Map<Integer, Integer> seen = new HashMap<>();   // value -> index
-    for (int i = 0; i < nums.length; i++) {
-        int complement = target - nums[i];
-        if (seen.containsKey(complement)) return new int[]{seen.get(complement), i};
-        seen.put(nums[i], i);
+import java.util.*;
+
+public class Solution {
+    static int[] twoSum(int[] nums, int target) {
+        Map<Integer, Integer> seen = new HashMap<>();   // value -> index
+        for (int i = 0; i < nums.length; i++) {
+            int complement = target - nums[i];
+            if (seen.containsKey(complement)) return new int[]{seen.get(complement), i};
+            seen.put(nums[i], i);
+        }
+        throw new IllegalArgumentException("no valid pair");
     }
-    throw new IllegalArgumentException("no valid pair");
+
+    public static void main(String[] argv) {
+        System.out.println(Arrays.toString(twoSum(new int[]{2,7,11,15}, 9)));   // prints [0, 1] — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(n) space. **Why it works:** instead of checking every pair (O(n²)), each number is checked against a running hashmap of everything seen so far — the complement either is or isn't already there, in O(1).
@@ -1260,15 +1701,24 @@ int[] twoSum(int[] nums, int target) {
 ##### Algo Solution 5: Group Anagrams
 
 ```java
-List<List<String>> groupAnagrams(String[] strs) {
-    Map<String, List<String>> groups = new HashMap<>();
-    for (String s : strs) {
-        char[] chars = s.toCharArray();
-        Arrays.sort(chars);
-        String key = new String(chars);          // canonical form, e.g. "eat" -> "aet"
-        groups.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
+import java.util.*;
+
+public class Solution {
+    static List<List<String>> groupAnagrams(String[] strs) {
+        Map<String, List<String>> groups = new HashMap<>();
+        for (String s : strs) {
+            char[] chars = s.toCharArray();
+            Arrays.sort(chars);
+            String key = new String(chars);          // canonical form, e.g. "eat" -> "aet"
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
+        }
+        return new ArrayList<>(groups.values());
     }
-    return new ArrayList<>(groups.values());
+
+    public static void main(String[] argv) {
+        System.out.println(groupAnagrams(new String[]{"eat","tea","tan","ate","nat","bat"}));
+        // prints [[eat, tea, ate], [tan, nat], [bat]] (order may vary) — correct
+    }
 }
 ```
 **Complexity:** O(n · k log k) time (n strings, k = max string length), O(n · k) space. **Why it works:** anagrams share the exact same sorted character sequence, so sorting each string gives a canonical key that groups them automatically via a hashmap.
@@ -1276,13 +1726,19 @@ List<List<String>> groupAnagrams(String[] strs) {
 ##### Algo Solution 6: First Non-Repeating Character
 
 ```java
-char firstNonRepeating(String s) {
-    int[] count = new int[256];
-    for (char c : s.toCharArray()) count[c]++;
-    for (char c : s.toCharArray()) {
-        if (count[c] == 1) return c;
+public class Solution {
+    static char firstNonRepeating(String s) {
+        int[] count = new int[256];
+        for (char c : s.toCharArray()) count[c]++;
+        for (char c : s.toCharArray()) {
+            if (count[c] == 1) return c;
+        }
+        return '\0';
     }
-    return '\0';
+
+    public static void main(String[] argv) {
+        System.out.println(firstNonRepeating("swiss"));   // prints w — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(1) space (fixed-size count array). **Why it works:** one pass builds frequency counts, a second pass finds the first character whose count is exactly 1 — two linear passes beat checking every character against the rest of the string (O(n²)).
@@ -1290,15 +1746,23 @@ char firstNonRepeating(String s) {
 ##### Algo Solution 7: Count Pairs With Given Sum
 
 ```java
-int countPairsWithSum(int[] nums, int target) {
-    Map<Integer, Integer> seenCount = new HashMap<>();
-    int count = 0;
-    for (int n : nums) {
-        int complement = target - n;
-        count += seenCount.getOrDefault(complement, 0);
-        seenCount.merge(n, 1, Integer::sum);
+import java.util.*;
+
+public class Solution {
+    static int countPairsWithSum(int[] nums, int target) {
+        Map<Integer, Integer> seenCount = new HashMap<>();
+        int count = 0;
+        for (int n : nums) {
+            int complement = target - n;
+            count += seenCount.getOrDefault(complement, 0);
+            seenCount.merge(n, 1, Integer::sum);
+        }
+        return count;
     }
-    return count;
+
+    public static void main(String[] argv) {
+        System.out.println(countPairsWithSum(new int[]{1,5,7,-1,5}, 6));   // prints 3 — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(n) space. **Why it works:** for each number, every earlier occurrence of its complement forms a valid pair with it — a running frequency map lets each element find how many valid partners already came before it, in O(1) per element.
@@ -1306,13 +1770,19 @@ int countPairsWithSum(int[] nums, int target) {
 ##### Algo Solution 8: Best Single Buy-Sell for Max Profit
 
 ```java
-int maxProfit(int[] prices) {
-    int minSoFar = Integer.MAX_VALUE, maxProfit = 0;
-    for (int price : prices) {
-        minSoFar = Math.min(minSoFar, price);
-        maxProfit = Math.max(maxProfit, price - minSoFar);
+public class Solution {
+    static int maxProfit(int[] prices) {
+        int minSoFar = Integer.MAX_VALUE, maxProfit = 0;
+        for (int price : prices) {
+            minSoFar = Math.min(minSoFar, price);
+            maxProfit = Math.max(maxProfit, price - minSoFar);
+        }
+        return maxProfit;
     }
-    return maxProfit;
+
+    public static void main(String[] argv) {
+        System.out.println(maxProfit(new int[]{7,1,5,3,6,4}));   // prints 5 — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(1) space. **Why it works:** the best sell price on any given day only needs to know the lowest buy price *seen so far* — tracked as a single running minimum — rather than re-checking every earlier day.
@@ -1320,17 +1790,29 @@ int maxProfit(int[] prices) {
 ##### Algo Solution 9: Merge Overlapping Intervals
 
 ```java
-List<int[]> mergeIntervals(List<int[]> intervals) {
-    intervals.sort((a, b) -> a[0] - b[0]);
-    List<int[]> merged = new ArrayList<>();
-    for (int[] interval : intervals) {
-        if (merged.isEmpty() || merged.get(merged.size() - 1)[1] < interval[0]) {
-            merged.add(interval);
-        } else {
-            merged.get(merged.size() - 1)[1] = Math.max(merged.get(merged.size() - 1)[1], interval[1]);
+import java.util.*;
+
+public class Solution {
+    static List<int[]> mergeIntervals(List<int[]> intervals) {
+        intervals.sort((a, b) -> a[0] - b[0]);
+        List<int[]> merged = new ArrayList<>();
+        for (int[] interval : intervals) {
+            if (merged.isEmpty() || merged.get(merged.size() - 1)[1] < interval[0]) {
+                merged.add(interval);
+            } else {
+                merged.get(merged.size() - 1)[1] = Math.max(merged.get(merged.size() - 1)[1], interval[1]);
+            }
         }
+        return merged;
     }
-    return merged;
+
+    public static void main(String[] argv) {
+        List<int[]> intervals = new ArrayList<>(List.of(
+            new int[]{1,3}, new int[]{2,6}, new int[]{8,10}, new int[]{15,18}
+        ));
+        for (int[] iv : mergeIntervals(intervals)) System.out.println(Arrays.toString(iv));
+        // prints [1, 6] / [8, 10] / [15, 18] — correct
+    }
 }
 ```
 **Complexity:** O(n log n) time (dominated by the sort), O(n) space. **Why it works:** once sorted by start, two intervals can only ever overlap with their immediate neighbor in the sorted order — so a single pass extending the last merged interval (or starting a new one) is sufficient.
@@ -1338,15 +1820,21 @@ List<int[]> mergeIntervals(List<int[]> intervals) {
 ##### Algo Solution 10: Sliding Window Max-Min Sum of Subarray Size K
 
 ```java
-int maxSubarraySum(int[] nums, int k) {
-    int windowSum = 0;
-    for (int i = 0; i < k; i++) windowSum += nums[i];
-    int maxSum = windowSum;
-    for (int i = k; i < nums.length; i++) {
-        windowSum += nums[i] - nums[i - k];   // slide: add new element, drop the oldest
-        maxSum = Math.max(maxSum, windowSum);
+public class Solution {
+    static int maxSubarraySum(int[] nums, int k) {
+        int windowSum = 0;
+        for (int i = 0; i < k; i++) windowSum += nums[i];
+        int maxSum = windowSum;
+        for (int i = k; i < nums.length; i++) {
+            windowSum += nums[i] - nums[i - k];   // slide: add new element, drop the oldest
+            maxSum = Math.max(maxSum, windowSum);
+        }
+        return maxSum;
     }
-    return maxSum;
+
+    public static void main(String[] argv) {
+        System.out.println(maxSubarraySum(new int[]{2,1,5,1,3,2}, 3));   // prints 9 — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(1) space. **Why it works:** recomputing the sum of each new window from scratch is O(n·k); instead, sliding the window by adding the new element and subtracting the one that just fell out of range keeps each step O(1).
@@ -1354,16 +1842,24 @@ int maxSubarraySum(int[] nums, int k) {
 ##### Algo Solution 11: Find Duplicate or Missing Number in Array
 
 ```java
-int[] findDuplicateAndMissing(int[] nums) {
-    int n = nums.length;
-    int[] count = new int[n + 1];
-    for (int x : nums) count[x]++;
-    int duplicate = -1, missing = -1;
-    for (int i = 1; i <= n; i++) {
-        if (count[i] == 2) duplicate = i;
-        if (count[i] == 0) missing = i;
+import java.util.*;
+
+public class Solution {
+    static int[] findDuplicateAndMissing(int[] nums) {
+        int n = nums.length;
+        int[] count = new int[n + 1];
+        for (int x : nums) count[x]++;
+        int duplicate = -1, missing = -1;
+        for (int i = 1; i <= n; i++) {
+            if (count[i] == 2) duplicate = i;
+            if (count[i] == 0) missing = i;
+        }
+        return new int[]{duplicate, missing};
     }
-    return new int[]{duplicate, missing};
+
+    public static void main(String[] argv) {
+        System.out.println(Arrays.toString(findDuplicateAndMissing(new int[]{1,2,2,4})));   // prints [2, 3] — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(n) space. **Why it works:** every value from 1 to n should appear exactly once; counting occurrences directly reveals which value appears twice (the duplicate) and which never appears (the missing one).
@@ -1385,23 +1881,37 @@ class RangeSummer {
         return prefix[r + 1] - prefix[l];
     }
 }
+
+public class Solution {
+    public static void main(String[] argv) {
+        RangeSummer rs = new RangeSummer(new int[]{1,2,3,4,5});
+        System.out.println(rs.sum(1, 3));   // prints 9 — correct
+    }
+}
 ```
 **Complexity:** O(n) one-time setup, O(1) per query. **Why it works:** `prefix[i]` holds the sum of everything before index `i`; any range sum is just the difference of two prefix values, avoiding re-summing the range on every query.
 
 ##### Algo Solution 13: String Run-Length Compression
 
 ```java
-String compress(String s) {
-    StringBuilder sb = new StringBuilder();
-    int i = 0;
-    while (i < s.length()) {
-        char current = s.charAt(i);
-        int count = 0;
-        while (i < s.length() && s.charAt(i) == current) { count++; i++; }
-        sb.append(current);
-        if (count > 1) sb.append(count);
+public class Solution {
+    static String compress(String s) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < s.length()) {
+            char current = s.charAt(i);
+            int count = 0;
+            while (i < s.length() && s.charAt(i) == current) { count++; i++; }
+            sb.append(current);
+            if (count > 1) sb.append(count);
+        }
+        return sb.length() < s.length() ? sb.toString() : s;
     }
-    return sb.length() < s.length() ? sb.toString() : s;
+
+    public static void main(String[] argv) {
+        System.out.println(compress("aabcccccaaa"));   // prints a2bc5a3 — correct
+        System.out.println(compress("abc"));            // prints abc — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(n) space. **Why it works:** a single pass counts each run of identical consecutive characters as it goes; the length check at the end enforces the "only if actually shorter" requirement.
@@ -1409,13 +1919,20 @@ String compress(String s) {
 ##### Algo Solution 14: Check if Two Strings Are Anagrams
 
 ```java
-boolean isAnagram(String a, String b) {
-    if (a.length() != b.length()) return false;
-    int[] count = new int[256];
-    for (char c : a.toCharArray()) count[c]++;
-    for (char c : b.toCharArray()) count[c]--;
-    for (int n : count) if (n != 0) return false;
-    return true;
+public class Solution {
+    static boolean isAnagram(String a, String b) {
+        if (a.length() != b.length()) return false;
+        int[] count = new int[256];
+        for (char c : a.toCharArray()) count[c]++;
+        for (char c : b.toCharArray()) count[c]--;
+        for (int n : count) if (n != 0) return false;
+        return true;
+    }
+
+    public static void main(String[] argv) {
+        System.out.println(isAnagram("listen", "silent"));   // prints true — correct
+        System.out.println(isAnagram("rat", "car"));          // prints false — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(1) space. **Why it works:** incrementing counts for one string and decrementing for the other means every matching character cancels out to zero — any leftover nonzero count means the character frequencies didn't match.
@@ -1423,14 +1940,20 @@ boolean isAnagram(String a, String b) {
 ##### Algo Solution 15: Reverse Words in Place
 
 ```java
-String reverseWords(String s) {
-    String[] words = s.trim().split("\\s+");
-    StringBuilder sb = new StringBuilder();
-    for (int i = words.length - 1; i >= 0; i--) {
-        sb.append(words[i]);
-        if (i > 0) sb.append(' ');
+public class Solution {
+    static String reverseWords(String s) {
+        String[] words = s.trim().split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (int i = words.length - 1; i >= 0; i--) {
+            sb.append(words[i]);
+            if (i > 0) sb.append(' ');
+        }
+        return sb.toString();
     }
-    return sb.toString();
+
+    public static void main(String[] argv) {
+        System.out.println(reverseWords("the sky is blue"));   // prints "blue is sky the" — correct
+    }
 }
 ```
 **Complexity:** O(n) time, O(n) space. **Why it works:** splitting on whitespace isolates each word intact, then appending them back in reverse order flips word order without touching the characters inside each word.
@@ -1438,20 +1961,30 @@ String reverseWords(String s) {
 ##### Algo Solution 16: Rotate Array by K Positions
 
 ```java
-void rotate(int[] nums, int k) {
-    int n = nums.length;
-    k %= n;
-    reverse(nums, 0, n - 1);
-    reverse(nums, 0, k - 1);
-    reverse(nums, k, n - 1);
-}
+import java.util.*;
 
-private void reverse(int[] nums, int lo, int hi) {
-    while (lo < hi) {
-        int tmp = nums[lo];
-        nums[lo] = nums[hi];
-        nums[hi] = tmp;
-        lo++; hi--;
+public class Solution {
+    static void rotate(int[] nums, int k) {
+        int n = nums.length;
+        k %= n;
+        reverse(nums, 0, n - 1);
+        reverse(nums, 0, k - 1);
+        reverse(nums, k, n - 1);
+    }
+
+    private static void reverse(int[] nums, int lo, int hi) {
+        while (lo < hi) {
+            int tmp = nums[lo];
+            nums[lo] = nums[hi];
+            nums[hi] = tmp;
+            lo++; hi--;
+        }
+    }
+
+    public static void main(String[] argv) {
+        int[] nums = {1,2,3,4,5,6,7};
+        rotate(nums, 3);
+        System.out.println(Arrays.toString(nums));   // prints [5, 6, 7, 1, 2, 3, 4] — correct
     }
 }
 ```
