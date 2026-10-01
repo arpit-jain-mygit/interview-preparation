@@ -438,6 +438,448 @@ Practice spotting and fixing these bug *shapes* fast (confirmed pattern: a faili
 - Java Streams misuse — forgetting a terminal operation, or wrong `reduce`/`collect` logic
 - A list/collection passed by reference and unintentionally mutated by the callee
 
+#### Code Practice (Segment 2) — Problem & Solution, Kept Separate
+
+Each problem below is buggy code plus a failing test, exactly like the real Karat format. Try to spot and fix it yourself before jumping to the linked solution — all 11 solutions are collected separately in the [Code Solutions](#code-solutions-segment-2) section so you aren't shown the fix while reading the bug.
+
+1. [equals/hashCode Using Only Partial Fields](#problem-1-equals-and-hashcode-using-only-partial-fields) — the real confirmed Trade reconciliation bug
+2. [String to Numeric Parsing Bug](#problem-2-string-to-numeric-parsing-bug)
+3. [Transactional Ignored Because Built with new](#problem-3-transactional-ignored-because-built-with-new)
+4. [Reference Equality Instead of equals](#problem-4-reference-equality-instead-of-equals)
+5. [Mutable Key Mutated After Insertion](#problem-5-mutable-key-mutated-after-insertion)
+6. [Wrong Comparator Implementation](#problem-6-wrong-comparator-implementation)
+7. [Off-by-One Loop Bound](#problem-7-off-by-one-loop-bound)
+8. [Missing Null Check](#problem-8-missing-null-check)
+9. [SimpleDateFormat Shared Across Threads](#problem-9-simpledateformat-shared-across-threads)
+10. [Java Streams Misuse](#problem-10-java-streams-misuse)
+11. [List Passed by Reference and Mutated by Callee](#problem-11-list-passed-by-reference-and-mutated-by-callee)
+
+##### Problem 1: equals and hashCode Using Only Partial Fields
+*(→ [Solution](#solution-1-equals-and-hashcode-using-only-partial-fields))*
+
+The failing test — `reconcile()` should return trades from the feed that aren't yet booked, but returns an empty list:
+
+```java
+class Trade {
+    String symbol;
+    String side;      // BUY or SELL
+    int quantity;
+    double price;
+
+    Trade(String symbol, String side, int quantity, double price) {
+        this.symbol = symbol;
+        this.side = side;
+        this.quantity = quantity;
+        this.price = price;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof Trade)) return false;
+        Trade other = (Trade) o;
+        return symbol.equals(other.symbol);   // BUG: only checks symbol
+    }
+
+    @Override
+    public int hashCode() {
+        return symbol.hashCode();             // BUG: only hashes symbol
+    }
+}
+
+class TradeReconciler {
+    List<Trade> reconcile(List<Trade> incomingFeed, List<Trade> bookedLedger) {
+        Set<Trade> booked = new HashSet<>(bookedLedger);
+        List<Trade> unbooked = new ArrayList<>();
+        for (Trade t : incomingFeed) {
+            if (!booked.contains(t)) unbooked.add(t);
+        }
+        return unbooked;
+    }
+}
+
+// Failing test:
+// incomingFeed = [ Trade("AAPL","BUY",100,150.0), Trade("AAPL","SELL",50,151.0) ]
+// bookedLedger  = [ Trade("AAPL","BUY",100,150.0) ]
+// Expected: unbooked contains the AAPL SELL trade (it's genuinely not booked)
+// Actual:   unbooked is EMPTY — both trades are "equal" because equals()/hashCode() only look at symbol
+```
+
+##### Problem 2: String to Numeric Parsing Bug
+*(→ [Solution](#solution-2-string-to-numeric-parsing-bug))*
+
+```java
+class PriceFeed {
+    double computeTotal(String[] priceStrings) {
+        double total = 0;
+        for (String p : priceStrings) {
+            total += Float.parseFloat(p);   // BUG: throws on "N/A", "", or null entries
+        }
+        return total;
+    }
+}
+
+// Failing test:
+// priceStrings = {"150.25", "N/A", "99.50"}
+// Expected: total = 249.75 (skip unparseable entries)
+// Actual:   throws NumberFormatException on "N/A", test never reaches the assertion
+```
+
+##### Problem 3: Transactional Ignored Because Built with new
+*(→ [Solution](#solution-3-transactional-ignored-because-built-with-new))*
+
+See the full walkthrough in [citi.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug) — summarized here as a standalone bug-fix drill:
+
+```java
+@Service
+class RatingService {
+    @Transactional
+    void rate(Rating rating) {
+        validate(rating);
+        RatingHistoryBuilder builder = new RatingHistoryBuilder();  // BUG: plain `new`, not a Spring bean
+        builder.record(rating);   // @Transactional(REQUIRES_NEW) on this method is silently ignored
+    }
+}
+
+class RatingHistoryBuilder {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void record(Rating rating) {
+        if (rating.getScore() < 0) throw new IllegalArgumentException("bad score");
+        // ... persist history row ...
+    }
+}
+
+// Failing test:
+// A bad rating.getScore() throws inside record()
+// Expected: only the history-record attempt rolls back; the earlier validate()'d rating still commits
+// Actual:   the exception rolls back the ENTIRE outer transaction — everything is lost
+```
+
+##### Problem 4: Reference Equality Instead of equals
+*(→ [Solution](#solution-4-reference-equality-instead-of-equals))*
+
+```java
+class OrderLookup {
+    boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
+        return incomingId == lastProcessedId;   // BUG: reference comparison on Strings
+    }
+}
+
+// Failing test:
+// incomingId = new String("ORD-1001")   // built at runtime, e.g. from a parsed request body
+// lastProcessedId = "ORD-1001"          // a literal
+// Expected: isDuplicateOrderId returns true (same order ID)
+// Actual:   returns false — different String objects, == compares references, not content
+```
+
+##### Problem 5: Mutable Key Mutated After Insertion
+*(→ [Solution](#solution-5-mutable-key-mutated-after-insertion))*
+
+```java
+class AccountKey {
+    String region;
+    int accountNumber;
+    AccountKey(String region, int accountNumber) {
+        this.region = region;
+        this.accountNumber = accountNumber;
+    }
+    @Override public boolean equals(Object o) {
+        if (!(o instanceof AccountKey)) return false;
+        AccountKey k = (AccountKey) o;
+        return accountNumber == k.accountNumber && region.equals(k.region);
+    }
+    @Override public int hashCode() { return Objects.hash(region, accountNumber); }
+}
+
+class BalanceCache {
+    Map<AccountKey, Double> cache = new HashMap<>();
+
+    void test() {
+        AccountKey key = new AccountKey("APAC", 42);
+        cache.put(key, 1000.0);
+        key.region = "EMEA";                 // BUG: mutating the key after it's already in the map
+        Double balance = cache.get(new AccountKey("APAC", 42));
+        // Expected: 1000.0
+        // Actual:   null — the key's hashCode changed, so it now lives in the wrong bucket
+    }
+}
+```
+
+##### Problem 6: Wrong Comparator Implementation
+*(→ [Solution](#solution-6-wrong-comparator-implementation))*
+
+```java
+class TradeByPriceComparator implements Comparator<Trade> {
+    @Override
+    public int compare(Trade a, Trade b) {
+        return (int) (a.price - b.price);   // BUG: truncates/overflows for close or large doubles
+    }
+}
+
+// Failing test:
+// trades with prices 100.3 and 100.7 → (int)(100.3 - 100.7) = (int)(-0.4) = 0 ("equal," wrong)
+// Expected: sorted ascending by price, 100.3 before 100.7
+// Actual:   sort is unstable/wrong because compare() returns 0 for genuinely different prices
+```
+
+##### Problem 7: Off-by-One Loop Bound
+*(→ [Solution](#solution-7-off-by-one-loop-bound))*
+
+```java
+class MovingAverage {
+    double average(int[] prices, int windowSize) {
+        int sum = 0;
+        for (int i = 0; i <= windowSize; i++) {   // BUG: <= instead of <, reads one past the window
+            sum += prices[i];
+        }
+        return (double) sum / windowSize;
+    }
+}
+
+// Failing test:
+// prices = {10, 20, 30, 40}, windowSize = 3
+// Expected: average of {10,20,30} = 20.0
+// Actual:   either wrong average (includes prices[3]=40) or ArrayIndexOutOfBoundsException if windowSize == prices.length - 1
+```
+
+##### Problem 8: Missing Null Check
+*(→ [Solution](#solution-8-missing-null-check))*
+
+```java
+class CustomerService {
+    String getPreferredRegion(Customer customer) {
+        return customer.getProfile().getRegion().toUpperCase();   // BUG: no null checks anywhere in the chain
+    }
+}
+
+// Failing test:
+// customer.getProfile() returns null for a newly-registered customer with no profile yet
+// Expected: getPreferredRegion returns a safe default, e.g. "UNKNOWN"
+// Actual:   throws NullPointerException — intermittent in production because it only happens for incomplete profiles
+```
+
+##### Problem 9: SimpleDateFormat Shared Across Threads
+*(→ [Solution](#solution-9-simpledateformat-shared-across-threads))*
+
+```java
+class ReportGenerator {
+    private static final SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd");  // BUG: shared, not thread-safe
+
+    String formatDate(Date date) {
+        return FORMAT.format(date);   // internal Calendar state gets corrupted under concurrent calls
+    }
+}
+
+// Failing test (run under concurrent load, e.g. 50 threads calling formatDate simultaneously):
+// Expected: every call returns a correctly formatted date string
+// Actual:   intermittently throws NumberFormatException or returns a garbled/wrong date,
+//           because SimpleDateFormat mutates internal Calendar fields and isn't synchronized
+```
+
+##### Problem 10: Java Streams Misuse
+*(→ [Solution](#solution-10-java-streams-misuse))*
+
+```java
+class InventoryService {
+    void markLowStockItems(List<Item> items) {
+        items.stream()
+             .filter(i -> i.getQuantity() < 10)
+             .peek(i -> i.setLowStock(true));   // BUG: peek() with no terminal operation — stream never runs
+    }
+}
+
+// Failing test:
+// items contain one item with quantity = 5
+// Expected: that item's isLowStock() is true after markLowStockItems() runs
+// Actual:   isLowStock() is still false — the stream pipeline was never actually executed,
+//           because `peek` is an intermediate op and there's no terminal op (forEach/collect/count) to trigger it
+```
+
+##### Problem 11: List Passed by Reference and Mutated by Callee
+*(→ [Solution](#solution-11-list-passed-by-reference-and-mutated-by-callee))*
+
+```java
+class ReportBuilder {
+    List<String> buildSummary(List<String> lineItems) {
+        Collections.sort(lineItems);     // BUG: sorts the CALLER's list in place, no copy made
+        lineItems.removeIf(s -> s.isBlank());
+        return lineItems;
+    }
+}
+
+// Failing test:
+// List<String> original = new ArrayList<>(List.of("b", "", "a"));
+// List<String> summary = reportBuilder.buildSummary(original);
+// Expected: `original` is untouched (still ["b", "", "a"]); `summary` is the cleaned, sorted copy
+// Actual:   `original` itself is now sorted and blank-filtered too — the caller's own list was silently mutated
+```
+
+---
+
+#### Code Solutions (Segment 2)
+
+##### Solution 1: equals and hashCode Using Only Partial Fields
+
+```java
+@Override
+public boolean equals(Object o) {
+    if (this == o) return true;
+    if (!(o instanceof Trade)) return false;
+    Trade other = (Trade) o;
+    return quantity == other.quantity
+        && Double.compare(price, other.price) == 0
+        && symbol.equals(other.symbol)
+        && side.equals(other.side);
+}
+
+@Override
+public int hashCode() {
+    return Objects.hash(symbol, side, quantity, price);
+}
+```
+**Why it works:** identity now depends on every field that actually distinguishes two trades. The AAPL BUY and AAPL SELL trades no longer collide — `reconcile()` correctly returns the unbooked SELL. Target complexity stays O(n + m) time, O(m) space (unchanged — this is purely a correctness fix, not a performance one).
+
+##### Solution 2: String to Numeric Parsing Bug
+
+```java
+double computeTotal(String[] priceStrings) {
+    double total = 0;
+    for (String p : priceStrings) {
+        if (p == null || p.isBlank()) continue;
+        try {
+            total += Float.parseFloat(p);
+        } catch (NumberFormatException e) {
+            // skip unparseable entries like "N/A"
+        }
+    }
+    return total;
+}
+```
+**Why it works:** unparseable or missing entries are explicitly skipped instead of crashing the whole computation — the loop keeps going and the valid entries still sum correctly.
+
+##### Solution 3: Transactional Ignored Because Built with new
+
+```java
+@Service
+class RatingService {
+    private final RatingHistoryBuilder historyBuilder;
+
+    RatingService(RatingHistoryBuilder historyBuilder) {   // injected, not `new`
+        this.historyBuilder = historyBuilder;
+    }
+
+    @Transactional
+    void rate(Rating rating) {
+        validate(rating);
+        historyBuilder.record(rating);   // call goes through the real Spring proxy now
+    }
+}
+
+@Component   // now a real Spring bean
+class RatingHistoryBuilder {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void record(Rating rating) {
+        if (rating.getScore() < 0) throw new IllegalArgumentException("bad score");
+    }
+}
+```
+**Why it works:** `RatingHistoryBuilder` is now a container-managed bean, injected via the constructor. Spring wraps it in a real AOP proxy, so `REQUIRES_NEW` actually creates an independent transaction. A failure in `record()` now rolls back only its own transaction — the outer `rate()` transaction (and whatever it already did) is unaffected.
+
+##### Solution 4: Reference Equality Instead of equals
+
+```java
+boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
+    return incomingId.equals(lastProcessedId);   // content comparison, not reference
+}
+```
+**Why it works:** `.equals()` compares the actual characters, not whether both variables happen to point at the same pooled/cached object — so it correctly matches `"ORD-1001"` regardless of whether either String came from a literal or was built at runtime.
+
+##### Solution 5: Mutable Key Mutated After Insertion
+
+```java
+class AccountKey {
+    final String region;          // make fields final
+    final int accountNumber;
+    AccountKey(String region, int accountNumber) {
+        this.region = region;
+        this.accountNumber = accountNumber;
+    }
+    // no setters — equals()/hashCode() unchanged
+}
+```
+**Why it works:** once `region` and `accountNumber` are `final` with no setters, the key is immutable — nobody can change it after it's been inserted, so its `hashCode()` can never drift away from the bucket it was originally placed in. (This is the same idea as [A7 — Why Immutable Objects Are Thread-Safe](#a7-why-immutable-objects-are-thread-safe): removing the possibility of mutation removes the whole class of bug.)
+
+##### Solution 6: Wrong Comparator Implementation
+
+```java
+class TradeByPriceComparator implements Comparator<Trade> {
+    @Override
+    public int compare(Trade a, Trade b) {
+        return Double.compare(a.price, b.price);   // correct, no precision loss
+    }
+}
+```
+**Why it works:** `Double.compare()` handles the full precision of both values directly instead of subtracting and truncating to `int`, so close values (100.3 vs 100.7) are never incorrectly collapsed to "equal."
+
+##### Solution 7: Off-by-One Loop Bound
+
+```java
+double average(int[] prices, int windowSize) {
+    int sum = 0;
+    for (int i = 0; i < windowSize; i++) {   // strict < , stays inside the window
+        sum += prices[i];
+    }
+    return (double) sum / windowSize;
+}
+```
+**Why it works:** the loop now sums exactly `windowSize` elements (indices `0` to `windowSize - 1`), matching what "a window of size N" actually means, instead of reading one extra element past it.
+
+##### Solution 8: Missing Null Check
+
+```java
+String getPreferredRegion(Customer customer) {
+    if (customer == null) return "UNKNOWN";
+    CustomerProfile profile = customer.getProfile();
+    if (profile == null || profile.getRegion() == null) return "UNKNOWN";
+    return profile.getRegion().toUpperCase();
+}
+```
+**Why it works:** every link in the chain (`customer` → `profile` → `region`) is checked before being dereferenced, so an incomplete profile returns a safe, well-defined default instead of crashing.
+
+##### Solution 9: SimpleDateFormat Shared Across Threads
+
+```java
+class ReportGenerator {
+    String formatDate(Date date) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");  // java.time, immutable & thread-safe
+        return date.toInstant().atZone(ZoneId.systemDefault()).format(formatter);
+    }
+}
+```
+**Why it works:** `java.time.DateTimeFormatter` is immutable and thread-safe by design — unlike `SimpleDateFormat`, it has no internal mutable state to corrupt under concurrent access, so no synchronization is needed at all. (If stuck on an older codebase that must keep `SimpleDateFormat`, the alternative fix is a new instance per call, or a `ThreadLocal<SimpleDateFormat>` — but switching to `java.time` is the modern, preferred fix.)
+
+##### Solution 10: Java Streams Misuse
+
+```java
+void markLowStockItems(List<Item> items) {
+    items.stream()
+         .filter(i -> i.getQuantity() < 10)
+         .forEach(i -> i.setLowStock(true));   // forEach is a terminal operation — triggers execution
+}
+```
+**Why it works:** Java streams are lazy — nothing runs until a terminal operation (`forEach`, `collect`, `count`, etc.) is called. `peek()` is only an intermediate operation meant for side-effect debugging *alongside* a terminal op, not a replacement for one. Adding `forEach` (or any terminal op) actually executes the pipeline.
+
+##### Solution 11: List Passed by Reference and Mutated by Callee
+
+```java
+List<String> buildSummary(List<String> lineItems) {
+    List<String> copy = new ArrayList<>(lineItems);   // defensive copy first
+    Collections.sort(copy);
+    copy.removeIf(s -> s.isBlank());
+    return copy;
+}
+```
+**Why it works:** operating on a fresh copy means the caller's original list is never touched — `Collections.sort()` and `removeIf()` only affect the local `copy`, so the method returns a cleaned result without any side effect on data the caller still owns a reference to.
+
 ### Segment 3 — Live Algorithm/Coding Problem (~15–20 min)
 Confirmed pattern: single-pass, O(n)/O(1), counter or hashmap-based — not graph/DP-heavy:
 - **Toll-booth / complete journeys counting** (E/X event pairs, ignore orphans) — the real confirmed question
