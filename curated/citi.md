@@ -46,6 +46,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 19. [Behavioral Q&A Index](#19-behavioral-qa-index)
 20. [System Design Reference](#20-system-design-reference)
 21. [Spring Framework Reference](#21-spring-framework-reference)
+22. [OOPS (Object-Oriented Design) Reference](#22-oops-object-oriented-design-reference)
 
 ---
 
@@ -1418,3 +1419,50 @@ What's below is a 1-2 sentence summary of each topic with a direct link to its f
 | Topic | What it covers |
 |---|---|
 | **[30. Actuator](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/Spring-framework.md#30-what-is-actuator-in-springboot)** | SpringBoot's built-in production-readiness toolkit — exposes operational endpoints (health checks, metrics, env info, thread dumps) out of the box, without writing any of that plumbing yourself. |
+
+---
+
+## 22. OOPS (Object-Oriented Design) Reference
+
+**Full source:** [`OOPS.md`](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md) — the four OOP pillars, all 5 SOLID principles, a design-pattern checklist, and 9 architect-level interview Q&As, each with worked Java examples. The source file itself is already split the same way this doc is: prose/trade-offs at each heading, with a **[→ Full code example]** link down to its own "Additional Details: Code Examples" section for the actual code — so clicking through from here lands on the explanation first, one more click gets the code.
+
+What's below is a 1-2 sentence summary of each topic with a direct link — read the source before using any of these live, this index is for fast recall of which topic covers what.
+
+### 22.1 Core OOP Pillars
+
+| Topic | What it covers |
+|---|---|
+| **[Encapsulation](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#encapsulation)** | Bundle data and methods, hide internals behind a clean contract. At architect scale, this is what lets you swap HikariCP for Druid, add retry logic, or add metrics collection across dozens of dependent services with zero caller changes. Three worked examples: a DB connection wrapper, a resilient multi-region HTTP client (failover/circuit-breaking), and a validated config service. |
+| **[Inheritance](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#inheritance)** | Use only for a genuine IS-A relationship with real shared behavior and a shallow hierarchy (2-3 levels) — the doc's own red flag is hierarchy depth becoming a liability. Three examples: payment processors (correct shallow use), document processing (the hierarchy-depth problem), and cache implementations (where inheritance legitimately works). |
+| **[Polymorphism](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#polymorphism)** | Same method name, different behavior per type — the foundation of loose coupling (services depend on interfaces, so you can swap Redis for Memcached without touching 50 services). Covers compile-time (overloading) vs. runtime (overriding) vs. strategy-style multiple implementations (serialization). |
+| **[Abstraction](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#abstraction)** | Hide complexity behind the right-level interface. At architect level: APIs hide distributed-systems complexity (retries, timeouts, fallbacks), and data models expose domain concepts, not raw DB schemas. Three examples: order-processing workflow, search-engine abstraction, file-system abstraction. |
+
+### 22.2 SOLID Principles
+
+| Topic | What it covers |
+|---|---|
+| **[Single Responsibility Principle (SRP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#single-responsibility-principle-srp)** | Each class — or service — should have ONE reason to change. Maps directly onto microservice boundaries (UserService, OrderService, PaymentService staying separate). Two examples: a user-management class with too many responsibilities, and a complex order-processing domain. |
+| **[Open/Closed Principle (OCP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#openclosed-principle-ocp)** | Open for extension, closed for modification — add new behavior (a new payment processor, a new discount strategy) without editing existing code, via composition + the strategy pattern. |
+| **[Liskov Substitution Principle (LSP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#liskov-substitution-principle-lsp)** | A subclass must be fully substitutable for its parent without breaking callers. The doc's "golden rule" table covers real failure scenarios — a cache implementation that throws instead of returning null, a datastore with different guarantees, a mock that doesn't match the real implementation's contract. Five worked examples, including the classic Rectangle-Square problem. |
+| **[Interface Segregation Principle (ISP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#interface-segregation-principle-isp)** | Don't force a class to implement methods it doesn't need — split fat interfaces into focused ones. Three examples: Robot vs. Human (the classic case), a payment interface, and a multi-capability data repository. |
+| **[Dependency Inversion Principle (DIP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#dependency-inversion-principle-dip)** | Depend on abstractions, not concrete implementations — the principle that actually makes testability possible (inject mocks) and lets you swap a database or a logger without touching business logic. Three examples: payment-processing testability, logger injection, multi-database data access. |
+
+### 22.3 Design Patterns
+
+| Topic | What it covers |
+|---|---|
+| **[Design Patterns](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#design-patterns)** | A working checklist of the architect-relevant patterns — Singleton, Factory, Builder, Strategy, Observer, Proxy, Adapter, Decorator — filled in with real examples as specific interview questions surface them, rather than a generic catalog. |
+
+### 22.4 Common Interview Questions (Q1-Q9)
+
+| Topic | What it covers |
+|---|---|
+| **[Q1: Why use encapsulation when fields could be public?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q1-why-use-encapsulation-when-we-can-make-all-fields-public)** | Hiding fields lets you change internals without breaking 100+ dependent services — the foundation of API stability and security. |
+| **[Q2: Inheritance vs. composition?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q2-when-would-you-use-inheritance-vs-composition)** | Default to composition (90% of cases). Only use inheritance for a genuine IS-A relationship with shared behavior, a shallow hierarchy, and where LSP actually holds — includes a real decision tree. |
+| **[Q3: How do SOLID principles apply to microservices design?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q3-how-do-solid-principles-apply-to-microservices-design)** | SOLID principles ARE microservice design rules: SRP → service boundaries, OCP → add new services instead of modifying old ones, LSP → interchangeable service contracts, ISP → lean APIs, DIP → depending on message contracts (Kafka) instead of direct HTTP coupling. |
+| **[Q4: Design an extensible multi-processor payment system (Stripe/PayPal/Square)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q4-design-a-payment-system-with-multiple-processors-stripe-paypal-square-how-do-you-make-it-extensible)** | The flagship "design something extensible" question — combines OCP (a new processor is a new class, zero changes to `OrderService`) with the strategy pattern. |
+| **[Q5: Abstraction vs. Encapsulation?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q5-explain-the-difference-between-abstraction-and-encapsulation)** | The distinction people conflate: encapsulation hides *how* something is implemented; abstraction decides *what* gets exposed as the interface. The doc's coffee-machine analogy makes this concrete. |
+| **[Q6: How do you refactor a God Object?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q6-how-would-you-refactor-a-god-object-violating-srp-into-proper-design)** | Identify responsibilities, extract into separate classes, inject dependencies — each resulting class gets one reason to change and becomes independently testable and independently scalable. |
+| **[Q7: Interfaces vs. abstract classes?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q7-when-should-you-use-interfaces-vs-abstract-classes)** | Interface = pure contract, multiple inheritance, no state. Abstract class = shared implementation, single inheritance, can hold state. A quick decision table for which to reach for. |
+| **[Q8: How do you handle circular dependencies?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q8-how-do-you-handle-circular-dependencies)** | Three real fixes: invert the dependency direction via DI, extract a common interface both sides depend on instead of each other, or lazy-initialize one side. |
+| **[Q9: Design a multi-region caching layer with consistency](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q9-design-a-caching-layer-for-a-multi-region-system-how-do-you-maintain-consistency)** | A tiered read path — L1 (in-memory) → L2 (distributed/Redis) → L3 (database, source of truth) — with invalidation on write. The standard shape for keeping a cache consistent across regions. |
