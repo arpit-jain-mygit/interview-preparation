@@ -723,6 +723,40 @@ This starts exactly one thread, running forever (`while (true)`), and only this 
 
 **The catch:** this only works as long as there is truly one `AccountProcessor` (and one thread) per account, for that account's whole life. If a retry or a second server ever spun up a second processor for the same account, the race would reappear one level out — which is exactly why the trade-off is listed as "requires redesign" / "architectural change": the problem isn't eliminated, it's concentrated into making sure requests for the same account always route to the same processor.
 
+### `volatile`: Basic Use, and Why It Can't Prevent a Race
+
+Referenced from: [§23 Advanced Java → How to solve RACE conditions → V - VOLATILE](#how-to-solve-race-conditions)
+
+**Basic use:** `volatile` only guarantees *visibility* — when one thread writes a `volatile` variable, that write goes straight to main memory, and every other thread's next read fetches that fresh value instead of a stale, cached copy. It fixes the classic "worker thread never sees the flag flip" bug: without `volatile`, a thread can cache `running=true` in its own CPU register/cache and loop forever, never noticing another thread set it to `false`.
+
+**Why it can't prevent a race:** visibility and atomicity are different guarantees, and `volatile` only gives you the first one. The test for whether `volatile` alone is enough: *does the write depend on reading the current value first?*
+
+**Single write — safe:**
+```java
+volatile boolean running = true;
+...
+running = false;  // unconditional write, doesn't care what the old value was
+```
+This is one atomic hardware operation — the JVM writes the new value and immediately flushes it to main memory. No thread combines "old value + a change" to produce the new value, so there's nothing to race over. Even if two threads both set `running = false` "at the same time," the result is still `false` either way.
+
+**Single read — safe:**
+```java
+if (shutdown) { ... }  // one read, use it, done
+```
+`volatile` guarantees this fetches the latest value. Since nothing is written back based on that read, there's no window for another thread to invalidate the decision before it's used.
+
+**Why `count++` breaks this — it's secretly three steps, not one:**
+```
+read count   (step 1)
+add 1        (step 2)
+write count  (step 3)
+```
+`volatile` makes steps 1 and 3 individually visible and fresh — but there's a real time gap between them, and in that gap another thread can run its own step 1, read the same old value, and both threads end up writing the same "new" value, silently losing one increment. `volatile` was never designed to make a multi-step sequence atomic as a whole — only each individual memory access, not the gap between them.
+
+**The hardware fact behind why "single" ops are safe:** on every mainstream JVM, a read or write of a `volatile` primitive (boolean, int, reference, and notably `long`/`double`, which otherwise risk "word tearing" on a 32-bit write) happens as one indivisible CPU operation — no thread can ever observe a half-written value. That hardware atomicity, plus `volatile`'s visibility guarantee, covers a single read or single write, but says nothing about two of them chained together with a decision in between.
+
+**Practical pattern this covers well:** stop/shutdown/"is ready" flags, and publishing a fully-built object reference once (e.g. the instance field in double-checked-locking singletons) — cases where one thread writes a final value once and others just read it, never "read-then-recompute-then-write."
+
 ---
 
 ## 16. Microservices: When, Pitfalls, Culture, Patterns
@@ -2571,6 +2605,8 @@ Concurrency internals, JVM internals, and Spring transaction/startup mechanics �
 ~~~~
 
 **Why `AccountProcessor` ("D - DESIGN IT OUT") is actually thread-safe:** see [§15 Additional Details → Why `AccountProcessor` Is Thread-Safe](#why-accountprocessor-is-thread-safe-no-locks-needed).
+
+**Basic use of `volatile`, and why it can't prevent a race ("V - VOLATILE"):** see [§15 Additional Details → `volatile`: Basic Use, and Why It Can't Prevent a Race](#volatile-basic-use-and-why-it-cant-prevent-a-race).
 
 ---
 
