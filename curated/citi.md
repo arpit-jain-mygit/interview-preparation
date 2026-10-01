@@ -1466,16 +1466,7 @@ interface PaymentProcessor {
 
 **One-line map:** Encapsulation vs. Abstraction = both information-hiding, different altitudes (design decision vs. enforcement mechanism). Polymorphism vs. Inheritance = behavior substitutability at call time vs. structural code reuse at compile time — conflated only because inheritance is *one* way to get polymorphism, not the only way.
 
-### 22.1 Core OOP Pillars
-
-| Topic | What it covers |
-|---|---|
-| **[Encapsulation](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#encapsulation)** | Bundle data and methods, hide internals behind a clean contract. At architect scale, this is what lets you swap HikariCP for Druid, add retry logic, or add metrics collection across dozens of dependent services with zero caller changes. Three worked examples: a DB connection wrapper, a resilient multi-region HTTP client (failover/circuit-breaking), and a validated config service. |
-| **[Inheritance](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#inheritance)** | Use only for a genuine IS-A relationship with real shared behavior and a shallow hierarchy (2-3 levels) — the doc's own red flag is hierarchy depth becoming a liability. Three examples: payment processors (correct shallow use), document processing (the hierarchy-depth problem), and cache implementations (where inheritance legitimately works). |
-| **[Polymorphism](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#polymorphism)** | Same method name, different behavior per type — the foundation of loose coupling (services depend on interfaces, so you can swap Redis for Memcached without touching 50 services). Covers compile-time (overloading) vs. runtime (overriding) vs. strategy-style multiple implementations (serialization). |
-| **[Abstraction](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#abstraction)** | Hide complexity behind the right-level interface. At architect level: APIs hide distributed-systems complexity (retries, timeouts, fallbacks), and data models expose domain concepts, not raw DB schemas. Three examples: order-processing workflow, search-engine abstraction, file-system abstraction. |
-
-### 22.2 SOLID Principles
+### 22.1 SOLID Principles
 
 | Topic | What it covers |
 |---|---|
@@ -1485,13 +1476,13 @@ interface PaymentProcessor {
 | **[Interface Segregation Principle (ISP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#interface-segregation-principle-isp)** | Don't force a class to implement methods it doesn't need — split fat interfaces into focused ones. Three examples: Robot vs. Human (the classic case), a payment interface, and a multi-capability data repository. |
 | **[Dependency Inversion Principle (DIP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#dependency-inversion-principle-dip)** | Depend on abstractions, not concrete implementations — the principle that actually makes testability possible (inject mocks) and lets you swap a database or a logger without touching business logic. Three examples: payment-processing testability, logger injection, multi-database data access. |
 
-### 22.3 Design Patterns
+### 22.2 Design Patterns
 
 | Topic | What it covers |
 |---|---|
 | **[Design Patterns](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#design-patterns)** | A working checklist of the architect-relevant patterns — Singleton, Factory, Builder, Strategy, Observer, Proxy, Adapter, Decorator — filled in with real examples as specific interview questions surface them, rather than a generic catalog. |
 
-### 22.4 Common Interview Questions (Q1-Q9)
+### 22.3 Common Interview Questions (Q1-Q9)
 
 | Topic | What it covers |
 |---|---|
