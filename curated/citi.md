@@ -1428,6 +1428,44 @@ What's below is a 1-2 sentence summary of each topic with a direct link to its f
 
 What's below is a 1-2 sentence summary of each topic with a direct link — read the source before using any of these live, this index is for fast recall of which topic covers what.
 
+### The 4 Pillars, Unified (One Example, Four Lenses)
+
+Each pillar answers a different question about the same code — not a different shape of code. Same `PaymentProcessor` interface throughout:
+
+```java
+interface PaymentProcessor {
+    PaymentResult pay(BigDecimal amount);
+}
+```
+
+1. **Encapsulation — HOW.** What's hidden *inside* one class? *Litmus test: if this private thing were public, could outside code reach in and manipulate it?*
+   ```java
+   class StripeProcessor implements PaymentProcessor {
+       private String apiKey;         // hidden — test: if public, reachable? Yes.
+       private HttpClient httpClient; // hidden — same test, same answer.
+       public PaymentResult pay(BigDecimal amount) { /* uses these internally */ }
+   }
+   ```
+2. **Abstraction — WHAT.** Is the *shared contract* the right, minimal one? *Litmus test: does the caller need to think about this to use the object correctly?* The interface itself — just `pay(amount)` — is the design decision that the caller never thinks about HTTP libraries or auth schemes.
+3. **Polymorphism — SAME CALL, DIFFERENT BEHAVIOR.** *Litmus test: can I swap this object for another implementing the same contract, without touching the calling code, and get different behavior?*
+   ```java
+   for (PaymentProcessor p : List.of(new StripeProcessor(), new PayPalProcessor())) {
+       p.pay(amount);  // same line, different behavior depending on p's real type
+   }
+   ```
+   The only pillar that strictly requires 2+ implementations to mean anything.
+4. **Inheritance — a specific code-reuse mechanism, needs justification.** `implements` is **not** inheritance. Getting inheritance into this same domain requires deliberately adding a class with *real* shared logic:
+   ```java
+   abstract class AbstractPaymentProcessor implements PaymentProcessor {
+       protected boolean validateAmount(BigDecimal amount) {
+           return amount.compareTo(BigDecimal.ZERO) > 0;  // real logic, reused by every subclass
+       }
+   }
+   ```
+   Without this extra class, the example has zero inheritance — and that's fine. Encapsulation, Abstraction, and Polymorphism are all fully present with no inheritance anywhere. Default to composition; inheritance is the exception (~10% of cases, see Q2 below), not the default.
+
+**One-line map:** Encapsulation vs. Abstraction = both information-hiding, different altitudes (design decision vs. enforcement mechanism). Polymorphism vs. Inheritance = behavior substitutability at call time vs. structural code reuse at compile time — conflated only because inheritance is *one* way to get polymorphism, not the only way.
+
 ### 22.1 Core OOP Pillars
 
 | Topic | What it covers |
