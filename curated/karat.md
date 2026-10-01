@@ -8,6 +8,15 @@
 3. [Scoring & What's Evaluated](#3-scoring--whats-evaluated)
 4. [Why Candidates Fail — Hard Rules](#4-why-candidates-fail--hard-rules)
 5. [Practice Questions by Segment](#5-practice-questions-by-segment)
+   - [Segment 1 — Java/Spring Conceptual Rapid-Fire](#segment-1--javaspring-conceptual-rapid-fire-10-min)
+     - [Answers](#answers)
+     - [MCQ Practice](#mcq-practice-segment-1--5-questions-per-topic)
+     - [MCQ Answer Key](#mcq-answer-key)
+   - [Segment 2 — Bug-Fix on a Given Codebase](#segment-2--bug-fix-on-a-given-codebase-1520-min)
+     - [Code Practice (Problems)](#code-practice-segment-2--problem--solution-kept-separate)
+     - [Code Solutions](#code-solutions-segment-2)
+   - [Segment 3 — Live Algorithm/Coding Problem](#segment-3--live-algorithmcoding-problem-1520-min)
+   - [Bonus — OOP Design & Code-Review](#bonus--oop-design--code-review-also-confirmed-sometimes-substituted-in)
 
 ---
 
