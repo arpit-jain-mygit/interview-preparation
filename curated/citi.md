@@ -705,6 +705,24 @@ Each `.getPosts()` call inside the loop silently fires its own query, because JP
 2. **`@EntityGraph`** — a more declarative way to say "for this specific method, also eagerly fetch these related fields," without writing raw JPQL.
 3. **`FetchType.EAGER`** — change the relationship's default to always fetch children immediately. Works, but it's global (every access of that entity now always pulls the children, even when not needed) — usually the least preferred of the three.
 
+### Why `AccountProcessor` Is Thread-Safe (No Locks Needed)
+
+Referenced from: [§23 Advanced Java → How to solve RACE conditions → D - DESIGN IT OUT](#how-to-solve-race-conditions)
+
+**Only one thread ever touches `balance` — so there's no race, by definition.**
+
+```java
+new Thread(() -> account123.process()).start();
+```
+
+This starts exactly one thread, running forever (`while (true)`), and only this thread ever executes `balance -= msg.amount`. A race condition needs two or more threads touching the same data at the same time. With just one thread, there's nothing to race against — it isn't "thread-safe because of clever locking," it's thread-safe because the question doesn't even apply.
+
+**So how do other requests withdraw money, if they can't touch `balance`?** This is the actual design shift. Other threads don't call `withdraw()` directly anymore — they just drop a `Message` onto the `queue`. The `Queue` itself is the one thing multiple threads safely share (a real concurrent queue, like Java's `BlockingQueue`, is already built to handle that). `balance` isn't shared at all, so it never needs a lock.
+
+**Why this beats `synchronized`, not just differs from it:** with `synchronized`, multiple threads can still *try* to touch `balance` — they just get serialized by the lock, which means lock contention, and the risk that a future code path forgets to synchronize and reintroduces the bug. Here, no other code path can even reach `balance` — a future bug physically cannot race on it.
+
+**The catch:** this only works as long as there is truly one `AccountProcessor` (and one thread) per account, for that account's whole life. If a retry or a second server ever spun up a second processor for the same account, the race would reappear one level out — which is exactly why the trade-off is listed as "requires redesign" / "architectural change": the problem isn't eliminated, it's concentrated into making sure requests for the same account always route to the same processor.
+
 ---
 
 ## 16. Microservices: When, Pitfalls, Culture, Patterns
@@ -2552,6 +2570,7 @@ Concurrency internals, JVM internals, and Spring transaction/startup mechanics �
 ```
 ~~~~
 
+**Why `AccountProcessor` ("D - DESIGN IT OUT") is actually thread-safe:** see [§15 Additional Details → Why `AccountProcessor` Is Thread-Safe](#why-accountprocessor-is-thread-safe-no-locks-needed).
 
 ---
 
