@@ -48,6 +48,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 21. [Spring Framework Reference](#21-spring-framework-reference)
 22. [OOPS (Object-Oriented Design) Reference](#22-oops-object-oriented-design-reference)
 23. [Advanced Java](#23-advanced-java)
+24. [Citi Karat Screening Round](#24-citi-karat-screening-round)
 
 ---
 
@@ -6322,4 +6323,18 @@ WITH Spring Boot:
 ~~~~
 
 ---
+
+## 24. Citi Karat Screening Round
+
+**Full source:** [`karat.md`](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md) — format breakdown, the two confirmed real questions, scoring rubric, hard failure-mode rules, and the full practice-question list by segment.
+
+**Source note:** based on a single third-party candidate account (a blog/SEO guide, not an official Citi or Karat document) — the overall *format* (Karat-run, 60 min, screen-recorded, rubric-scored) matches how Karat operates across companies generally, but treat the exact questions as one data point, not a guarantee.
+
+| Topic | What it covers |
+|---|---|
+| **[Format Overview](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#1-format-overview)** | 60 min total (~10 discussion → ~40 coding → ~10 feedback), run by a Karat Interview Engineer (not Citi), fully screen-recorded; usually a given-codebase bug-fix first, then a smaller counting/array algorithm. |
+| **[The Two Confirmed Real Questions](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#2-the-two-confirmed-real-questions)** | A `Trade.equals()`/`hashCode()` bug (only `symbol` used, collapsing distinct trades in a `HashSet`), and a toll-booth E/X event-counting problem (running `open`/`complete` counters). |
+| **[Scoring & What's Evaluated](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#3-scoring--whats-evaluated)** | Rubric-based (problem-solving, communication, code quality), not pass/fail — partial credit for a clearly explained, correct approach is real even if the last edge case isn't finished. |
+| **[Why Candidates Fail — Hard Rules](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#4-why-candidates-fail--hard-rules)** | Any overlay app or visible tab-switching on the shared screen → removal/flag; running out of time explaining-only on problem 2 → rejection; going silent while coding loses communication points. |
+| **[Practice Questions by Segment](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#5-practice-questions-by-segment)** | Full practice list split into the 3 segments — Java/Spring conceptual rapid-fire, bug-fix-on-given-codebase shapes, and single-pass counting/array algorithms — plus a bonus OOP-design/code-review drill list. |
 
