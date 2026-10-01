@@ -486,12 +486,12 @@ class Trade {
     public boolean equals(Object o) {
         if (!(o instanceof Trade)) return false;
         Trade other = (Trade) o;
-        return symbol.equals(other.symbol);   // BUG: only checks symbol
+        return symbol.equals(other.symbol);
     }
 
     @Override
     public int hashCode() {
-        return symbol.hashCode();             // BUG: only hashes symbol
+        return symbol.hashCode();
     }
 }
 
@@ -521,7 +521,7 @@ class PriceFeed {
     double computeTotal(String[] priceStrings) {
         double total = 0;
         for (String p : priceStrings) {
-            total += Float.parseFloat(p);   // BUG: throws on "N/A", "", or null entries
+            total += Float.parseFloat(p);
         }
         return total;
     }
@@ -542,8 +542,8 @@ class RatingService {
     @Transactional
     void rate(Rating rating) {
         validate(rating);
-        RatingHistoryBuilder builder = new RatingHistoryBuilder();  // BUG: plain `new`, not a Spring bean
-        builder.record(rating);   // @Transactional(REQUIRES_NEW) on this method is silently ignored
+        RatingHistoryBuilder builder = new RatingHistoryBuilder();
+        builder.record(rating);
     }
 }
 
@@ -567,7 +567,7 @@ class RatingHistoryBuilder {
 ```java
 class OrderLookup {
     boolean isDuplicateOrderId(String incomingId, String lastProcessedId) {
-        return incomingId == lastProcessedId;   // BUG: reference comparison on Strings
+        return incomingId == lastProcessedId;
     }
 }
 
@@ -603,7 +603,7 @@ class BalanceCache {
     void test() {
         AccountKey key = new AccountKey("APAC", 42);
         cache.put(key, 1000.0);
-        key.region = "EMEA";                 // BUG: mutating the key after it's already in the map
+        key.region = "EMEA";
         Double balance = cache.get(new AccountKey("APAC", 42));
         // Expected: 1000.0
         // Actual:   null — the key's hashCode changed, so it now lives in the wrong bucket
@@ -618,7 +618,7 @@ class BalanceCache {
 class TradeByPriceComparator implements Comparator<Trade> {
     @Override
     public int compare(Trade a, Trade b) {
-        return (int) (a.price - b.price);   // BUG: truncates/overflows for close or large doubles
+        return (int) (a.price - b.price);
     }
 }
 
@@ -635,7 +635,7 @@ class TradeByPriceComparator implements Comparator<Trade> {
 class MovingAverage {
     double average(int[] prices, int windowSize) {
         int sum = 0;
-        for (int i = 0; i <= windowSize; i++) {   // BUG: <= instead of <, reads one past the window
+        for (int i = 0; i <= windowSize; i++) {
             sum += prices[i];
         }
         return (double) sum / windowSize;
@@ -654,7 +654,7 @@ class MovingAverage {
 ```java
 class CustomerService {
     String getPreferredRegion(Customer customer) {
-        return customer.getProfile().getRegion().toUpperCase();   // BUG: no null checks anywhere in the chain
+        return customer.getProfile().getRegion().toUpperCase();
     }
 }
 
@@ -669,10 +669,10 @@ class CustomerService {
 
 ```java
 class ReportGenerator {
-    private static final SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd");  // BUG: shared, not thread-safe
+    private static final SimpleDateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
     String formatDate(Date date) {
-        return FORMAT.format(date);   // internal Calendar state gets corrupted under concurrent calls
+        return FORMAT.format(date);
     }
 }
 
@@ -690,7 +690,7 @@ class InventoryService {
     void markLowStockItems(List<Item> items) {
         items.stream()
              .filter(i -> i.getQuantity() < 10)
-             .peek(i -> i.setLowStock(true));   // BUG: peek() with no terminal operation — stream never runs
+             .peek(i -> i.setLowStock(true));
     }
 }
 
@@ -707,7 +707,7 @@ class InventoryService {
 ```java
 class ReportBuilder {
     List<String> buildSummary(List<String> lineItems) {
-        Collections.sort(lineItems);     // BUG: sorts the CALLER's list in place, no copy made
+        Collections.sort(lineItems);
         lineItems.removeIf(s -> s.isBlank());
         return lineItems;
     }
