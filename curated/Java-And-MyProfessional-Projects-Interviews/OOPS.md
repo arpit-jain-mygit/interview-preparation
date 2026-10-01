@@ -8,17 +8,18 @@
 - [Polymorphism](#polymorphism)
 - [Abstraction](#abstraction)
 - [SOLID Principles](#solid-principles)
-  - [Single Responsibility Principle (SRP)](#srp)
-  - [Open/Closed Principle (OCP)](#ocp)
-  - [Liskov Substitution Principle (LSP)](#lsp)
-  - [Interface Segregation Principle (ISP)](#isp)
-  - [Dependency Inversion Principle (DIP)](#dip)
+  - [Single Responsibility Principle (SRP)](#single-responsibility-principle-srp)
+  - [Open/Closed Principle (OCP)](#openclosed-principle-ocp)
+  - [Liskov Substitution Principle (LSP)](#liskov-substitution-principle-lsp)
+  - [Interface Segregation Principle (ISP)](#interface-segregation-principle-isp)
+  - [Dependency Inversion Principle (DIP)](#dependency-inversion-principle-dip)
 - [Design Patterns](#design-patterns)
 - [Common Interview Questions](#common-interview-questions)
+- [Additional Details: Code Examples](#additional-details-code-examples)
 
 ---
 
-## Encapsulation {#encapsulation}
+## Encapsulation
 
 **Simple Definition:** Bundle data and methods together, hide internal details.
 
@@ -30,6 +31,641 @@
 - **Predictability:** Callers don't depend on implementation details
 
 ### Example 1: Database Connection Wrapper
+
+**[→ Full code example: Example 1: Database Connection Wrapper](#code-example-1-database-connection-wrapper)**
+
+**Why this matters:**
+- Tomorrow you switch from HikariCP to Druid → no caller changes needed
+- You add automatic retry logic → transparent to all services
+- Metrics collection → zero impact on calling code
+
+---
+
+### Example 2: HTTP Client Wrapper (Multi-Region)
+
+**[→ Full code example: Example 2: HTTP Client Wrapper (Multi-Region)](#code-example-2-http-client-wrapper-multi-region)**
+
+---
+
+### Example 3: Configuration Management
+
+**[→ Full code example: Example 3: Configuration Management](#code-example-3-configuration-management)**
+
+### Trade-offs
+- **Pro:** Easier to maintain (change internals), better security (validate once), refactoring safety
+- **Con:** More boilerplate (getters/setters), potential performance overhead if not cached properly
+
+**Architect Insight:** Encapsulation is the foundation for microservice contracts. When you expose a clean API, you can change implementation across 50 services without coordination.
+
+---
+
+## Inheritance
+
+**Simple Definition:** Derive new classes from existing ones, reuse and extend behavior.
+
+**Realistic Architect View:** Inheritance can be powerful or problematic depending on hierarchy depth and design.
+
+### When to Use (The Right Way)
+- **Clear IS-A relationship:** A `Manager` IS-A `Employee` (real concept, not just code reuse)
+- **Shallow hierarchies:** 2-3 levels deep is ideal; avoid deep chains
+- **Shared implementation:** Common methods actually used by subclasses
+
+### When NOT to Use (The Red Flag)
+- Deep inheritance chains (5+ levels) → Hard to reason about, high maintenance cost
+- Using inheritance just for code reuse → Use composition instead
+- Mixing unrelated concepts → Leads to bloated base classes
+
+### Example 1: Payment Processors (Correct Shallow Hierarchy)
+
+**[→ Full code example: Example 1: Payment Processors (Correct Shallow Hierarchy)](#code-example-1-payment-processors-correct-shallow-hierarchy)**
+
+---
+
+### Example 2: Document Processing (Hierarchy Depth Problem)
+
+**[→ Full code example: Example 2: Document Processing (Hierarchy Depth Problem)](#code-example-2-document-processing-hierarchy-depth-problem)**
+
+---
+
+### Example 3: Cache Implementations (When Inheritance Works)
+
+**[→ Full code example: Example 3: Cache Implementations (When Inheritance Works)](#code-example-3-cache-implementations-when-inheritance-works)**
+
+### Trade-offs
+- **Pro:** Code reuse, natural modeling for certain hierarchies
+- **Con:** Fragile base class problem, tight coupling, deep hierarchies are hard to maintain
+
+---
+
+## Polymorphism
+
+**Simple Definition:** Same method name, different implementations. Objects behave differently based on type.
+
+**Realistic Architect View:** Polymorphism enables flexibility and testability. Critical for building loosely coupled systems.
+
+### Types
+
+#### 1. Compile-time (Method Overloading)
+**[→ Full code example: 1. Compile-time (Method Overloading)](#code-1-compile-time-method-overloading)**
+- Resolved at compile time
+- Less powerful than runtime polymorphism
+
+#### 2. Runtime (Method Overriding)
+
+**[→ Full code example: 2. Runtime (Method Overriding)](#code-2-runtime-method-overriding)**
+
+---
+
+#### 3. Serialization Strategy (Multiple Implementations)
+
+**[→ Full code example: 3. Serialization Strategy (Multiple Implementations)](#code-3-serialization-strategy-multiple-implementations)**
+
+### Why It Matters at Scale
+- **Loose Coupling:** Services depend on interfaces, not concrete implementations
+- **Testability:** Easy to mock implementations for testing
+- **Extensibility:** Add new implementations without changing calling code
+- **Swappability:** Replace Redis with Memcached without touching 50 services
+
+### Trade-offs
+- **Pro:** Flexibility, testability, enables dependency injection
+- **Con:** Runtime overhead (method lookup), can hide complexity
+
+---
+
+## Abstraction
+
+**Simple Definition:** Hide complexity behind a simple interface.
+
+**Realistic Architect View:** Abstraction is about exposing the right level of detail to callers.
+
+### Example 1: Order Processing (Workflow Abstraction)
+
+**[→ Full code example: Example 1: Order Processing (Workflow Abstraction)](#code-example-1-order-processing-workflow-abstraction)**
+
+---
+
+### Example 2: Search Abstraction (Hide Engine Details)
+
+**[→ Full code example: Example 2: Search Abstraction (Hide Engine Details)](#code-example-2-search-abstraction-hide-engine-details)**
+
+---
+
+### Example 3: File System Abstraction
+
+**[→ Full code example: Example 3: File System Abstraction](#code-example-3-file-system-abstraction)**
+
+### At Architect Level
+- **Data Models:** Expose domain concepts, not database schemas
+- **APIs:** Hide distributed system complexity (retries, timeouts, fallbacks)
+- **Configuration:** Hide infrastructure details from business logic
+
+---
+
+## SOLID Principles
+
+### Single Responsibility Principle (SRP)
+
+**Definition:** A class should have only one reason to change.
+
+**Realistic View:** If you're struggling to name a class or writing comments like "This also handles...", it's violating SRP.
+
+#### Example 1: User Management (Multiple Responsibilities)
+
+**[→ Full code example: Example 1: User Management (Multiple Responsibilities)](#code-example-1-user-management-multiple-responsibilities)**
+
+**Key Insight:** UserRegistrationService coordinates, but doesn't do the work. Each specialist class has ONE job.
+
+---
+
+#### Example 2: Order Processing (Complex Domain)
+
+**[→ Full code example: Example 2: Order Processing (Complex Domain)](#code-example-2-order-processing-complex-domain)**
+
+**Architect Perspective:** SRP at scale means each microservice has one domain responsibility. OrderService, PaymentService, InventoryService, ShippingService are separate services in a microservice architecture.
+
+---
+
+### Open/Closed Principle (OCP)
+
+**Definition:** Open for extension, closed for modification. Add new behavior without changing existing code.
+
+#### Example 1: Payment Processing (Classic OCP)
+
+**[→ Full code example: Example 1: Payment Processing (Classic OCP)](#code-example-1-payment-processing-classic-ocp)**
+
+---
+
+#### Example 2: Discount Calculation (Multiple Strategies)
+
+**[→ Full code example: Example 2: Discount Calculation (Multiple Strategies)](#code-example-2-discount-calculation-multiple-strategies)**
+
+**Key:** Use composition + strategy pattern to enable extension without modification.
+
+---
+
+### Liskov Substitution Principle (LSP)
+
+**Definition:** Derived classes must be substitutable for their base classes. Subclass behavior must match parent's contract.
+
+**The Rule:** If `S` is a subtype of `T`, then objects of type `S` may be substituted for objects of type `T` without breaking the program.
+
+---
+
+#### Example 1: The Classic Rectangle-Square Problem
+
+**[→ Full code example: Example 1: The Classic Rectangle-Square Problem](#code-example-1-the-classic-rectangle-square-problem)**
+
+---
+
+#### Example 2: Cache Implementations (Real Architect Scenario)
+
+**[→ Full code example: Example 2: Cache Implementations (Real Architect Scenario)](#code-example-2-cache-implementations-real-architect-scenario)**
+
+**Key Insight:** Contract includes return values AND exceptions. If base class returns null, subclass can't throw exception.
+
+---
+
+#### Example 3: Data Store Repository (Multi-implementation)
+
+**[→ Full code example: Example 3: Data Store Repository (Multi-implementation)](#code-example-3-data-store-repository-multi-implementation)**
+
+---
+
+#### Example 4: Payment Processing (Preconditions/Postconditions)
+
+**[→ Full code example: Example 4: Payment Processing (Preconditions/Postconditions)](#code-example-4-payment-processing-preconditionspostconditions)**
+
+---
+
+#### Example 5: Message Queue Publishing (Guarantee violations)
+
+**[→ Full code example: Example 5: Message Queue Publishing (Guarantee violations)](#code-example-5-message-queue-publishing-guarantee-violations)**
+
+---
+
+#### Why LSP Matters at Architect Level
+
+| Scenario | Bad Design | Good Design |
+|----------|-----------|------------|
+| **Caching Strategy** | Cache impl throws on missing key | All implementations return null consistently |
+| **Multi-region Deployment** | Different datastores have different guarantees | All datastores have same SLA/timeout behavior |
+| **Microservice Upgrades** | New implementation has different error handling | All versions handle errors identically |
+| **Testing** | Mock behaves differently than real impl | Mock follows exact same contract |
+| **Scaling** | Different implementations timeout differently | All scale with same timeout guarantees |
+
+**The Golden Rule:** 
+- If callers write code that works with `DatabaseRepository`, it must work with `CacheRepository` too
+- If one implementation throws exception on timeout, all must
+- If one implementation guarantees consistency, all must
+- If one caches results, all must (or none should)
+
+---
+
+### Interface Segregation Principle (ISP)
+
+**Definition:** Clients shouldn't depend on interfaces they don't use. Split fat interfaces into smaller, focused ones.
+
+**The Problem:** Large interfaces force implementations to provide methods they don't need, creating dead code and confusion.
+
+---
+
+#### Example 1: Robot vs Human (Classic)
+
+**[→ Full code example: Example 1: Robot vs Human (Classic)](#code-example-1-robot-vs-human-classic)**
+
+---
+
+#### Example 2: Payment Interface (Real Architect Scenario)
+
+**[→ Full code example: Example 2: Payment Interface (Real Architect Scenario)](#code-example-2-payment-interface-real-architect-scenario)**
+
+---
+
+#### Example 3: Data Repository (Multiple Capabilities)
+
+**[→ Full code example: Example 3: Data Repository (Multiple Capabilities)](#code-example-3-data-repository-multiple-capabilities)**
+
+**Architect View:** ISP is about client respect. Don't force implementations to handle capabilities they don't use. Keep interfaces focused and composable.
+
+---
+
+### Dependency Inversion Principle (DIP)
+
+**Definition:** Depend on abstractions, not concrete implementations. High-level modules shouldn't depend on low-level details.
+
+**The Rule:** 
+1. High-level modules should not depend on low-level modules; both should depend on abstractions
+2. Abstractions should not depend on details; details should depend on abstractions
+
+---
+
+#### Example 1: Payment Processing (Testability)
+
+**[→ Full code example: Example 1: Payment Processing (Testability)](#code-example-1-payment-processing-testability)**
+
+---
+
+#### Example 2: Logger Injection (Decoupling)
+
+**[→ Full code example: Example 2: Logger Injection (Decoupling)](#code-example-2-logger-injection-decoupling)**
+
+---
+
+#### Example 3: Data Access (Multi-Database Support)
+
+**[→ Full code example: Example 3: Data Access (Multi-Database Support)](#code-example-3-data-access-multi-database-support)**
+
+**Architect Impact:** 
+- **Testability:** Inject mocks for unit tests
+- **Flexibility:** Swap implementations without code changes
+- **Scalability:** Different implementations for different scale scenarios
+- **Maintainability:** Changes to implementations don't affect business logic
+
+---
+
+## Design Patterns
+
+*Will add patterns as we discuss specific questions. Common ones for architects:*
+- Singleton, Factory, Builder, Strategy, Observer, Proxy, Adapter, Decorator
+
+---
+
+## Common Interview Questions
+
+### Q1: Why use encapsulation when we can make all fields public?
+
+**Short Answer:** Encapsulation lets you change internals without breaking 100+ services. It's the foundation of API stability and security.
+
+**Detailed Answer:**
+
+**1. API Contract & Stability**
+**[→ Full code example: Q1: Why use encapsulation when we can make all fields public?](#code-q1-why-use-encapsulation-when-we-can-make-all-fields-public)**
+
+**2. Security Boundary**
+**[→ Full code example: Q1: Why use encapsulation when we can make all fields public?](#code-q1-why-use-encapsulation-when-we-can-make-all-fields-public-1)**
+
+**3. Invariant Protection**
+**[→ Full code example: Q1: Why use encapsulation when we can make all fields public?](#code-q1-why-use-encapsulation-when-we-can-make-all-fields-public-2)**
+
+**4. Refactoring Freedom**
+**[→ Full code example: Q1: Why use encapsulation when we can make all fields public?](#code-q1-why-use-encapsulation-when-we-can-make-all-fields-public-3)**
+
+**Architect Perspective:** Encapsulation = API stability. In a microservices world with 50 services, changing internals without breaking clients is critical.
+
+---
+
+### Q2: When would you use inheritance vs composition?
+
+**Short Answer:** Use inheritance for IS-A relationships with shared implementation. Use composition for everything else. Default to composition.
+
+**Detailed Answer:**
+
+**When to Use Inheritance (Rare, ~10% of cases)**
+
+**[→ Full code example: Q2: When would you use inheritance vs composition?](#code-q2-when-would-you-use-inheritance-vs-composition)**
+
+**Conditions for Inheritance:**
+1. ✅ Clear IS-A relationship (DebitCard IS-A PaymentMethod)
+2. ✅ Shared behavior needed (expiration checking)
+3. ✅ Shallow hierarchy (2-3 levels max)
+4. ✅ LSP holds - subclass is truly substitutable
+
+**When to Use Composition (90% of cases)**
+
+**[→ Full code example: Q2: When would you use inheritance vs composition?](#code-q2-when-would-you-use-inheritance-vs-composition-1)**
+
+**Real-World Decision Tree**
+
+```
+┌─ Is it a clear IS-A relationship?
+│  └─ No → Use Composition
+│
+└─ Yes
+   ├─ Will it violate LSP? → Use Composition
+   ├─ Is hierarchy 4+ levels deep? → Use Composition
+   ├─ Is it just for code reuse? → Use Composition
+   └─ Does it truly model the domain? → Consider Inheritance
+```
+
+**Example: Report vs ReportTemplate**
+
+**[→ Full code example: Q2: When would you use inheritance vs composition?](#code-q2-when-would-you-use-inheritance-vs-composition-2)**
+
+**Composition Advantages:**
+- ✅ Flexible (can change strategy at runtime)
+- ✅ Testable (mock dependencies easily)
+- ✅ Avoids deep hierarchies
+- ✅ Single responsibility per class
+- ✅ Follows DIP (depend on abstractions)
+
+---
+
+### Q3: How do SOLID principles apply to microservices design?
+
+**Short Answer:** SOLID principles ARE microservices architecture. Each principle maps to a microservice design rule.
+
+**Detailed Mapping:**
+
+| SOLID | Microservice Application | Example |
+|-------|--------------------------|---------|
+| **SRP** | Each service = one business domain | UserService, OrderService, PaymentService separate |
+| **OCP** | Extend with new services, not modifying old ones | Add RecommendationService without changing OrderService |
+| **LSP** | Services must be interchangeable (same contract) | Both SQL and NoSQL repositories work identically |
+| **ISP** | Keep APIs lean | OrderService exposes order operations only, not payment APIs |
+| **DIP** | Services depend on contracts (async messaging) | Services talk via Kafka, not direct HTTP dependencies |
+
+**Detailed Examples:**
+
+**1. SRP → Service Boundaries**
+```
+Monolith (SRP violated):
+UserService {
+  - validateUser()
+  - saveUser()
+  - notifyUser()
+  - auditUser()
+  - assignRole()
+  - trackLogin()
+}
+= 6 reasons to change this class
+
+Microservices (SRP applied):
+├─ User Service (core user domain)
+├─ Notification Service (email, SMS, push)
+├─ Audit Service (compliance logging)
+├─ Auth Service (authentication, roles)
+└─ Analytics Service (user tracking)
+
+Each service has ONE reason to change!
+```
+
+**2. OCP → Service Extensibility**
+```
+Problem: Adding new payment processor breaks OrderService
+│
+├─ ❌ Monolith approach: Modify OrderService.processPayment()
+│     if (type == "STRIPE") { ... }
+│     else if (type == "PAYPAL") { ... }
+│     // Add Square? Modify OrderService again!
+│
+└─ ✅ Microservice approach:
+     OrderService {
+       private PaymentService paymentService;
+       public void process(Order order) {
+         paymentService.pay(order.getTotal());
+       }
+     }
+     
+     PaymentService publishes: PaymentProcessorRegistry
+     → StripeProcessor, PayPalProcessor, SquareProcessor register
+     → Add new processor without touching OrderService!
+```
+
+**3. LSP → Contract Consistency**
+**[→ Full code example: Q3: How do SOLID principles apply to microservices design?](#code-q3-how-do-solid-principles-apply-to-microservices-design)**
+
+**4. ISP → API Design**
+```
+❌ Fat API (OrderService exposes everything):
+GET /api/orders/{id}
+GET /api/orders/{id}/items
+POST /api/orders/{id}/payment
+GET /api/orders/{id}/shipping
+PUT /api/orders/{id}/customer
+
+Clients must know about items, payment, shipping, customer - tight coupling
+
+✅ Segregated APIs (Separate services):
+OrderService:
+  GET /orders/{id}
+  POST /orders
+
+ItemService:
+  GET /orders/{orderId}/items
+  POST /orders/{orderId}/items
+
+PaymentService:
+  POST /orders/{orderId}/payment
+  GET /orders/{orderId}/payment-status
+
+Each service exposes only what it owns
+```
+
+**5. DIP → Async Communication**
+```
+❌ Direct dependency (tight coupling):
+OrderService → PaymentService.pay() → EmailService.send()
+
+If any service is down, whole chain breaks
+
+✅ DIP with messaging (loose coupling):
+OrderService publishes: "order.created" → Kafka
+PaymentService consumes: "order.created" → processes async
+EmailService consumes: "order.created" → sends email
+
+Services don't know about each other
+Can deploy/scale independently
+Resilient to failures (queue buffers messages)
+```
+
+**Architect Perspective:**
+Microservices are SOLID principles applied to systems architecture. If your microservices violate SOLID, they're too monolithic or poorly designed.
+
+---
+
+### Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
+
+**Short Answer:** Use Strategy pattern (OCP) with abstraction (DIP). Add new processors without modifying existing code.
+
+**Detailed Design:**
+
+**1. Core Abstraction**
+**[→ Full code example: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?](#code-q4-design-a-payment-system-with-multiple-processors-stripe-paypal-square-how-do-you-make-it-extensible)**
+
+**2. Implementations (Easy to Add)**
+**[→ Full code example: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?](#code-q4-design-a-payment-system-with-multiple-processors-stripe-paypal-square-how-do-you-make-it-extensible-1)**
+
+**3. Factory + Registry Pattern**
+**[→ Full code example: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?](#code-q4-design-a-payment-system-with-multiple-processors-stripe-paypal-square-how-do-you-make-it-extensible-2)**
+
+**4. Payment Service (Orchestration)**
+**[→ Full code example: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?](#code-q4-design-a-payment-system-with-multiple-processors-stripe-paypal-square-how-do-you-make-it-extensible-3)**
+
+**5. Adding a New Processor (CryptoCurrency)**
+**[→ Full code example: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?](#code-q4-design-a-payment-system-with-multiple-processors-stripe-paypal-square-how-do-you-make-it-extensible-4)**
+
+**Design Principles Applied:**
+- ✅ **OCP:** Add processors without modifying PaymentService
+- ✅ **DIP:** Service depends on PaymentProcessor interface
+- ✅ **SRP:** Each processor has one responsibility
+- ✅ **LSP:** All processors follow same contract
+- ✅ **ISP:** Refund interface is separate (optional capability)
+
+**At Scale (Architect Perspective):**
+- New processor? Deploy as separate microservice, register via config
+- A/B testing? Create wrapper processor that routes to two implementations
+- Circuit breaker? Wrap processor to handle failure gracefully
+- Analytics? Decorator pattern - wrap real processor to track metrics
+- Multi-region? Router processor picks regional processor based on customer location
+
+---
+
+### Q5: Explain the difference between Abstraction and Encapsulation
+
+**Short Answer:**
+- **Encapsulation:** Hiding implementation details (HOW)
+- **Abstraction:** Showing only essential features (WHAT)
+
+**Detailed Comparison:**
+
+**[→ Full code example: Q5: Explain the difference between Abstraction and Encapsulation](#code-q5-explain-the-difference-between-abstraction-and-encapsulation)**
+
+| Aspect | Encapsulation | Abstraction |
+|--------|---------------|-------------|
+| **What** | Hiding data and implementation | Showing only essential interface |
+| **How** | private, protected, package-private | interfaces, abstract classes |
+| **Example** | `private int connectionPoolSize` | `public Result executeQuery(String sql)` |
+| **Focus** | Protecting internal state | Simplifying client interaction |
+| **Benefit** | Security, stability | Ease of use, reduced complexity |
+
+**Real Example: Coffee Machine**
+
+```
+Encapsulation: The machine hides how it grinds beans, heats water, pressurizes steam
+Abstraction: The machine shows only: "dispense(CoffeeType type)"
+
+You don't see:
+- Grinding mechanism (encapsulated)
+- Water heating circuit (encapsulated)
+- Pressure gauges (encapsulated)
+
+You see only:
+- Button for espresso (abstracted)
+- Button for cappuccino (abstracted)
+```
+
+---
+
+### Q6: How would you refactor a God Object (violating SRP) into proper design?
+
+**Strategy:** Identify responsibilities, extract into separate classes, inject dependencies.
+
+**[→ Full code example: Q6: How would you refactor a God Object (violating SRP) into proper design?](#code-q6-how-would-you-refactor-a-god-object-violating-srp-into-proper-design)**
+
+**Benefits of Refactoring:**
+- Each class has ONE reason to change
+- Easy to unit test (mock individual specialists)
+- Easy to scale (DirectoryService on separate server)
+- Easy to reuse (UserValidator used by other services)
+- Clear code organization
+
+---
+
+### Q7: When should you use interfaces vs abstract classes?
+
+**Quick Guide:**
+- **Interface:** Contract for external clients, multiple inheritance
+- **Abstract Class:** Shared implementation, "is-a" relationship
+
+**[→ Full code example: Q7: When should you use interfaces vs abstract classes?](#code-q7-when-should-you-use-interfaces-vs-abstract-classes)**
+
+| Aspect | Abstract Class | Interface |
+|--------|----------------|-----------|
+| **Implementation** | Can have shared code | No implementation (Java 8+ has defaults) |
+| **Inheritance** | Single only | Multiple |
+| **State** | Can have fields | No fields |
+| **Access Modifiers** | Any (private, protected, public) | Only public |
+| **Constructor** | Can have | Cannot have |
+| **When to Use** | Shared behavior, IS-A | Contract, capability |
+
+---
+
+### Q8: How do you handle circular dependencies?
+
+**Problem:**
+```
+Service A → Service B → Service C → Service A
+Circular dependency → Can't start application
+```
+
+**Solutions:**
+
+**Solution 1: Invert dependency direction (Dependency Injection)**
+**[→ Full code example: Q8: How do you handle circular dependencies?](#code-q8-how-do-you-handle-circular-dependencies)**
+
+**Solution 2: Extract common interface**
+**[→ Full code example: Q8: How do you handle circular dependencies?](#code-q8-how-do-you-handle-circular-dependencies-1)**
+
+**Solution 3: Lazy initialization**
+**[→ Full code example: Q8: How do you handle circular dependencies?](#code-q8-how-do-you-handle-circular-dependencies-2)**
+
+---
+
+### Q9: Design a caching layer for a multi-region system. How do you maintain consistency?
+
+**Architecture:**
+```
+┌─ User Request
+│  ├─ Check Local Cache (L1 - In-Memory)
+│  ├─ Check Distributed Cache (L2 - Redis)
+│  ├─ Query Database (L3 - Source of Truth)
+│  └─ Invalidate on write
+```
+
+**[→ Full code example: Q9: Design a caching layer for a multi-region system. How do you maintain consistency?](#code-q9-design-a-caching-layer-for-a-multi-region-system-how-do-you-maintain-consistency)**
+
+---
+
+**Last Updated:** 2026-07-16  
+**Status:** Complete with 9 comprehensive interview questions
+
+---
+
+## Additional Details: Code Examples
+
+Full code for every example extracted from the sections above — each one is linked from its summary location. Read the prose explanation in context first; this section is for the actual code.
+
+### Code: Example 1: Database Connection Wrapper
 
 ```java
 // ✅ Good encapsulation
@@ -63,14 +699,9 @@ DatabaseConnection db = new DatabaseConnection();
 Result result = db.executeQuery("SELECT * FROM users WHERE id = ?", 123);
 ```
 
-**Why this matters:**
-- Tomorrow you switch from HikariCP to Druid → no caller changes needed
-- You add automatic retry logic → transparent to all services
-- Metrics collection → zero impact on calling code
-
 ---
 
-### Example 2: HTTP Client Wrapper (Multi-Region)
+### Code: Example 2: HTTP Client Wrapper (Multi-Region)
 
 ```java
 // ❌ Bad: Exposes implementation details
@@ -114,7 +745,7 @@ Response response = client.send(request);  // Failover, retries, circuit breakin
 
 ---
 
-### Example 3: Configuration Management
+### Code: Example 3: Configuration Management
 
 ```java
 // ❌ Bad: Public fields, callers read direct config
@@ -172,31 +803,9 @@ ConfigService config = new ConfigService();  // Fails fast if config is invalid
 DatabaseConfig dbConfig = config.getDatabaseConfig();  // Immutable, safe
 ```
 
-### Trade-offs
-- **Pro:** Easier to maintain (change internals), better security (validate once), refactoring safety
-- **Con:** More boilerplate (getters/setters), potential performance overhead if not cached properly
-
-**Architect Insight:** Encapsulation is the foundation for microservice contracts. When you expose a clean API, you can change implementation across 50 services without coordination.
-
 ---
 
-## Inheritance {#inheritance}
-
-**Simple Definition:** Derive new classes from existing ones, reuse and extend behavior.
-
-**Realistic Architect View:** Inheritance can be powerful or problematic depending on hierarchy depth and design.
-
-### When to Use (The Right Way)
-- **Clear IS-A relationship:** A `Manager` IS-A `Employee` (real concept, not just code reuse)
-- **Shallow hierarchies:** 2-3 levels deep is ideal; avoid deep chains
-- **Shared implementation:** Common methods actually used by subclasses
-
-### When NOT to Use (The Red Flag)
-- Deep inheritance chains (5+ levels) → Hard to reason about, high maintenance cost
-- Using inheritance just for code reuse → Use composition instead
-- Mixing unrelated concepts → Leads to bloated base classes
-
-### Example 1: Payment Processors (Correct Shallow Hierarchy)
+### Code: Example 1: Payment Processors (Correct Shallow Hierarchy)
 
 ```java
 // ✅ Good: Clear IS-A, shallow (1 level)
@@ -238,7 +847,7 @@ PaymentResult result = processor.process(payment);
 
 ---
 
-### Example 2: Document Processing (Hierarchy Depth Problem)
+### Code: Example 2: Document Processing (Hierarchy Depth Problem)
 
 ```java
 // ❌ Bad: Deep, fragile inheritance (4+ levels)
@@ -303,7 +912,7 @@ public class QuarterlyReport {
 
 ---
 
-### Example 3: Cache Implementations (When Inheritance Works)
+### Code: Example 3: Cache Implementations (When Inheritance Works)
 
 ```java
 // ✅ Good: Inheritance when strategy is similar
@@ -367,31 +976,20 @@ public class LFUCache<K, V> extends BaseCache<K, V> {
 // Clear IS-A relationship: both are caches with similar behavior
 ```
 
-### Trade-offs
-- **Pro:** Code reuse, natural modeling for certain hierarchies
-- **Con:** Fragile base class problem, tight coupling, deep hierarchies are hard to maintain
-
 ---
 
-## Polymorphism {#polymorphism}
+### Code: 1. Compile-time (Method Overloading)
 
-**Simple Definition:** Same method name, different implementations. Objects behave differently based on type.
-
-**Realistic Architect View:** Polymorphism enables flexibility and testability. Critical for building loosely coupled systems.
-
-### Types
-
-#### 1. Compile-time (Method Overloading)
 ```java
 public class Calculator {
     public int add(int a, int b) { return a + b; }
     public double add(double a, double b) { return a + b; }
 }
 ```
-- Resolved at compile time
-- Less powerful than runtime polymorphism
 
-#### 2. Runtime (Method Overriding)
+---
+
+### Code: 2. Runtime (Method Overriding)
 
 ```java
 public interface DataStore {
@@ -445,7 +1043,7 @@ UserService service = new UserService(new DatabaseDataStore()); // For persisten
 
 ---
 
-#### 3. Serialization Strategy (Multiple Implementations)
+### Code: 3. Serialization Strategy (Multiple Implementations)
 
 ```java
 public interface DataSerializer {
@@ -499,25 +1097,9 @@ MessageQueue queue = new MessageQueue(new JsonSerializer());     // Development
 MessageQueue queue = new MessageQueue(new ProtobufSerializer()); // Production (40% smaller messages)
 ```
 
-### Why It Matters at Scale
-- **Loose Coupling:** Services depend on interfaces, not concrete implementations
-- **Testability:** Easy to mock implementations for testing
-- **Extensibility:** Add new implementations without changing calling code
-- **Swappability:** Replace Redis with Memcached without touching 50 services
-
-### Trade-offs
-- **Pro:** Flexibility, testability, enables dependency injection
-- **Con:** Runtime overhead (method lookup), can hide complexity
-
 ---
 
-## Abstraction {#abstraction}
-
-**Simple Definition:** Hide complexity behind a simple interface.
-
-**Realistic Architect View:** Abstraction is about exposing the right level of detail to callers.
-
-### Example 1: Order Processing (Workflow Abstraction)
+### Code: Example 1: Order Processing (Workflow Abstraction)
 
 ```java
 // ❌ Bad: Exposes internal complexity - caller must know all steps
@@ -577,7 +1159,7 @@ OrderResult result = orderService.createOrder(orderDTO);
 
 ---
 
-### Example 2: Search Abstraction (Hide Engine Details)
+### Code: Example 2: Search Abstraction (Hide Engine Details)
 
 ```java
 // ❌ Bad: Exposes search engine internals
@@ -638,7 +1220,7 @@ public class UserService {
 
 ---
 
-### Example 3: File System Abstraction
+### Code: Example 3: File System Abstraction
 
 ```java
 // ❌ Bad: Code tied to local file system
@@ -708,22 +1290,9 @@ DocumentService service = new DocumentService(new S3FileStore());
 DocumentService service = new DocumentService(new LocalFileStore());
 ```
 
-### At Architect Level
-- **Data Models:** Expose domain concepts, not database schemas
-- **APIs:** Hide distributed system complexity (retries, timeouts, fallbacks)
-- **Configuration:** Hide infrastructure details from business logic
-
 ---
 
-## SOLID Principles {#solid-principles}
-
-### Single Responsibility Principle (SRP) {#srp}
-
-**Definition:** A class should have only one reason to change.
-
-**Realistic View:** If you're struggling to name a class or writing comments like "This also handles...", it's violating SRP.
-
-#### Example 1: User Management (Multiple Responsibilities)
+### Code: Example 1: User Management (Multiple Responsibilities)
 
 ```java
 // ❌ Bad: Too many reasons to change (validation + persistence + notifications + auditing)
@@ -851,11 +1420,9 @@ public class UserRegistrationService {
 }
 ```
 
-**Key Insight:** UserRegistrationService coordinates, but doesn't do the work. Each specialist class has ONE job.
-
 ---
 
-#### Example 2: Order Processing (Complex Domain)
+### Code: Example 2: Order Processing (Complex Domain)
 
 ```java
 // ❌ Bad: OrderService does everything (30+ methods)
@@ -951,15 +1518,9 @@ public class OrderWorkflow {
 }
 ```
 
-**Architect Perspective:** SRP at scale means each microservice has one domain responsibility. OrderService, PaymentService, InventoryService, ShippingService are separate services in a microservice architecture.
-
 ---
 
-### Open/Closed Principle (OCP) {#ocp}
-
-**Definition:** Open for extension, closed for modification. Add new behavior without changing existing code.
-
-#### Example 1: Payment Processing (Classic OCP)
+### Code: Example 1: Payment Processing (Classic OCP)
 
 ```java
 // ❌ Bad: Every new payment type requires modifying PaymentService
@@ -1068,7 +1629,7 @@ public class PaymentService {
 
 ---
 
-#### Example 2: Discount Calculation (Multiple Strategies)
+### Code: Example 2: Discount Calculation (Multiple Strategies)
 
 ```java
 // ❌ Bad: Every discount type requires modifying OrderService
@@ -1148,19 +1709,9 @@ public class OrderService {
 }
 ```
 
-**Key:** Use composition + strategy pattern to enable extension without modification.
-
 ---
 
-### Liskov Substitution Principle (LSP) {#lsp}
-
-**Definition:** Derived classes must be substitutable for their base classes. Subclass behavior must match parent's contract.
-
-**The Rule:** If `S` is a subtype of `T`, then objects of type `S` may be substituted for objects of type `T` without breaking the program.
-
----
-
-#### Example 1: The Classic Rectangle-Square Problem
+### Code: Example 1: The Classic Rectangle-Square Problem
 
 ```java
 // ❌ Bad: Square violates LSP
@@ -1202,7 +1753,7 @@ public class Square {
 
 ---
 
-#### Example 2: Cache Implementations (Real Architect Scenario)
+### Code: Example 2: Cache Implementations (Real Architect Scenario)
 
 ```java
 // Contract: Cache stores and retrieves values, may return null if missing
@@ -1275,11 +1826,9 @@ for (String key : keys) {
 }
 ```
 
-**Key Insight:** Contract includes return values AND exceptions. If base class returns null, subclass can't throw exception.
-
 ---
 
-#### Example 3: Data Store Repository (Multi-implementation)
+### Code: Example 3: Data Store Repository (Multi-implementation)
 
 ```java
 // Contract: query() returns results, may be empty; must handle timeouts
@@ -1332,7 +1881,7 @@ try {
 
 ---
 
-#### Example 4: Payment Processing (Preconditions/Postconditions)
+### Code: Example 4: Payment Processing (Preconditions/Postconditions)
 
 ```java
 public interface PaymentProcessor {
@@ -1381,7 +1930,7 @@ processor.process(new Payment(100, account));
 
 ---
 
-#### Example 5: Message Queue Publishing (Guarantee violations)
+### Code: Example 5: Message Queue Publishing (Guarantee violations)
 
 ```java
 public interface MessageQueue {
@@ -1426,33 +1975,7 @@ queue.publish("orders", "user:123 ordered item:456");
 
 ---
 
-#### Why LSP Matters at Architect Level
-
-| Scenario | Bad Design | Good Design |
-|----------|-----------|------------|
-| **Caching Strategy** | Cache impl throws on missing key | All implementations return null consistently |
-| **Multi-region Deployment** | Different datastores have different guarantees | All datastores have same SLA/timeout behavior |
-| **Microservice Upgrades** | New implementation has different error handling | All versions handle errors identically |
-| **Testing** | Mock behaves differently than real impl | Mock follows exact same contract |
-| **Scaling** | Different implementations timeout differently | All scale with same timeout guarantees |
-
-**The Golden Rule:** 
-- If callers write code that works with `DatabaseRepository`, it must work with `CacheRepository` too
-- If one implementation throws exception on timeout, all must
-- If one implementation guarantees consistency, all must
-- If one caches results, all must (or none should)
-
----
-
-### Interface Segregation Principle (ISP) {#isp}
-
-**Definition:** Clients shouldn't depend on interfaces they don't use. Split fat interfaces into smaller, focused ones.
-
-**The Problem:** Large interfaces force implementations to provide methods they don't need, creating dead code and confusion.
-
----
-
-#### Example 1: Robot vs Human (Classic)
+### Code: Example 1: Robot vs Human (Classic)
 
 ```java
 // ❌ Bad: Fat interface forces Robot to implement irrelevant methods
@@ -1524,7 +2047,7 @@ worker.work();  // Always works, interface only has work()
 
 ---
 
-#### Example 2: Payment Interface (Real Architect Scenario)
+### Code: Example 2: Payment Interface (Real Architect Scenario)
 
 ```java
 // ❌ Bad: Fat payment interface
@@ -1639,7 +2162,7 @@ public class AdminService {
 
 ---
 
-#### Example 3: Data Repository (Multiple Capabilities)
+### Code: Example 3: Data Repository (Multiple Capabilities)
 
 ```java
 // ❌ Bad: Fat repository interface
@@ -1735,21 +2258,9 @@ public class SqlUserRepository implements UserRepository, UserSearch, BatchUserO
 }
 ```
 
-**Architect View:** ISP is about client respect. Don't force implementations to handle capabilities they don't use. Keep interfaces focused and composable.
-
 ---
 
-### Dependency Inversion Principle (DIP) {#dip}
-
-**Definition:** Depend on abstractions, not concrete implementations. High-level modules shouldn't depend on low-level details.
-
-**The Rule:** 
-1. High-level modules should not depend on low-level modules; both should depend on abstractions
-2. Abstractions should not depend on details; details should depend on abstractions
-
----
-
-#### Example 1: Payment Processing (Testability)
+### Code: Example 1: Payment Processing (Testability)
 
 ```java
 // ❌ Bad: PaymentService hard-coded to Stripe
@@ -1830,7 +2341,7 @@ PaymentService service = new PaymentService(new MockPaymentProcessor());
 
 ---
 
-#### Example 2: Logger Injection (Decoupling)
+### Code: Example 2: Logger Injection (Decoupling)
 
 ```java
 // ❌ Bad: UserService tightly coupled to specific logger
@@ -1944,7 +2455,7 @@ UserService service = new UserService(new DatadogLogger());       // Prod
 
 ---
 
-#### Example 3: Data Access (Multi-Database Support)
+### Code: Example 3: Data Access (Multi-Database Support)
 
 ```java
 // ❌ Bad: OrderService hard-wired to PostgreSQL
@@ -2050,30 +2561,10 @@ OrderService service = new OrderService(new PostgresOrderRepository());  // Prod
 OrderService service = new OrderService(new MongoOrderRepository());     // Migration
 ```
 
-**Architect Impact:** 
-- **Testability:** Inject mocks for unit tests
-- **Flexibility:** Swap implementations without code changes
-- **Scalability:** Different implementations for different scale scenarios
-- **Maintainability:** Changes to implementations don't affect business logic
-
 ---
 
-## Design Patterns {#design-patterns}
+### Code: Q1: Why use encapsulation when we can make all fields public?
 
-*Will add patterns as we discuss specific questions. Common ones for architects:*
-- Singleton, Factory, Builder, Strategy, Observer, Proxy, Adapter, Decorator
-
----
-
-## Common Interview Questions {#common-interview-questions}
-
-### Q1: Why use encapsulation when we can make all fields public?
-
-**Short Answer:** Encapsulation lets you change internals without breaking 100+ services. It's the foundation of API stability and security.
-
-**Detailed Answer:**
-
-**1. API Contract & Stability**
 ```java
 // ❌ Without encapsulation (public fields)
 public class User {
@@ -2115,7 +2606,10 @@ public class User {
 // All 50 services use getEmail() → one place to add validation
 ```
 
-**2. Security Boundary**
+---
+
+### Code: Q1: Why use encapsulation when we can make all fields public?
+
 ```java
 // ❌ Public fields
 public class DatabaseConfig {
@@ -2143,7 +2637,10 @@ public class DatabaseConfig {
 }
 ```
 
-**3. Invariant Protection**
+---
+
+### Code: Q1: Why use encapsulation when we can make all fields public?
+
 ```java
 // ❌ Without encapsulation
 public class BankAccount {
@@ -2177,7 +2674,10 @@ public class BankAccount {
 }
 ```
 
-**4. Refactoring Freedom**
+---
+
+### Code: Q1: Why use encapsulation when we can make all fields public?
+
 ```java
 // Version 1: Simple storage
 public class Cache {
@@ -2216,17 +2716,9 @@ public class Cache {
 Object value = cache.get("user:123");  // Works in all 3 versions
 ```
 
-**Architect Perspective:** Encapsulation = API stability. In a microservices world with 50 services, changing internals without breaking clients is critical.
-
 ---
 
-### Q2: When would you use inheritance vs composition?
-
-**Short Answer:** Use inheritance for IS-A relationships with shared implementation. Use composition for everything else. Default to composition.
-
-**Detailed Answer:**
-
-**When to Use Inheritance (Rare, ~10% of cases)**
+### Code: Q2: When would you use inheritance vs composition?
 
 ```java
 // ✅ Good: Clear IS-A relationship with shared behavior
@@ -2256,13 +2748,9 @@ public class DebitCard extends PaymentMethod {
 }
 ```
 
-**Conditions for Inheritance:**
-1. ✅ Clear IS-A relationship (DebitCard IS-A PaymentMethod)
-2. ✅ Shared behavior needed (expiration checking)
-3. ✅ Shallow hierarchy (2-3 levels max)
-4. ✅ LSP holds - subclass is truly substitutable
+---
 
-**When to Use Composition (90% of cases)**
+### Code: Q2: When would you use inheritance vs composition?
 
 ```java
 // ❌ Don't extend just for code reuse
@@ -2288,20 +2776,9 @@ public class Employee {
 // - No deep hierarchies
 ```
 
-**Real-World Decision Tree**
+---
 
-```
-┌─ Is it a clear IS-A relationship?
-│  └─ No → Use Composition
-│
-└─ Yes
-   ├─ Will it violate LSP? → Use Composition
-   ├─ Is hierarchy 4+ levels deep? → Use Composition
-   ├─ Is it just for code reuse? → Use Composition
-   └─ Does it truly model the domain? → Consider Inheritance
-```
-
-**Example: Report vs ReportTemplate**
+### Code: Q2: When would you use inheritance vs composition?
 
 ```java
 // ❌ Bad inheritance
@@ -2342,77 +2819,10 @@ public class AnnualTemplate implements ReportTemplate {
 }
 ```
 
-**Composition Advantages:**
-- ✅ Flexible (can change strategy at runtime)
-- ✅ Testable (mock dependencies easily)
-- ✅ Avoids deep hierarchies
-- ✅ Single responsibility per class
-- ✅ Follows DIP (depend on abstractions)
-
 ---
 
-### Q3: How do SOLID principles apply to microservices design?
+### Code: Q3: How do SOLID principles apply to microservices design?
 
-**Short Answer:** SOLID principles ARE microservices architecture. Each principle maps to a microservice design rule.
-
-**Detailed Mapping:**
-
-| SOLID | Microservice Application | Example |
-|-------|--------------------------|---------|
-| **SRP** | Each service = one business domain | UserService, OrderService, PaymentService separate |
-| **OCP** | Extend with new services, not modifying old ones | Add RecommendationService without changing OrderService |
-| **LSP** | Services must be interchangeable (same contract) | Both SQL and NoSQL repositories work identically |
-| **ISP** | Keep APIs lean | OrderService exposes order operations only, not payment APIs |
-| **DIP** | Services depend on contracts (async messaging) | Services talk via Kafka, not direct HTTP dependencies |
-
-**Detailed Examples:**
-
-**1. SRP → Service Boundaries**
-```
-Monolith (SRP violated):
-UserService {
-  - validateUser()
-  - saveUser()
-  - notifyUser()
-  - auditUser()
-  - assignRole()
-  - trackLogin()
-}
-= 6 reasons to change this class
-
-Microservices (SRP applied):
-├─ User Service (core user domain)
-├─ Notification Service (email, SMS, push)
-├─ Audit Service (compliance logging)
-├─ Auth Service (authentication, roles)
-└─ Analytics Service (user tracking)
-
-Each service has ONE reason to change!
-```
-
-**2. OCP → Service Extensibility**
-```
-Problem: Adding new payment processor breaks OrderService
-│
-├─ ❌ Monolith approach: Modify OrderService.processPayment()
-│     if (type == "STRIPE") { ... }
-│     else if (type == "PAYPAL") { ... }
-│     // Add Square? Modify OrderService again!
-│
-└─ ✅ Microservice approach:
-     OrderService {
-       private PaymentService paymentService;
-       public void process(Order order) {
-         paymentService.pay(order.getTotal());
-       }
-     }
-     
-     PaymentService publishes: PaymentProcessorRegistry
-     → StripeProcessor, PayPalProcessor, SquareProcessor register
-     → Add new processor without touching OrderService!
-```
-
-**3. LSP → Contract Consistency**
 ```java
 // All payment processors must follow same contract
 public interface PaymentProcessor {
@@ -2427,62 +2837,10 @@ public interface PaymentProcessor {
 // This is LSP applied at microservice level
 ```
 
-**4. ISP → API Design**
-```
-❌ Fat API (OrderService exposes everything):
-GET /api/orders/{id}
-GET /api/orders/{id}/items
-POST /api/orders/{id}/payment
-GET /api/orders/{id}/shipping
-PUT /api/orders/{id}/customer
-
-Clients must know about items, payment, shipping, customer - tight coupling
-
-✅ Segregated APIs (Separate services):
-OrderService:
-  GET /orders/{id}
-  POST /orders
-
-ItemService:
-  GET /orders/{orderId}/items
-  POST /orders/{orderId}/items
-
-PaymentService:
-  POST /orders/{orderId}/payment
-  GET /orders/{orderId}/payment-status
-
-Each service exposes only what it owns
-```
-
-**5. DIP → Async Communication**
-```
-❌ Direct dependency (tight coupling):
-OrderService → PaymentService.pay() → EmailService.send()
-
-If any service is down, whole chain breaks
-
-✅ DIP with messaging (loose coupling):
-OrderService publishes: "order.created" → Kafka
-PaymentService consumes: "order.created" → processes async
-EmailService consumes: "order.created" → sends email
-
-Services don't know about each other
-Can deploy/scale independently
-Resilient to failures (queue buffers messages)
-```
-
-**Architect Perspective:**
-Microservices are SOLID principles applied to systems architecture. If your microservices violate SOLID, they're too monolithic or poorly designed.
-
 ---
 
-### Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
+### Code: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
 
-**Short Answer:** Use Strategy pattern (OCP) with abstraction (DIP). Add new processors without modifying existing code.
-
-**Detailed Design:**
-
-**1. Core Abstraction**
 ```java
 public interface PaymentProcessor {
     // Core contract all processors must follow
@@ -2507,7 +2865,10 @@ public class Payment {
 }
 ```
 
-**2. Implementations (Easy to Add)**
+---
+
+### Code: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
+
 ```java
 public class StripePaymentProcessor implements PaymentProcessor {
     private StripeClient stripe;
@@ -2609,7 +2970,10 @@ public class SquarePaymentProcessor implements PaymentProcessor {
 }
 ```
 
-**3. Factory + Registry Pattern**
+---
+
+### Code: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
+
 ```java
 public class PaymentProcessorRegistry {
     private List<PaymentProcessor> processors;
@@ -2636,7 +3000,10 @@ public class PaymentProcessorRegistry {
 }
 ```
 
-**4. Payment Service (Orchestration)**
+---
+
+### Code: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
+
 ```java
 public class PaymentService {
     private PaymentProcessorRegistry registry;
@@ -2700,7 +3067,10 @@ public class PaymentService {
 }
 ```
 
-**5. Adding a New Processor (CryptoCurrency)**
+---
+
+### Code: Q4: Design a payment system with multiple processors (Stripe, PayPal, Square). How do you make it extensible?
+
 ```java
 // Just implement PaymentProcessor - no modifications needed!
 public class CryptoPaymentProcessor implements PaymentProcessor {
@@ -2738,29 +3108,9 @@ public class CryptoPaymentProcessor implements PaymentProcessor {
 registry.registerProcessor(new CryptoPaymentProcessor(blockchainClient));
 ```
 
-**Design Principles Applied:**
-- ✅ **OCP:** Add processors without modifying PaymentService
-- ✅ **DIP:** Service depends on PaymentProcessor interface
-- ✅ **SRP:** Each processor has one responsibility
-- ✅ **LSP:** All processors follow same contract
-- ✅ **ISP:** Refund interface is separate (optional capability)
-
-**At Scale (Architect Perspective):**
-- New processor? Deploy as separate microservice, register via config
-- A/B testing? Create wrapper processor that routes to two implementations
-- Circuit breaker? Wrap processor to handle failure gracefully
-- Analytics? Decorator pattern - wrap real processor to track metrics
-- Multi-region? Router processor picks regional processor based on customer location
-
 ---
 
-### Q5: Explain the difference between Abstraction and Encapsulation
-
-**Short Answer:**
-- **Encapsulation:** Hiding implementation details (HOW)
-- **Abstraction:** Showing only essential features (WHAT)
-
-**Detailed Comparison:**
+### Code: Q5: Explain the difference between Abstraction and Encapsulation
 
 ```java
 public class DatabaseConnection {
@@ -2779,35 +3129,9 @@ public class DatabaseConnection {
 // Caller doesn't see: pool management, retries, listeners
 ```
 
-| Aspect | Encapsulation | Abstraction |
-|--------|---------------|-------------|
-| **What** | Hiding data and implementation | Showing only essential interface |
-| **How** | private, protected, package-private | interfaces, abstract classes |
-| **Example** | `private int connectionPoolSize` | `public Result executeQuery(String sql)` |
-| **Focus** | Protecting internal state | Simplifying client interaction |
-| **Benefit** | Security, stability | Ease of use, reduced complexity |
-
-**Real Example: Coffee Machine**
-
-```
-Encapsulation: The machine hides how it grinds beans, heats water, pressurizes steam
-Abstraction: The machine shows only: "dispense(CoffeeType type)"
-
-You don't see:
-- Grinding mechanism (encapsulated)
-- Water heating circuit (encapsulated)
-- Pressure gauges (encapsulated)
-
-You see only:
-- Button for espresso (abstracted)
-- Button for cappuccino (abstracted)
-```
-
 ---
 
-### Q6: How would you refactor a God Object (violating SRP) into proper design?
-
-**Strategy:** Identify responsibilities, extract into separate classes, inject dependencies.
+### Code: Q6: How would you refactor a God Object (violating SRP) into proper design?
 
 ```java
 // ❌ God Object: UserManager does everything
@@ -2909,20 +3233,9 @@ public class UserRegistrationService {
 }
 ```
 
-**Benefits of Refactoring:**
-- Each class has ONE reason to change
-- Easy to unit test (mock individual specialists)
-- Easy to scale (DirectoryService on separate server)
-- Easy to reuse (UserValidator used by other services)
-- Clear code organization
-
 ---
 
-### Q7: When should you use interfaces vs abstract classes?
-
-**Quick Guide:**
-- **Interface:** Contract for external clients, multiple inheritance
-- **Abstract Class:** Shared implementation, "is-a" relationship
+### Code: Q7: When should you use interfaces vs abstract classes?
 
 ```java
 // ✅ Use Abstract Class: Shared implementation, clear hierarchy
@@ -2976,28 +3289,10 @@ public class Document implements Cacheable, Persistent, Searchable {
 }
 ```
 
-| Aspect | Abstract Class | Interface |
-|--------|----------------|-----------|
-| **Implementation** | Can have shared code | No implementation (Java 8+ has defaults) |
-| **Inheritance** | Single only | Multiple |
-| **State** | Can have fields | No fields |
-| **Access Modifiers** | Any (private, protected, public) | Only public |
-| **Constructor** | Can have | Cannot have |
-| **When to Use** | Shared behavior, IS-A | Contract, capability |
-
 ---
 
-### Q8: How do you handle circular dependencies?
+### Code: Q8: How do you handle circular dependencies?
 
-**Problem:**
-```
-Service A → Service B → Service C → Service A
-Circular dependency → Can't start application
-```
-
-**Solutions:**
-
-**Solution 1: Invert dependency direction (Dependency Injection)**
 ```java
 // ❌ Circular: OrderService → PaymentService → OrderService
 public class OrderService {
@@ -3033,7 +3328,10 @@ public class OrderService implements EventSubscriber {
 }
 ```
 
-**Solution 2: Extract common interface**
+---
+
+### Code: Q8: How do you handle circular dependencies?
+
 ```java
 // ❌ Circular: UserService → AuthService → UserService
 public class UserService {
@@ -3063,7 +3361,10 @@ public class AuthService {
 }
 ```
 
-**Solution 3: Lazy initialization**
+---
+
+### Code: Q8: How do you handle circular dependencies?
+
 ```java
 // ✅ Defer dependency until needed
 public class ServiceA {
@@ -3080,16 +3381,7 @@ public class ServiceA {
 
 ---
 
-### Q9: Design a caching layer for a multi-region system. How do you maintain consistency?
-
-**Architecture:**
-```
-┌─ User Request
-│  ├─ Check Local Cache (L1 - In-Memory)
-│  ├─ Check Distributed Cache (L2 - Redis)
-│  ├─ Query Database (L3 - Source of Truth)
-│  └─ Invalidate on write
-```
+### Code: Q9: Design a caching layer for a multi-region system. How do you maintain consistency?
 
 ```java
 public class MultiLayerCache {
@@ -3148,5 +3440,3 @@ public class CacheInvalidationListener {
 
 ---
 
-**Last Updated:** 2026-07-16  
-**Status:** Complete with 9 comprehensive interview questions
