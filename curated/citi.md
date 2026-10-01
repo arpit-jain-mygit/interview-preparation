@@ -48,7 +48,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 21. [Spring Framework Reference](#21-spring-framework-reference)
 22. [OOPS (Object-Oriented Design) Reference](#22-oops-object-oriented-design-reference)
 23. [Advanced Java](#23-advanced-java)
-24. [Citi Karat Screening Round](#24-citi-karat-screening-round)
+24. [Citi Karat Screening Round](#how-springbootapplication--main-starts-a-web-app) *(GitHub didn't generate an anchor for this heading — link lands just above it; scroll down slightly)*
 
 ---
 
