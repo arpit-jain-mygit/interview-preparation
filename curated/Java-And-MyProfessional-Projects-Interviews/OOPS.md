@@ -3,7 +3,6 @@
 *For Technology Architect interviews: Focus on design principles, scalability implications, and real-world trade-offs.*
 
 ## Table of Contents
-- [The 4 Pillars, Unified: Start Here](#the-4-pillars-unified-start-here)
 - [Encapsulation](#encapsulation)
 - [Inheritance](#inheritance)
 - [Polymorphism](#polymorphism)
@@ -17,88 +16,6 @@
 - [Design Patterns](#design-patterns)
 - [Common Interview Questions](#common-interview-questions)
 - [Additional Details: Code Examples](#additional-details-code-examples)
-
----
-
-## The 4 Pillars, Unified: Start Here
-
-Each pillar answers a *different question* about the same code — not a different shape of code. All four examples below are the exact same `PaymentProcessor` interface, so the only thing that changes between them is the lens, not the setup. Read this before the detailed sections below (each of which also gets its own dedicated examples) — this is the fast, precise version for recall under interview pressure.
-
-```java
-interface PaymentProcessor {
-    PaymentResult pay(BigDecimal amount);
-}
-```
-
-### 1. Encapsulation — HOW: protect internals from outside interference
-
-**Question:** What's hidden *inside* one class?
-**Litmus test:** *If this private thing were public, could outside code reach in and manipulate it, or start depending on it existing?*
-
-```java
-class StripeProcessor implements PaymentProcessor {
-    private String apiKey;         // hidden — test: if public, reachable? Yes.
-    private HttpClient httpClient; // hidden — same test, same answer.
-
-    public PaymentResult pay(BigDecimal amount) {
-        // uses apiKey, httpClient internally — caller never sees these
-    }
-}
-```
-Purely about access control inside one class. Nothing to do with the interface.
-
-### 2. Abstraction — WHAT: decide the right-sized contract
-
-**Question:** Is the *shared contract* the right, minimal one?
-**Litmus test:** *Does the caller need to think about this to use the object correctly?*
-
-```java
-interface PaymentProcessor {
-    PaymentResult pay(BigDecimal amount);  // one method — the whole contract
-}
-```
-The design decision: the caller should only ever think "pay this amount" — never "which HTTP library, which auth scheme." A judgment about the contract's shape, made independent of any implementation.
-
-### 3. Polymorphism — SAME CALL, DIFFERENT BEHAVIOR
-
-**Question:** Can the same call produce different behavior at runtime?
-**Litmus test:** *Can I swap this object for another implementing the same contract, without touching the calling code, and get different behavior?*
-
-```java
-for (PaymentProcessor p : List.of(new StripeProcessor(), new PayPalProcessor())) {
-    p.pay(amount);  // same line, different behavior depending on p's real type
-}
-```
-The only pillar that strictly requires 2+ implementations to mean anything.
-
-### 4. Inheritance — A SPECIFIC CODE-REUSE MECHANISM (needs justification)
-
-**Question:** Is this a genuine IS-A relationship, reusing *real* shared implementation?
-**Litmus test:** *Would composition work just as well? If yes, use composition — inheritance is the exception (~10% of cases, see Q2 below), not the default.*
-
-`implements` is **not** inheritance. Getting inheritance into this same domain requires deliberately adding a class with real shared logic:
-
-```java
-abstract class AbstractPaymentProcessor implements PaymentProcessor {
-    protected boolean validateAmount(BigDecimal amount) {
-        return amount.compareTo(BigDecimal.ZERO) > 0;  // real logic, reused by every subclass
-    }
-}
-
-class StripeProcessor extends AbstractPaymentProcessor {
-    public PaymentResult pay(BigDecimal amount) {
-        if (!validateAmount(amount)) throw new IllegalArgumentException();
-        // Stripe-specific logic
-    }
-}
-```
-
-**Without this extra class, the example has zero inheritance — and that's fine.** Encapsulation, Abstraction, and Polymorphism are all fully present with no inheritance anywhere. A complete, well-designed system doesn't need inheritance to be "done." Forcing it in just to check a box is the wrong instinct — the same one Q2 below already warns against: default to composition; inheritance only when the IS-A and shared-implementation need are both genuinely real.
-
-### The One-Line Map, for Recall Under Pressure
-
-- **Encapsulation vs. Abstraction** — both are information-hiding, at different altitudes: Abstraction is the **design decision** (what's in the contract), Encapsulation is the **enforcement mechanism** (what's physically unreachable).
-- **Polymorphism vs. Inheritance** — both describe relationships between classes, but Polymorphism is **behavior substitutability at call time**; Inheritance is **structural code reuse at compile time**, conflated with polymorphism only because it's *one* (often suboptimal) way to get it — not the only way, and not required for it.
 
 ---
 
@@ -439,8 +356,6 @@ class StripeProcessor extends AbstractPaymentProcessor {
 
 ### Q2: When would you use inheritance vs composition?
 
-*(See also: ["The 4 Pillars, Unified"](#the-4-pillars-unified-start-here) above — the litmus test for inheritance specifically.)*
-
 **Short Answer:** Use inheritance for IS-A relationships with shared implementation. Use composition for everything else. Default to composition.
 
 **Detailed Answer:**
@@ -636,8 +551,6 @@ Microservices are SOLID principles applied to systems architecture. If your micr
 ---
 
 ### Q5: Explain the difference between Abstraction and Encapsulation
-
-*(See also: ["The 4 Pillars, Unified"](#the-4-pillars-unified-start-here) above — the full WHAT-vs-HOW worked example.)*
 
 **Short Answer:**
 - **Encapsulation:** Hiding implementation details (HOW)
