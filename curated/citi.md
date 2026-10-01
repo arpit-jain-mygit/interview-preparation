@@ -1476,6 +1476,16 @@ interface PaymentProcessor {
 | **[Interface Segregation Principle (ISP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#interface-segregation-principle-isp)** | Don't force a class to implement methods it doesn't need — split fat interfaces into focused ones. Primary example: a **[payment processor](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#code-example-2-payment-interface-real-architect-scenario)** split by actual capability (`Refundable`, `WebhookHandler`, `TransactionHistory`) so a caller needing only transaction history can't accidentally call `refund()` on something that doesn't support it. The classic Robot-vs-Human case is also in the doc. |
 | **[Dependency Inversion Principle (DIP)](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#dependency-inversion-principle-dip)** | Depend on abstractions, not concrete implementations. Primary example: **[payment-processing testability](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#code-example-1-payment-processing-testability)** — constructor-inject a `PaymentProcessor` interface, and the test suite swaps in a `MockPaymentProcessor` with zero real API calls, which is DIP's actual payoff made concrete. Also in the doc: **[logger injection](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#code-example-2-logger-injection-decoupling)** and a **[Postgres-to-MongoDB repository swap](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#code-example-3-data-access-multi-database-support)**. |
 
+**DIP vs. Dependency Injection — not the same thing.** DIP is a design principle about *direction* (high-level modules should depend on an abstraction, not a concrete class). DI is a technique for *supplying* a dependency from outside (constructor/setter/field) instead of the object constructing it internally. DI is how you typically implement DIP, but they're separable:
+```java
+// DI without DIP — still injected, still broken
+public PaymentService(StripeProcessor stripe) { this.stripe = stripe; }  // concrete type!
+
+// DI + DIP together — the actual OOPS.md example above
+public PaymentService(PaymentProcessor processor) { this.processor = processor; }  // abstraction
+```
+The first line *is* dependency injection (stripe comes from outside), but it doesn't satisfy DIP — `PaymentService` is still hard-coupled to Stripe specifically. One-line version: **DI is the delivery mechanism; DIP is the rule about what type you're allowed to depend on.**
+
 ### 22.2 Design Patterns
 
 | Topic | What it covers |

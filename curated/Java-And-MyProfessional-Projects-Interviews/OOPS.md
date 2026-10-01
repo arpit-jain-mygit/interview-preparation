@@ -147,6 +147,8 @@
 
 ### Dependency Inversion Principle (DIP)
 
+*(Not the same as Dependency Injection — see citi.md §22.1 for the distinction, with a counter-example.)*
+
 **Definition:** Depend on abstractions, not concrete implementations. High-level modules shouldn't depend on low-level details.
 
 **The Rule:** 
