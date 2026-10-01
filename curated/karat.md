@@ -16,6 +16,8 @@
      - [Code Practice (Problems)](#code-practice-segment-2--problem--solution-kept-separate)
      - [Code Solutions](#code-solutions-segment-2)
    - [Segment 3 — Live Algorithm/Coding Problem](#segment-3--live-algorithmcoding-problem-1520-min)
+     - [Algo Practice (Problems)](#algo-practice-segment-3--problem--solution-kept-separate)
+     - [Algo Solutions](#algo-solutions-segment-3)
    - [Bonus — OOP Design & Code-Review](#bonus--oop-design--code-review-also-confirmed-sometimes-substituted-in)
 
 ---
@@ -907,6 +909,553 @@ Confirmed pattern: single-pass, O(n)/O(1), counter or hashmap-based — not grap
 - Check if two strings are anagrams
 - Reverse a string / reverse words in place
 - Rotate an array by k positions
+
+#### Algo Practice (Segment 3) — Problem & Solution, Kept Separate
+
+Each problem below is just the problem statement, example input/output, and a method signature — no name, no hint. Try to solve it yourself before jumping to the linked solution — all 16 solutions are collected separately in [Algo Solutions](#algo-solutions-segment-3) below.
+
+1. [Algo Problem 1](#algo-problem-1)
+2. [Algo Problem 2](#algo-problem-2)
+3. [Algo Problem 3](#algo-problem-3)
+4. [Algo Problem 4](#algo-problem-4)
+5. [Algo Problem 5](#algo-problem-5)
+6. [Algo Problem 6](#algo-problem-6)
+7. [Algo Problem 7](#algo-problem-7)
+8. [Algo Problem 8](#algo-problem-8)
+9. [Algo Problem 9](#algo-problem-9)
+10. [Algo Problem 10](#algo-problem-10)
+11. [Algo Problem 11](#algo-problem-11)
+12. [Algo Problem 12](#algo-problem-12)
+13. [Algo Problem 13](#algo-problem-13)
+14. [Algo Problem 14](#algo-problem-14)
+15. [Algo Problem 15](#algo-problem-15)
+16. [Algo Problem 16](#algo-problem-16)
+
+##### Algo Problem 1
+*(→ [Solution](#algo-solution-1-toll-booth-complete-journeys-counting))*
+
+Given a string of events where each character is either `E` (a car entered the highway at a booth) or `X` (a car exited), count the number of **complete journeys** — an `E` matched by a later `X` — ignoring any `X` with no prior unmatched `E`, and ignoring any `E` that never gets a later `X`.
+
+```
+Example: "EEXXE"
+Expected: 2
+(two E's open; the two X's each close one of them, completing 2 journeys;
+ the trailing E never gets an X, so it doesn't count)
+```
+
+```java
+int countCompleteJourneys(String events) {
+    // TODO
+}
+```
+
+##### Algo Problem 2
+*(→ [Solution](#algo-solution-2-valid-parentheses))*
+
+Given a string containing only the characters `(`, `)`, `{`, `}`, `[`, `]`, determine whether it is valid — every opening character must be closed by the matching type, in the correct order.
+
+```
+Example: "{[()]}"  → true
+Example: "{[(])}"  → false
+```
+
+```java
+boolean isValid(String s) {
+    // TODO
+}
+```
+
+##### Algo Problem 3
+*(→ [Solution](#algo-solution-3-maximum-nesting-depth-of-brackets))*
+
+Given a string containing only `(` and `)`, and guaranteed to be validly balanced, return the maximum depth of nesting.
+
+```
+Example: "((()))"  → 3
+Example: "()()"    → 1
+```
+
+```java
+int maxDepth(String s) {
+    // TODO
+}
+```
+
+##### Algo Problem 4
+*(→ [Solution](#algo-solution-4-two-sum))*
+
+Given an array of integers and a target value, return the indices of the two numbers that add up to the target. Exactly one valid pair exists.
+
+```
+Example: nums = [2,7,11,15], target = 9  → [0,1]
+```
+
+```java
+int[] twoSum(int[] nums, int target) {
+    // TODO
+}
+```
+
+##### Algo Problem 5
+*(→ [Solution](#algo-solution-5-group-anagrams))*
+
+Given an array of strings, group the strings that are anagrams of each other.
+
+```
+Example: ["eat","tea","tan","ate","nat","bat"]
+Expected: [["eat","tea","ate"], ["tan","nat"], ["bat"]]   (order of groups/items doesn't matter)
+```
+
+```java
+List<List<String>> groupAnagrams(String[] strs) {
+    // TODO
+}
+```
+
+##### Algo Problem 6
+*(→ [Solution](#algo-solution-6-first-non-repeating-character))*
+
+Given a string, return the first character that does not repeat anywhere else in the string. Return `'\0'` if every character repeats.
+
+```
+Example: "swiss"  → 'w'
+```
+
+```java
+char firstNonRepeating(String s) {
+    // TODO
+}
+```
+
+##### Algo Problem 7
+*(→ [Solution](#algo-solution-7-count-pairs-with-given-sum))*
+
+Given an array of integers and a target sum, count the number of index pairs `(i, j)` with `i < j` such that `nums[i] + nums[j] == target`.
+
+```
+Example: nums = [1,5,7,-1,5], target = 6  → 3
+(pairs: (1,5) at indices 0&1, (1,5) at indices 0&4, (7,-1) at indices 2&3)
+```
+
+```java
+int countPairsWithSum(int[] nums, int target) {
+    // TODO
+}
+```
+
+##### Algo Problem 8
+*(→ [Solution](#algo-solution-8-best-single-buy-sell-for-max-profit))*
+
+Given an array of daily stock prices, find the maximum profit achievable from buying on one day and selling on a later day (a single transaction only). Return 0 if no profit is possible.
+
+```
+Example: prices = [7,1,5,3,6,4]  → 5   (buy at 1, sell at 6)
+```
+
+```java
+int maxProfit(int[] prices) {
+    // TODO
+}
+```
+
+##### Algo Problem 9
+*(→ [Solution](#algo-solution-9-merge-overlapping-intervals))*
+
+Given a list of intervals, merge all overlapping intervals and return the result sorted by start.
+
+```
+Example: [[1,3],[2,6],[8,10],[15,18]]
+Expected: [[1,6],[8,10],[15,18]]
+```
+
+```java
+List<int[]> mergeIntervals(List<int[]> intervals) {
+    // TODO
+}
+```
+
+##### Algo Problem 10
+*(→ [Solution](#algo-solution-10-sliding-window-max-min-sum-of-subarray-size-k))*
+
+Given an array of integers and an integer `k`, find the maximum sum of any contiguous subarray of size `k`.
+
+```
+Example: nums = [2,1,5,1,3,2], k = 3  → 9   (subarray [5,1,3])
+```
+
+```java
+int maxSubarraySum(int[] nums, int k) {
+    // TODO
+}
+```
+
+##### Algo Problem 11
+*(→ [Solution](#algo-solution-11-find-duplicate-or-missing-number-in-array))*
+
+An array of length `n` is supposed to contain every integer from `1` to `n` exactly once, but one number got overwritten by a duplicate of another, so one number is missing and one appears twice. Return `[duplicate, missing]`.
+
+```
+Example: nums = [1,2,2,4]  → [2,3]
+```
+
+```java
+int[] findDuplicateAndMissing(int[] nums) {
+    // TODO
+}
+```
+
+##### Algo Problem 12
+*(→ [Solution](#algo-solution-12-running-prefix-sum))*
+
+Given an array of integers, support repeated range-sum queries `sum(l, r)` (inclusive) as efficiently as possible after a one-time setup cost.
+
+```
+Example: nums = [1,2,3,4,5]
+sum(1,3) → 2+3+4 = 9
+```
+
+```java
+class RangeSummer {
+    RangeSummer(int[] nums) {
+        // TODO
+    }
+    int sum(int l, int r) {
+        // TODO
+    }
+}
+```
+
+##### Algo Problem 13
+*(→ [Solution](#algo-solution-13-string-run-length-compression))*
+
+Given a string, compress runs of consecutive repeated characters into `char + count` form (omit the count when it's 1). Return the compressed string only if it's actually shorter than the original; otherwise return the original unchanged.
+
+```
+Example: "aabcccccaaa"  → "a2bc5a3"
+Example: "abc"          → "abc"   (compressed form "a1b1c1" is longer, so keep original)
+```
+
+```java
+String compress(String s) {
+    // TODO
+}
+```
+
+##### Algo Problem 14
+*(→ [Solution](#algo-solution-14-check-if-two-strings-are-anagrams))*
+
+Given two strings, determine whether one is a rearrangement of the other's characters (same characters, same frequency, any order).
+
+```
+Example: "listen", "silent"  → true
+Example: "rat", "car"        → false
+```
+
+```java
+boolean isAnagram(String a, String b) {
+    // TODO
+}
+```
+
+##### Algo Problem 15
+*(→ [Solution](#algo-solution-15-reverse-words-in-place))*
+
+Given a sentence, return it with the order of its words reversed — the characters within each word stay in their original order.
+
+```
+Example: "the sky is blue"  → "blue is sky the"
+```
+
+```java
+String reverseWords(String s) {
+    // TODO
+}
+```
+
+##### Algo Problem 16
+*(→ [Solution](#algo-solution-16-rotate-array-by-k-positions))*
+
+Given an array and a non-negative integer `k`, rotate the array to the right by `k` steps, in place.
+
+```
+Example: nums = [1,2,3,4,5,6,7], k = 3  → [5,6,7,1,2,3,4]
+```
+
+```java
+void rotate(int[] nums, int k) {
+    // TODO
+}
+```
+
+---
+
+#### Algo Solutions (Segment 3)
+
+##### Algo Solution 1: Toll-Booth Complete Journeys Counting
+
+```java
+int countCompleteJourneys(String events) {
+    int open = 0, complete = 0;
+    for (char c : events.toCharArray()) {
+        if (c == 'E') {
+            open++;
+        } else if (c == 'X' && open > 0) {
+            open--;
+            complete++;
+        }
+        // an 'X' with open == 0 is an orphan exit — ignored
+    }
+    return complete;   // any leftover `open` entries never got a matching X — ignored too
+}
+```
+**Complexity:** O(n) time, O(1) space. **Why it works:** `open` tracks entries not yet closed; `complete` only increments on an actual matching close, so orphan exits and unfinished entries are naturally excluded without any extra bookkeeping.
+
+##### Algo Solution 2: Valid Parentheses
+
+```java
+boolean isValid(String s) {
+    Deque<Character> stack = new ArrayDeque<>();
+    Map<Character, Character> pairs = Map.of(')', '(', ']', '[', '}', '{');
+    for (char c : s.toCharArray()) {
+        if (pairs.containsValue(c)) {
+            stack.push(c);
+        } else if (pairs.containsKey(c)) {
+            if (stack.isEmpty() || stack.pop() != pairs.get(c)) return false;
+        }
+    }
+    return stack.isEmpty();
+}
+```
+**Complexity:** O(n) time, O(n) space. **Why it works:** a stack naturally captures "most recently opened, must be closed first" — pushing on open, popping and checking on close, and requiring an empty stack at the end to reject any unclosed brackets.
+
+##### Algo Solution 3: Maximum Nesting Depth of Brackets
+
+```java
+int maxDepth(String s) {
+    int depth = 0, max = 0;
+    for (char c : s.toCharArray()) {
+        if (c == '(') { depth++; max = Math.max(max, depth); }
+        else if (c == ')') depth--;
+    }
+    return max;
+}
+```
+**Complexity:** O(n) time, O(1) space. **Why it works:** depth only needs a running counter, not an actual stack — tracking the current open count and recording its peak is enough.
+
+##### Algo Solution 4: Two Sum
+
+```java
+int[] twoSum(int[] nums, int target) {
+    Map<Integer, Integer> seen = new HashMap<>();   // value -> index
+    for (int i = 0; i < nums.length; i++) {
+        int complement = target - nums[i];
+        if (seen.containsKey(complement)) return new int[]{seen.get(complement), i};
+        seen.put(nums[i], i);
+    }
+    throw new IllegalArgumentException("no valid pair");
+}
+```
+**Complexity:** O(n) time, O(n) space. **Why it works:** instead of checking every pair (O(n²)), each number is checked against a running hashmap of everything seen so far — the complement either is or isn't already there, in O(1).
+
+##### Algo Solution 5: Group Anagrams
+
+```java
+List<List<String>> groupAnagrams(String[] strs) {
+    Map<String, List<String>> groups = new HashMap<>();
+    for (String s : strs) {
+        char[] chars = s.toCharArray();
+        Arrays.sort(chars);
+        String key = new String(chars);          // canonical form, e.g. "eat" -> "aet"
+        groups.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
+    }
+    return new ArrayList<>(groups.values());
+}
+```
+**Complexity:** O(n · k log k) time (n strings, k = max string length), O(n · k) space. **Why it works:** anagrams share the exact same sorted character sequence, so sorting each string gives a canonical key that groups them automatically via a hashmap.
+
+##### Algo Solution 6: First Non-Repeating Character
+
+```java
+char firstNonRepeating(String s) {
+    int[] count = new int[256];
+    for (char c : s.toCharArray()) count[c]++;
+    for (char c : s.toCharArray()) {
+        if (count[c] == 1) return c;
+    }
+    return '\0';
+}
+```
+**Complexity:** O(n) time, O(1) space (fixed-size count array). **Why it works:** one pass builds frequency counts, a second pass finds the first character whose count is exactly 1 — two linear passes beat checking every character against the rest of the string (O(n²)).
+
+##### Algo Solution 7: Count Pairs With Given Sum
+
+```java
+int countPairsWithSum(int[] nums, int target) {
+    Map<Integer, Integer> seenCount = new HashMap<>();
+    int count = 0;
+    for (int n : nums) {
+        int complement = target - n;
+        count += seenCount.getOrDefault(complement, 0);
+        seenCount.merge(n, 1, Integer::sum);
+    }
+    return count;
+}
+```
+**Complexity:** O(n) time, O(n) space. **Why it works:** for each number, every earlier occurrence of its complement forms a valid pair with it — a running frequency map lets each element find how many valid partners already came before it, in O(1) per element.
+
+##### Algo Solution 8: Best Single Buy-Sell for Max Profit
+
+```java
+int maxProfit(int[] prices) {
+    int minSoFar = Integer.MAX_VALUE, maxProfit = 0;
+    for (int price : prices) {
+        minSoFar = Math.min(minSoFar, price);
+        maxProfit = Math.max(maxProfit, price - minSoFar);
+    }
+    return maxProfit;
+}
+```
+**Complexity:** O(n) time, O(1) space. **Why it works:** the best sell price on any given day only needs to know the lowest buy price *seen so far* — tracked as a single running minimum — rather than re-checking every earlier day.
+
+##### Algo Solution 9: Merge Overlapping Intervals
+
+```java
+List<int[]> mergeIntervals(List<int[]> intervals) {
+    intervals.sort((a, b) -> a[0] - b[0]);
+    List<int[]> merged = new ArrayList<>();
+    for (int[] interval : intervals) {
+        if (merged.isEmpty() || merged.get(merged.size() - 1)[1] < interval[0]) {
+            merged.add(interval);
+        } else {
+            merged.get(merged.size() - 1)[1] = Math.max(merged.get(merged.size() - 1)[1], interval[1]);
+        }
+    }
+    return merged;
+}
+```
+**Complexity:** O(n log n) time (dominated by the sort), O(n) space. **Why it works:** once sorted by start, two intervals can only ever overlap with their immediate neighbor in the sorted order — so a single pass extending the last merged interval (or starting a new one) is sufficient.
+
+##### Algo Solution 10: Sliding Window Max-Min Sum of Subarray Size K
+
+```java
+int maxSubarraySum(int[] nums, int k) {
+    int windowSum = 0;
+    for (int i = 0; i < k; i++) windowSum += nums[i];
+    int maxSum = windowSum;
+    for (int i = k; i < nums.length; i++) {
+        windowSum += nums[i] - nums[i - k];   // slide: add new element, drop the oldest
+        maxSum = Math.max(maxSum, windowSum);
+    }
+    return maxSum;
+}
+```
+**Complexity:** O(n) time, O(1) space. **Why it works:** recomputing the sum of each new window from scratch is O(n·k); instead, sliding the window by adding the new element and subtracting the one that just fell out of range keeps each step O(1).
+
+##### Algo Solution 11: Find Duplicate or Missing Number in Array
+
+```java
+int[] findDuplicateAndMissing(int[] nums) {
+    int n = nums.length;
+    int[] count = new int[n + 1];
+    for (int x : nums) count[x]++;
+    int duplicate = -1, missing = -1;
+    for (int i = 1; i <= n; i++) {
+        if (count[i] == 2) duplicate = i;
+        if (count[i] == 0) missing = i;
+    }
+    return new int[]{duplicate, missing};
+}
+```
+**Complexity:** O(n) time, O(n) space. **Why it works:** every value from 1 to n should appear exactly once; counting occurrences directly reveals which value appears twice (the duplicate) and which never appears (the missing one).
+
+##### Algo Solution 12: Running Prefix Sum
+
+```java
+class RangeSummer {
+    private final int[] prefix;
+
+    RangeSummer(int[] nums) {
+        prefix = new int[nums.length + 1];
+        for (int i = 0; i < nums.length; i++) {
+            prefix[i + 1] = prefix[i] + nums[i];
+        }
+    }
+
+    int sum(int l, int r) {
+        return prefix[r + 1] - prefix[l];
+    }
+}
+```
+**Complexity:** O(n) one-time setup, O(1) per query. **Why it works:** `prefix[i]` holds the sum of everything before index `i`; any range sum is just the difference of two prefix values, avoiding re-summing the range on every query.
+
+##### Algo Solution 13: String Run-Length Compression
+
+```java
+String compress(String s) {
+    StringBuilder sb = new StringBuilder();
+    int i = 0;
+    while (i < s.length()) {
+        char current = s.charAt(i);
+        int count = 0;
+        while (i < s.length() && s.charAt(i) == current) { count++; i++; }
+        sb.append(current);
+        if (count > 1) sb.append(count);
+    }
+    return sb.length() < s.length() ? sb.toString() : s;
+}
+```
+**Complexity:** O(n) time, O(n) space. **Why it works:** a single pass counts each run of identical consecutive characters as it goes; the length check at the end enforces the "only if actually shorter" requirement.
+
+##### Algo Solution 14: Check if Two Strings Are Anagrams
+
+```java
+boolean isAnagram(String a, String b) {
+    if (a.length() != b.length()) return false;
+    int[] count = new int[256];
+    for (char c : a.toCharArray()) count[c]++;
+    for (char c : b.toCharArray()) count[c]--;
+    for (int n : count) if (n != 0) return false;
+    return true;
+}
+```
+**Complexity:** O(n) time, O(1) space. **Why it works:** incrementing counts for one string and decrementing for the other means every matching character cancels out to zero — any leftover nonzero count means the character frequencies didn't match.
+
+##### Algo Solution 15: Reverse Words in Place
+
+```java
+String reverseWords(String s) {
+    String[] words = s.trim().split("\\s+");
+    StringBuilder sb = new StringBuilder();
+    for (int i = words.length - 1; i >= 0; i--) {
+        sb.append(words[i]);
+        if (i > 0) sb.append(' ');
+    }
+    return sb.toString();
+}
+```
+**Complexity:** O(n) time, O(n) space. **Why it works:** splitting on whitespace isolates each word intact, then appending them back in reverse order flips word order without touching the characters inside each word.
+
+##### Algo Solution 16: Rotate Array by K Positions
+
+```java
+void rotate(int[] nums, int k) {
+    int n = nums.length;
+    k %= n;
+    reverse(nums, 0, n - 1);
+    reverse(nums, 0, k - 1);
+    reverse(nums, k, n - 1);
+}
+
+private void reverse(int[] nums, int lo, int hi) {
+    while (lo < hi) {
+        int tmp = nums[lo];
+        nums[lo] = nums[hi];
+        nums[hi] = tmp;
+        lo++; hi--;
+    }
+}
+```
+**Complexity:** O(n) time, O(1) space. **Why it works:** reversing the whole array, then reversing each of the two resulting segments separately, is a classic trick that produces an in-place rotation — the segments end up in the rotated order without needing a second array. (`k %= n` first handles `k` larger than the array length.)
 
 ### Bonus — OOP Design & Code-Review (also confirmed, sometimes substituted in)
 - Small OOP design from a one-paragraph spec: design 2–3 classes for something like a parking lot, ATM, rate limiter, or LRU cache — practice stating each class's single responsibility **out loud before coding**
