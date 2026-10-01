@@ -356,6 +356,8 @@
 
 ### Q2: When would you use inheritance vs composition?
 
+*(See citi.md §22 "The 4 Pillars, Unified" for the litmus test in one worked example.)*
+
 **Short Answer:** Use inheritance for IS-A relationships with shared implementation. Use composition for everything else. Default to composition.
 
 **Detailed Answer:**
@@ -551,6 +553,8 @@ Microservices are SOLID principles applied to systems architecture. If your micr
 ---
 
 ### Q5: Explain the difference between Abstraction and Encapsulation
+
+*(See citi.md §22 "The 4 Pillars, Unified" for the WHAT-vs-HOW litmus test in one worked example.)*
 
 **Short Answer:**
 - **Encapsulation:** Hiding implementation details (HOW)
