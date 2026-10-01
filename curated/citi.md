@@ -47,6 +47,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 20. [System Design Reference](#20-system-design-reference)
 21. [Spring Framework Reference](#21-spring-framework-reference)
 22. [OOPS (Object-Oriented Design) Reference](#22-oops-object-oriented-design-reference)
+23. [Advanced Java](#23-advanced-java)
 
 ---
 
@@ -1505,3 +1506,4766 @@ The first line *is* dependency injection (stripe comes from outside), but it doe
 | **[Q7: Interfaces vs. abstract classes?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q7-when-should-you-use-interfaces-vs-abstract-classes)** | Interface = pure contract, multiple inheritance, no state. Abstract class = shared implementation, single inheritance, can hold state. A quick decision table for which to reach for. |
 | **[Q8: How do you handle circular dependencies?](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q8-how-do-you-handle-circular-dependencies)** | Three real fixes: invert the dependency direction via DI, extract a common interface both sides depend on instead of each other, or lazy-initialize one side. |
 | **[Q9: Design a multi-region caching layer with consistency](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/Java-And-MyProfessional-Projects-Interviews/OOPS.md#q9-design-a-caching-layer-for-a-multi-region-system-how-do-you-maintain-consistency)** | A tiered read path — L1 (in-memory) → L2 (distributed/Redis) → L3 (database, source of truth) — with invalidation on write. The standard shape for keeping a cache consistent across regions. |
+## 23. Advanced Java
+
+Concurrency internals, JVM internals, and Spring transaction/startup mechanics — converted from `Advanced-Java-notes.txt`, content preserved as-is with only markdown/code-fence formatting added.
+
+### Thread States
+
+```
+┌──────────────────┬───────────────────────────────────┬──────────────────────────┬──────────┐
+│ State            │ Meaning                           │ Example                  │ Running? │
+├──────────────────┼───────────────────────────────────┼──────────────────────────┼──────────┤
+│ NEW              │ Created, start() not called       │ Thread t = new Thread(); │ ❌ NO    │
+│ RUNNABLE         │ Running OR ready for CPU          │ t.start() called         │ ✅ YES   │
+│ BLOCKED          │ Waiting for lock (synchronized)   │ synchronized(obj) locked │ ❌ NO    │
+│ WAITING          │ Waiting forever for signal        │ obj.wait(), join()       │ ❌ NO    │
+│ TIMED_WAITING    │ Waiting for N seconds max         │ Thread.sleep(2000)       │ ❌ NO    │
+│ TERMINATED       │ Finished (dead)                   │ run() completed          │ ❌ NO    │
+└──────────────────┴───────────────────────────────────┴──────────────────────────┴──────────┘
+
+```
+
+
+
+---
+
+### CAS
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ THE PROBLEM: Lost Updates (WITHOUT CAS/LOCKING)                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Initial State: counter = 5                                             │
+├──────────────┬────────────────────────┬────────────────────────────────┤
+│ Step         │ Thread 1                │ Thread 2                       │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ 1. Read      │ Read counter → 5       │ Read counter → 5               │
+│ 2. Increment │ Increment to 6         │ Increment to 6                 │
+│ 3. Write     │ Write back 6            │ Write back 6                   │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ RESULT       │ counter = 6 ❌          │ WRONG! Should be 7             │
+│ ISSUE        │ Both saw 5, both wrote 6│ ONE INCREMENT WAS LOST!        │
+└──────────────┴────────────────────────┴────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ THE SOLUTION: CAS (Compare-And-Swap)                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Initial State: counter = 5                                             │
+├──────────────┬────────────────────────┬────────────────────────────────┤
+│ Step         │ Thread 1                │ Thread 2                       │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ 1. Read      │ Read counter = 5       │ Read counter = 5               │
+│ 2. CAS Check │ "If 5, change to 6?"   │ "If 5, change to 6?"           │
+│ 3. CAS Exec  │ YES ✅                 │ NO ❌ (counter is now 6!)      │
+│ 4. Update    │ counter = 6            │ Retry...                       │
+│ 5. Retry     │ -                      │ Read counter → 6               │
+│ 6. CAS Check │ -                      │ "If 6, change to 7?"           │
+│ 7. CAS Exec  │ -                      │ YES ✅                         │
+│ 8. Update    │ -                      │ counter = 7                    │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ RESULT       │ counter = 7 ✅          │ CORRECT! No lost updates       │
+└──────────────┴────────────────────────┴────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ REAL-WORLD ANALOGY: Bank Account                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ WITHOUT CAS (DISASTER!):                                               │
+│ Initial Balance: $100                                                  │
+├──────────────┬────────────────────────┬────────────────────────────────┤
+│ Action       │ You (Withdraw $10)     │ Mom (Withdraw $20)             │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ 1. Read      │ Read: $100             │ Read: $100                     │
+│ 2. Calculate │ $100 - $10 = $90       │ $100 - $20 = $80               │
+│ 3. Write     │ Write: $90             │ Write: $80 ❌                  │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ RESULT       │ Balance = $80          │ LOST $10! (both overwrote)     │
+│ ISSUE        │ Only one withdrawal    │ recorded (should be $70)       │
+└──────────────┴────────────────────────┴────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ WITH CAS (SAFE!):                                                      │
+│ Initial Balance: $100                                                  │
+├──────────────┬────────────────────────┬────────────────────────────────┤
+│ Action       │ You (Withdraw $10)     │ Mom (Withdraw $20)             │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ 1. Read      │ Read: $100             │ Read: $100                     │
+│ 2. CAS Check │ "If $100, make $90?"   │ "If $100, make $80?"           │
+│ 3. CAS Exec  │ YES ✅ → Balance = $90 │ NO ❌ (Balance is $90 now!)   │
+│ 4. Retry     │ -                      │ Read: $90                      │
+│ 5. CAS Check │ -                      │ "If $90, make $70?"            │
+│ 6. CAS Exec  │ -                      │ YES ✅ → Balance = $70         │
+├──────────────┼────────────────────────┼────────────────────────────────┤
+│ RESULT       │ Both transactions OK!  │ No lost withdrawals! ✅         │
+└──────────────┴────────────────────────┴────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ CODE COMPARISON: WITHOUT CAS (Using Locks - Slow)                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│ private int counter = 0;                                               │
+│ synchronized void increment() {                                        │
+│   counter++;  // Only one thread at a time                            │
+│              // Others BLOCKED waiting for lock                        │
+│ }                                                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Execution Model:                                                       │
+│ ┌─────────────────┬──────────────┬──────────────┐                    │
+│ │ Thread A        │ Thread B      │ Thread C     │                    │
+│ ├─────────────────┼──────────────┼──────────────┤                    │
+│ │ Lock acquired   │ WAIT (⏸️)    │ WAIT (⏸️)    │                    │
+│ │ Read → Write    │ WAIT (⏸️)    │ WAIT (⏸️)    │                    │
+│ │ Unlock          │ WAIT (⏸️)    │ WAIT (⏸️)    │                    │
+│ │ Done            │ Lock acq'd   │ WAIT (⏸️)    │                    │
+│ │ -               │ R→W→Unlock   │ WAIT (⏸️)    │                    │
+│ │ -               │ Done         │ Lock acq'd   │                    │
+│ │ -               │ -            │ R→W→Unlock   │                    │
+│ │ -               │ -            │ Done         │                    │
+│ └─────────────────┴──────────────┴──────────────┘                    │
+│                                                                        │
+│ Problem: SEQUENTIAL (one at a time) → 🐢 SLOW                        │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ CODE COMPARISON: WITH CAS (Lock-Free - Fast)                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│ private AtomicInteger counter = new AtomicInteger(0);                  │
+│ void increment() {                                                     │
+│   while (!counter.compareAndSet(counter.get(), counter.get() + 1)) {  │
+│     // Retry if CAS failed (race)                                     │
+│   }                                                                    │
+│   // Multiple threads can TRY simultaneously (no blocking!)            │
+│ }                                                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Execution Model:                                                       │
+│ ┌─────────────────┬──────────────┬──────────────┐                    │
+│ │ Thread A        │ Thread B      │ Thread C     │                    │
+│ ├─────────────────┼──────────────┼──────────────┤                    │
+│ │ CAS(5→6) YES ✅ │ CAS(5→6) NO  │ CAS(5→6) NO  │                    │
+│ │ counter = 6     │ Retry...     │ Retry...     │                    │
+│ │ Done            │ CAS(6→7) YES │ CAS(6→7) NO  │                    │
+│ │ -               │ counter = 7  │ Retry...     │                    │
+│ │ -               │ Done         │ CAS(7→8) YES │                    │
+│ │ -               │ -            │ counter = 8  │                    │
+│ │ -               │ -            │ Done         │                    │
+│ └─────────────────┴──────────────┴──────────────┘                    │
+│                                                                        │
+│ Benefit: PARALLEL (all try simultaneously) → ⚡ FAST                 │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ KEY DIFFERENCES SUMMARY                                                  │
+├──────────────────────────────────────────────────────┬───────────────────┤
+│ Aspect                   │ Locks (synchronized)       │ CAS (Atomic)      │
+├──────────────────────────┼────────────────────────────┼───────────────────┤
+│ Mechanism                │ Mutual exclusion lock      │ Atomic swap       │
+│ Blocking                 │ ✅ YES (waits)            │ ❌ NO (retries)   │
+│ CPU Usage                │ 🐢 Sleeping (passive)     │ ⚡ Spinning       │
+│ Parallelism              │ 🐢 Sequential (one at a)  │ ⚡ Parallel (try) │
+│ Execution Style          │ SEQUENTIAL                 │ PARALLEL          │
+│ Speed (low contention)   │ Slower                     │ FASTER            │
+│ Speed (high contention)  │ FASTER (no spinning)       │ Slower (many try) │
+│ Complexity               │ Simple                     │ While loops       │
+└──────────────────────────┴────────────────────────────┴───────────────────┘
+
+```
+~~~~
+
+
+---
+
+### RACE condition
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ RACE CONDITION: Definition                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│ What is it?                                                              │
+│ A situation where multiple threads access shared data SIMULTANEOUSLY    │
+│ and at least ONE thread MODIFIES it, causing UNPREDICTABLE results.    │
+│                                                                          │
+│ Why "Race"?                                                              │
+│ Threads are "racing" to access/modify data → outcome depends on who    │
+│ reaches first (unpredictable, non-deterministic)                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SIMPLE EXAMPLE: Bank Account (counter = 100)                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│ WITHOUT RACE PROTECTION:                                                 │
+├──────────────┬──────────────────┬──────────────────┬───────────────────┤
+│ Time (ms)    │ Thread 1          │ Thread 2         │ Shared counter    │
+├──────────────┼──────────────────┼──────────────────┼───────────────────┤
+│ t=0          │ Read: 100        │ -                │ counter = 100     │
+│ t=1          │ -                │ Read: 100        │ counter = 100     │
+│ t=2          │ Decrement: 99    │ -                │ counter = 100     │
+│ t=3          │ -                │ Decrement: 99    │ counter = 100     │
+│ t=4          │ Write: 99        │ -                │ counter = 99 ⚠️   │
+│ t=5          │ -                │ Write: 99        │ counter = 99 ❌   │
+├──────────────┼──────────────────┼──────────────────┼───────────────────┤
+│ Expected     │ T1: -1, T2: -1   │ counter = 98     │ counter = 98      │
+│ ACTUAL       │ T1: -1, T2: -1   │ Only ONE applied!│ counter = 99 ❌   │
+│ RESULT       │ LOST UPDATE!     │ (ONE LOST!)      │ (RACE CONDITION)  │
+└──────────────┴──────────────────┴──────────────────┴───────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ WHY RACE CONDITIONS HAPPEN                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│ counter++ is NOT a single atomic operation!                             │
+│                                                                          │
+│ It actually breaks down into 3 steps:                                   │
+│ ┌──────┬──────┬──────┐                                                 │
+│ │ Read │ Edit │ Write│                                                 │
+│ └──────┴──────┴──────┘                                                 │
+│   ↓      ↓      ↓                                                       │
+│ Load value    Modify  Store value                                      │
+│ from memory   in CPU  back to memory                                   │
+│                                                                          │
+│ MULTIPLE threads can interleave at ANY step!                           │
+│                                                                          │
+│ Example Interleaving (counter = 5):                                     │
+│ ┌────────────────┬────────────────┬─────────────┐                     │
+│ │ Thread 1       │ Thread 2        │ counter     │                     │
+│ ├────────────────┼────────────────┼─────────────┤                     │
+│ │ Read: 5       │ -              │ 5           │                     │
+│ │ -              │ Read: 5        │ 5           │                     │
+│ │ Increment: 6   │ -              │ 5           │                     │
+│ │ -              │ Increment: 6   │ 5           │                     │
+│ │ Write: 6      │ -              │ 6 ⚠️        │                     │
+│ │ -              │ Write: 6       │ 6 ❌ WRONG! │                     │
+│ └────────────────┴────────────────┴─────────────┘                     │
+│                                                                          │
+│ Both threads did "+1", but counter only increased by 1!                │
+│ ONE increment was LOST due to race condition.                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ TYPES OF RACE CONDITIONS                                                 │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Type 1: LOST UPDATES (Write-Write Race)                                │
+│ ────────────────────────────────────────────────────────────────────────│
+│ Both threads READ same value, then WRITE                               │
+│ Last write OVERWRITES previous write → data lost                       │
+│ Example: Both threads read count=5, both write count=6                │
+│                                                                         │
+│ Type 2: DIRTY READS (Read-Write Race)                                 │
+│ ────────────────────────────────────────────────────────────────────────│
+│ Thread A reads WHILE Thread B writes (incomplete data)                 │
+│ Example: Read age=25 while another thread updates to age=26           │
+│                                                                         │
+│ Type 3: CHECK-THEN-ACT Race (Time-of-Check-Time-of-Use)              │
+│ ────────────────────────────────────────────────────────────────────────│
+│ Check condition, THEN act based on it                                  │
+│ Between check and act, another thread changes it!                      │
+│ Example: if (balance >= 100) withdraw 100;                            │
+│          ↑ Check               ↑ Act                                   │
+│          Gap where balance could drop to 50!                           │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ CHARACTERISTICS OF RACE CONDITIONS                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Feature                  │ Description                                   │
+├──────────────────────────┼──────────────────────────────────────────────┤
+│ Non-deterministic        │ ❌ Output varies every run (unpredictable)   │
+│ Hard to reproduce        │ ❌ Works sometimes, fails randomly          │
+│ Timing-dependent         │ ❌ Depends on thread scheduling              │
+│ Load-dependent           │ ❌ Happens more under high load              │
+│ May not occur in testing │ ❌ Passes tests, fails in production         │
+│ Data corruption          │ ❌ Shared data becomes inconsistent          │
+│ Silent failures          │ ❌ No exceptions, just wrong results         │
+│ Intermittent bugs        │ ❌ "It works on my machine!"                │
+└──────────────────────────┴──────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ VISUAL: Race Condition vs Safe Access                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│ RACE CONDITION (Chaotic):                                               │
+│                                                                          │
+│ T1: ▁▂▃▄▅▆▇ Read    (Interleaved!)                                    │
+│ T2:   ▁▂▃▄▅ Modify   (Mixed access)                                    │
+│ T3:     ▁▂▃ Write    (Overlapping!)                                    │
+│        ↓ Multiple threads accessing data simultaneously ❌              │
+│        Result: UNPREDICTABLE ❌                                         │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│ SYNCHRONIZED (Safe):                                                     │
+│                                                                          │
+│ T1: ▁▂▃▄▅▆▇░░░░░░░ Read+Modify+Write (exclusive)                     │
+│ T2: ░░░░░░░▁▂▃▄▅▆▇ Read+Modify+Write (waits for T1)                  │
+│ T3: ░░░░░░░░░░░░░░ Waiting (queue)                                    │
+│        ↓ One thread at a time                                           │
+│        Result: PREDICTABLE & CORRECT ✅                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW TO DETECT RACE CONDITIONS                                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Symptom                  │ Indication                                    │
+├──────────────────────────┼──────────────────────────────────────────────┤
+│ Intermittent failures    │ ⚠️ Likely race condition (not reproducible) │
+│ Different results        │ ⚠️ Each run produces different output       │
+│ Multithreaded stress     │ ⚠️ Failures under thread stress test        │
+│ Shared mutable data      │ ⚠️ Multiple threads modifying same variable │
+│ No synchronization       │ ⚠️ No locks/atomic operations on shared     │
+│ Lost updates             │ ⚠️ Operations silently disappear             │
+│ Data corruption          │ ⚠️ Shared objects in inconsistent state     │
+└──────────────────────────┴──────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW TO FIX RACE CONDITIONS                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Solution                 │ How It Prevents Race                         │
+├──────────────────────────┼──────────────────────────────────────────────┤
+│ synchronized             │ Locks shared data (one thread at a time)    │
+│ ReentrantLock            │ Explicit locking for complex cases          │
+│ AtomicInteger            │ Atomic operations (lock-free)               │
+│ volatile keyword         │ Ensures visibility across threads           │
+│ ConcurrentHashMap        │ Thread-safe collection (no race on ops)    │
+│ Immutable objects        │ Can't be modified (no race possible)        │
+│ ThreadLocal              │ Each thread has own copy (no sharing)       │
+│ Message passing          │ Threads don't share data (async queues)     │
+└──────────────────────────┴──────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ RACE CONDITION vs DEADLOCK (Don't Confuse!)                              │
+├──────────────────────────────────────┬──────────────────────────────────┤
+│ RACE CONDITION                       │ DEADLOCK                         │
+├──────────────────────────────────────┼──────────────────────────────────┤
+│ Multiple threads modify data         │ Threads waiting for each other   │
+│ Shared data becomes inconsistent     │ Program hangs/stops (blocked)    │
+│ Result: Wrong data ❌               │ Result: Program stuck ⏸️         │
+│ Example: Lost update in counter     │ Example: T1 waits for T2, T2    │
+│                                      │ waits for T1 (circular wait)     │
+│ Can be hard to detect               │ Easy to detect (obvious hang)    │
+│ Manifests as wrong results          │ Manifests as frozen program      │
+└──────────────────────────────────────┴──────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### How to solve RACE conditions
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PHRASE: DIT-AV-SCBRS													   |	
+├──────────────────────────────────────────────────────────────────────────┤
+│ D - Design                                                               │
+│ I - Immutable                                                            │
+│ T - ThreadLocal                                                          │
+│ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─        │
+│ A - Atomic                                                               │
+│ V - Volatile                                                             │
+│ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ 	   │
+│ S - Synchronized                                                         │
+│ C - Concurrent (collections)                                             │
+│ B - BlockingQueue                                                        │
+│ R - ReentrantLock                                                        │
+│ S - Semaphore                                                            │
+└─-----------------------─-----------------------─-------------------------|
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ ALL 11 RACE CONDITION SOLUTIONS: In Order DIT-AV-SCBRS                   │
+├──────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║ GROUP 1: BEST SOLUTIONS (Design & Avoid Shared Memory)                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ D - DESIGN IT OUT (The BEST Solution!)                                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Don't share mutable state from the start!                     │
+│          Avoid problem entirely = Best solution                         │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Shared mutable state):                                          │
+│ class Account {                                                          │
+│   private int balance = 1000;  // Shared!                              │
+│   void withdraw(int amount) {                                          │
+│     balance -= amount;  // RACE CONDITION!                             │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (Single-threaded per account):                                 │
+│ class AccountProcessor {                                                │
+│   private Queue<Message> queue = new Queue<>();  // Messages only!     │
+│   private int balance = 1000;  // NO SHARING!                          │
+│                                                                          │
+│   void process() {                                                      │
+│     while (true) {                                                      │
+│       Message msg = queue.take();  // Wait for message                 │
+│       if (msg.type == WITHDRAW) {                                      │
+│         balance -= msg.amount;  // Single-threaded, NO RACE!           │
+│       }                                                                 │
+│     }                                                                    │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ // Usage: One processor per account                                    │
+│ AccountProcessor account123 = new AccountProcessor();                  │
+│ new Thread(() -> account123.process()).start();  // Single thread      │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ ZERO race conditions        │ ❌ Requires redesign                  │
+│ ✅ Zero locks needed           │ ❌ Not always feasible                │
+│ ✅ Best performance            │ ❌ Queue latency added                │
+│ ✅ Easiest to debug            │ ⚠️ Architectural change              │
+│ ✅ Audit trail (event log)     │                                       │
+│                                                                          │
+│ WHEN TO USE: ★★★ ALWAYS TRY THIS FIRST                                │
+│ • Greenfield projects (new design)                                     │
+│ • Systems requiring high consistency                                   │
+│ • Banking, fintech, ledger systems                                     │
+│ • Can afford slight latency increase                                   │
+│                                                                          │
+│ PATTERNS:                                                               │
+│ • Message-driven architecture                                          │
+│ • Actor model (Akka, Erlang)                                          │
+│ • Event sourcing                                                        │
+│ • CQRS (Command Query Responsibility Segregation)                     │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ I - IMMUTABLE OBJECTS (Create New, Don't Modify)                         │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: If object can't be modified, no race condition possible!      │
+│          Can't race on immutable data = No synchronization needed       │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Mutable - Race condition):                                      │
+│ class User {                                                            │
+│   private int balance = 1000;                                          │
+│   public void setBalance(int newBalance) {                             │
+│     this.balance = newBalance;  // RACE!                               │
+│   }                                                                      │
+│ }                                                                        │
+│ User user = new User();                                                │
+│ user.setBalance(900);  // Thread 1                                     │
+│ user.setBalance(800);  // Thread 2 ❌ RACE!                            │
+│                                                                          │
+│ ✅ GOOD (Immutable - No race):                                         │
+│ final class User {  // Final class = can't subclass                   │
+│   private final int balance;  // Final field = can't modify            │
+│   private final String name;  // All fields final & immutable         │
+│                                                                          │
+│   public User(int balance, String name) {                              │
+│     this.balance = balance;                                            │
+│     this.name = name;                                                  │
+│   }                                                                      │
+│                                                                          │
+│   public User updateBalance(int newBalance) {                          │
+│     return new User(newBalance, this.name);  // NEW object!            │
+│   }                                                                      │
+│                                                                          │
+│   public int getBalance() { return balance; }                          │
+│ }                                                                        │
+│                                                                          │
+│ // Usage:                                                               │
+│ User user = new User(1000, "Alice");                                  │
+│ User updated = user.updateBalance(900);  // NEW User object            │
+│ // Original 'user' still has 1000, 'updated' has 900 ✅              │
+│                                                                          │
+│ // Thread-safe (no races!):                                            │
+│ Thread t1 = new Thread(() -> System.out.println(user.getBalance()));  │
+│ Thread t2 = new Thread(() -> System.out.println(user.getBalance()));  │
+│ // Both see EXACTLY 1000 (immutable!) ✅                              │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Thread-safe by default      │ ❌ Create new object each time       │
+│ ✅ NO locks needed             │ ❌ Higher memory allocation           │
+│ ✅ Easy to reason about        │ ❌ GC overhead                        │
+│ ✅ Perfect for caching         │ ❌ Can't modify in-place              │
+│ ✅ Hashable (good for maps)    │ ⚠️ Not suitable for all data        │
+│                                                                          │
+│ WHEN TO USE: ★★★ WHEN POSSIBLE                                        │
+│ • Value objects (User, Account snapshot)                               │
+│ • Domain models (immutable design)                                     │
+│ • Functional programming style                                         │
+│ • Cache keys, configuration objects                                    │
+│ • Java records (Java 14+) make this easy!                             │
+│                                                                          │
+│ EXAMPLE (Java Records - Easier!):                                       │
+│ record User(String name, int balance) { }  // Auto immutable!         │
+│ User user = new User("Alice", 1000);                                  │
+│ // All fields final & immutable ✅                                    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ T - THREADLOCAL (Each Thread Has Own Copy)                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Each thread gets separate variable copy                       │
+│          No sharing = No race condition = NO LOCKS NEEDED!             │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Shared - Race condition):                                       │
+│ class ConnectionManager {                                              │
+│   private Connection conn;  // Shared by all threads!                 │
+│   public void useConnection() {                                        │
+│     conn = getConnection();  // RACE! Thread overrides other          │
+│     conn.query("SELECT...");                                          │
+│   }                                                                     │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (ThreadLocal - Each thread has own):                           │
+│ class ConnectionManager {                                              │
+│   private static ThreadLocal<Connection> connHolder =                 │
+│     new ThreadLocal<Connection>();                                    │
+│                                                                          │
+│   public void useConnection() {                                        │
+│     Connection conn = connHolder.get();                               │
+│     if (conn == null) {                                                │
+│       conn = getConnection();  // Get own connection                  │
+│       connHolder.set(conn);    // Store in ThreadLocal                │
+│     }                                                                   │
+│     conn.query("SELECT...");  // Use my own connection ✅             │
+│   }                                                                      │
+│                                                                          │
+│   public void cleanup() {                                              │
+│     connHolder.remove();  // IMPORTANT: Cleanup in thread pool!       │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ // Usage:                                                               │
+│ ConnectionManager mgr = new ConnectionManager();                       │
+│ Thread t1 = new Thread(() -> mgr.useConnection());  // t1's conn     │
+│ Thread t2 = new Thread(() -> mgr.useConnection());  // t2's conn     │
+│ // Each thread has SEPARATE connection, no races! ✅                  │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Zero locks needed           │ ❌ Per-thread memory copy              │
+│ ✅ Extremely fast              │ ❌ Must cleanup (remove())            │
+│ ✅ No contention               │ ❌ ThreadPool: old values persist    │
+│ ✅ Perfect for DB connections  │ ⚠️ Memory leak if not cleaned       │
+│                                │ ❌ Can't share data between threads  │
+│                                                                          │
+│ WHEN TO USE: ★★ FOR THREAD-SPECIFIC STATE                             │
+│ • Database connections                                                 │
+│ • HTTP request context                                                 │
+│ • Authentication/User info                                             │
+│ • Transaction scope                                                    │
+│ • Profiling/timing info                                                │
+│                                                                          │
+│ WARNING: ThreadPool Issue!                                              │
+│ ThreadLocal values persist across requests in thread pools!            │
+│ MUST call remove() or reuse old value (bug!)                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║ GROUP 2: LOCK-FREE SOLUTIONS (Atomic Operations)                        ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ A - ATOMIC CLASSES (Lock-Free Atomic Operations)                         │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Atomic operations using CAS (Compare-And-Swap)               │
+│          Lock-free = No blocking, no deadlock risk                     │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Race condition):                                                │
+│ class Counter {                                                         │
+│   private int count = 0;                                               │
+│   void increment() {                                                    │
+│     count++;  // RACE! (3 operations: read, modify, write)            │
+│   }                                                                      │
+│ }                                                                        │
+│ Counter c = new Counter();                                             │
+│ new Thread(() -> c.increment()).start();  // Thread 1                 │
+│ new Thread(() -> c.increment()).start();  // Thread 2                 │
+│ // Result: 1 ❌ (should be 2, one lost!)                              │
+│                                                                          │
+│ ✅ GOOD (Atomic - Lock-free):                                          │
+│ class Counter {                                                         │
+│   private AtomicInteger count = new AtomicInteger(0);                │
+│   void increment() {                                                    │
+│     count.incrementAndGet();  // Atomic! No race!                     │
+│   }                                                                      │
+│ }                                                                        │
+│ Counter c = new Counter();                                             │
+│ new Thread(() -> c.increment()).start();  // Thread 1                 │
+│ new Thread(() -> c.increment()).start();  // Thread 2                 │
+│ // Result: 2 ✅ (CORRECT!)                                            │
+│                                                                          │
+│ AVAILABLE ATOMIC CLASSES:                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • AtomicInteger       - int counter                                   │
+│ • AtomicLong          - long counter                                  │
+│ • AtomicBoolean       - boolean flag                                  │
+│ • AtomicReference<T>  - object reference                              │
+│ • AtomicIntegerArray  - int[]                                         │
+│ • AtomicMarkableReference - reference + boolean                       │
+│ • AtomicStampedReference - reference + int version                    │
+│                                                                          │
+│ COMMON OPERATIONS:                                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ AtomicInteger ai = new AtomicInteger(5);                              │
+│ ai.incrementAndGet();         // 5 → 6, return 6                      │
+│ ai.decrementAndGet();         // 6 → 5, return 5                      │
+│ ai.addAndGet(10);             // 5 → 15, return 15                    │
+│ ai.getAndSet(100);            // get 15, set 100, return 15           │
+│ ai.compareAndSet(100, 200);   // if 100, set 200, return true        │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Lock-free                   │ ❌ Only atomic operations allowed    │
+│ ✅ Very fast (no blocking)     │ ❌ High contention = spinning       │
+│ ✅ No deadlock                 │ ❌ Can't protect complex logic      │
+│ ✅ Simple to use               │ ❌ Limited to primitive types       │
+│ ✅ JVM optimized               │ ⚠️ Not for all scenarios            │
+│                                                                          │
+│ WHEN TO USE: ★★★ FOR SIMPLE COUNTERS                                  │
+│ • Counters (hit count, visits)                                        │
+│ • Flags (shutdown, running)                                            │
+│ • References (cache values)                                            │
+│ • Metrics/Statistics                                                   │
+│                                                                          │
+│ PERFORMANCE: ⚡⚡ Very fast (fastest for counters!)                    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ V - VOLATILE (Visibility Only - No Atomicity!)                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Ensures visibility across threads                             │
+│          BUT NO atomicity = race conditions still possible!            │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Without volatile - Cache issue):                                │
+│ class Server {                                                          │
+│   private boolean running = true;  // Cached in thread!               │
+│   void stop() {                                                        │
+│     running = false;  // Main thread writes                           │
+│   }                                                                     │
+│   void run() {                                                         │
+│     while (running) {  // Worker thread cached: running=true!         │
+│       work();         // NEVER sees false! ❌                          │
+│     }                                                                   │
+│   }                                                                     │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (With volatile - Always fresh):                               │
+│ class Server {                                                          │
+│   private volatile boolean running = true;  // Always reads fresh     │
+│   void stop() {                                                        │
+│     running = false;  // Written to main memory                       │
+│   }                                                                     │
+│   void run() {                                                         │
+│     while (running) {  // Always reads fresh from main memory ✅      │
+│       work();                                                           │
+│     }                                                                   │
+│   }                                                                     │
+│ }                                                                        │
+│                                                                          │
+│ WHAT VOLATILE DOES NOT PROTECT:                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG (volatile doesn't prevent race):                              │
+│ volatile int count = 0;                                                │
+│ count++;  // STILL RACE! (read-modify-write is not atomic)            │
+│                                                                          │
+│ // Thread 1: read(0) → increment(1) → write(1)                        │
+│ // Thread 2: read(0) → increment(1) → write(1)  ❌ BOTH WROTE 1!      │
+│                                                                          │
+│ ✅ CORRECT (volatile for reads only):                                  │
+│ volatile boolean shutdown = false;                                     │
+│ if (shutdown) { }  // Single read = safe! ✅                          │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ No lock overhead            │ ❌ NO mutual exclusion                │
+│ ✅ Very fast                   │ ❌ NO atomicity                       │
+│ ✅ Ensures visibility          │ ❌ Race conditions still possible    │
+│ ✅ Memory barriers only        │ ❌ Compound operations unsafe        │
+│                                │ ⚠️ Easy to misuse!                   │
+│                                                                          │
+│ WHEN TO USE: ★ FOR SIMPLE FLAGS ONLY                                   │
+│ • Boolean shutdown flag                                                │
+│ • Configuration flags                                                  │
+│ • Simple read operations                                               │
+│ • NOT for counters/mutations!                                          │
+│                                                                          │
+│ PERFORMANCE: ⚡⚡⚡ Fastest (memory barriers only)                     │
+└──────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║ GROUP 3: LOCKING SOLUTIONS (Explicit Synchronization)                   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ S - SYNCHRONIZED (Basic Mutual Exclusion Lock)                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Only ONE thread at a time (mutual exclusion)                 │
+│          Automatic lock acquire/release                                │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (No synchronization):                                            │
+│ class Account {                                                         │
+│   private int balance = 1000;                                          │
+│   void withdraw(int amount) {                                          │
+│     balance -= amount;  // RACE CONDITION!                             │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (Synchronized method):                                         │
+│ class Account {                                                         │
+│   private int balance = 1000;                                          │
+│   synchronized void withdraw(int amount) {  // Lock on 'this'         │
+│     balance -= amount;  // Safe! Only 1 thread                        │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (Synchronized block):                                          │
+│ class Account {                                                         │
+│   private int balance = 1000;                                          │
+│   void withdraw(int amount) {                                          │
+│     synchronized(this) {  // Lock on 'this'                           │
+│       balance -= amount;  // Safe!                                    │
+│     }                                                                   │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (Synchronized on custom lock):                                 │
+│ class Account {                                                         │
+│   private int balance = 1000;                                          │
+│   private Object lock = new Object();  // Custom lock                 │
+│   void withdraw(int amount) {                                          │
+│     synchronized(lock) {  // Fine-grained locking                     │
+│       balance -= amount;  // Safe!                                    │
+│     }                                                                   │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Simple & easy               │ ❌ Blocks waiting threads             │
+│ ✅ Automatic lock release      │ ❌ No fairness guarantee              │
+│ ✅ JVM optimized (biased lock) │ ❌ No timeout support                 │
+│ ✅ Re-entrant                  │ ❌ Can cause deadlock                 │
+│ ✅ Built-in (no extra code)    │ ⚠️ Low-level (no conditions)        │
+│                                                                          │
+│ WHEN TO USE: ★★ FOR SIMPLE CASES                                       │
+│ • Simple shared resources                                              │
+│ • Low to medium contention                                             │
+│ • Don't need fairness                                                  │
+│ • Don't need timeout                                                   │
+│ • Short critical sections                                              │
+│                                                                          │
+│ PERFORMANCE: ⚡ Fast (JVM optimized, especially with biased locks)    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ C - CONCURRENT COLLECTIONS (Thread-Safe Collections)                     │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Built-in synchronization (no manual locking needed)           │
+│          Optimized for concurrent access                                │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Regular HashMap - Not thread-safe):                             │
+│ Map<String, Integer> map = new HashMap<>();  // NOT thread-safe       │
+│ new Thread(() -> map.put("count", 1)).start();  // RACE!              │
+│ new Thread(() -> map.put("count", 2)).start();  // RACE!              │
+│ // Result: unpredictable!                                              │
+│                                                                          │
+│ ✅ GOOD (ConcurrentHashMap - Thread-safe):                             │
+│ Map<String, Integer> map = new ConcurrentHashMap<>();                │
+│ new Thread(() -> map.put("count", 1)).start();  // Safe!              │
+│ new Thread(() -> map.put("count", 2)).start();  // Safe!              │
+│ // Result: consistent! ✅                                              │
+│                                                                          │
+│ AVAILABLE CONCURRENT COLLECTIONS:                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • ConcurrentHashMap         - Bucket-level locking (parallel)         │
+│ • CopyOnWriteArrayList      - Copy-on-write (read-heavy)              │
+│ • ConcurrentLinkedQueue     - Lock-free queue                         │
+│ • ConcurrentSkipListMap     - Sorted map (concurrent)                 │
+│ • BlockingQueue              - Queue with blocking operations          │
+│ • PriorityBlockingQueue     - Blocking priority queue                 │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ No manual locking           │ ❌ Slightly slower than regular      │
+│ ✅ Optimized internally        │ ❌ Memory overhead                    │
+│ ✅ Parallel access possible    │ ❌ Limited to collections             │
+│ ✅ Battle-tested               │ ⚠️ Can't protect custom logic        │
+│                                                                          │
+│ WHEN TO USE: ★★ FOR SHARED COLLECTIONS                                │
+│ • Shared maps/lists                                                    │
+│ • Caches                                                               │
+│ • Thread-safe counters                                                 │
+│ • Connection pools                                                     │
+│                                                                          │
+│ PERFORMANCE: ⚡ Fast (bucket/segment-level parallelism)              │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ B - BLOCKINGQUEUE (Thread-Safe Async Message Queue)                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Thread-safe queue for async communication                    │
+│          Producer-Consumer pattern built-in                            │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (Manual synchronization - Complex):                              │
+│ class Queue {                                                           │
+│   private List<Message> queue = new ArrayList<>();                    │
+│   synchronized void put(Message msg) {                                │
+│     queue.add(msg);                                                    │
+│     notifyAll();  // Manual notification!                             │
+│   }                                                                      │
+│   synchronized Message take() throws InterruptedException {           │
+│     while (queue.isEmpty()) {                                         │
+│       wait();  // Manual waiting!                                     │
+│     }                                                                   │
+│     return queue.remove(0);                                            │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (BlockingQueue - Simple):                                      │
+│ BlockingQueue<Message> queue = new LinkedBlockingQueue<>();           │
+│                                                                          │
+│ // Producer:                                                            │
+│ new Thread(() -> {                                                     │
+│   queue.put(new Message("data"));  // Blocks if full                  │
+│ }).start();                                                             │
+│                                                                          │
+│ // Consumer:                                                            │
+│ new Thread(() -> {                                                     │
+│   Message msg = queue.take();  // Blocks if empty                     │
+│   process(msg);                                                        │
+│ }).start();                                                             │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Simple API                  │ ❌ Queue overhead/latency             │
+│ ✅ Thread-safe                 │ ❌ Not suitable for shared state     │
+│ ✅ Auto blocking/waking        │ ⚠️ Async pattern required            │
+│ ✅ Backpressure support        │                                       │
+│ ✅ Perfect for producers       │                                       │
+│                                                                          │
+│ WHEN TO USE: ★★ FOR PRODUCER-CONSUMER                                  │
+│ • Message-driven systems                                               │
+│ • Task queues                                                          │
+│ • Thread pools (built-in)                                              │
+│ • Async processing                                                     │
+│ • Decoupled architecture                                               │
+│                                                                          │
+│ PERFORMANCE: ⚡ Good (designed for async)                             │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ R - REENTRANTLOCK (Explicit Flexible Locking)                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Explicit lock with advanced features                         │
+│          Timeout, fairness, conditions, queries                        │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (synchronized - No timeout):                                     │
+│ class Account {                                                         │
+│   private int balance = 1000;                                          │
+│   synchronized void withdraw(int amount) {  // Wait forever if locked │
+│     balance -= amount;                                                 │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (ReentrantLock - With timeout):                                │
+│ class Account {                                                         │
+│   private int balance = 1000;                                          │
+│   private ReentrantLock lock = new ReentrantLock(true);  // Fair!    │
+│                                                                          │
+│   void withdraw(int amount) {                                          │
+│     try {                                                               │
+│       if (lock.tryLock(2, TimeUnit.SECONDS)) {  // Max 2 sec wait    │
+│         try {                                                           │
+│           balance -= amount;                                          │
+│         } finally {                                                     │
+│           lock.unlock();  // MUST unlock in finally                   │
+│         }                                                               │
+│       } else {                                                          │
+│         System.out.println("Timeout! Lock not acquired");             │
+│       }                                                                 │
+│     } catch (InterruptedException e) {                                 │
+│       Thread.currentThread().interrupt();                             │
+│     }                                                                   │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ADVANCED FEATURES:                                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ReentrantLock lock = new ReentrantLock(true);  // true=fair            │
+│                                                                          │
+│ // 1. Timeout-based locking:                                           │
+│ if (lock.tryLock(5, TimeUnit.SECONDS)) { }  // Wait max 5 sec        │
+│                                                                          │
+│ // 2. Fairness:                                                         │
+│ ReentrantLock fair = new ReentrantLock(true);  // FIFO order         │
+│ ReentrantLock unfair = new ReentrantLock(false);  // Random           │
+│                                                                          │
+│ // 3. Multiple conditions:                                              │
+│ Condition notEmpty = lock.newCondition();  // Producer waits         │
+│ Condition notFull = lock.newCondition();    // Consumer waits         │
+│ notEmpty.await();  // Wait for signal                                 │
+│ notFull.signal();  // Wake up waiting thread                          │
+│                                                                          │
+│ // 4. Lock queries:                                                     │
+│ int count = lock.getQueueLength();  // How many waiting?              │
+│ boolean held = lock.isHeldByCurrentThread();  // Do I hold it?        │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Timeout support             │ ❌ Manual unlock required             │
+│ ✅ Fairness option             │ ❌ More complex code                  │
+│ ✅ Multiple conditions          │ ❌ Slower than synchronized          │
+│ ✅ Interruptible                │ ⚠️ Easy to forget unlock()           │
+│ ✅ Lock queries                 │                                       │
+│                                                                          │
+│ WHEN TO USE: ★★ FOR COMPLEX LOCKING                                    │
+│ • Need timeout                                                         │
+│ • Need fairness                                                        │
+│ • Multiple conditions                                                  │
+│ • Complex coordination                                                 │
+│ • Producer-consumer with conditions                                    │
+│                                                                          │
+│ PERFORMANCE: ⚡ Comparable to synchronized                            │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ S - SEMAPHORE (Permit-Based Resource Limiting)                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CONCEPT: Permits system (N resources allowed)                         │
+│          acquire() decrements, release() increments                    │
+│                                                                          │
+│ CODE EXAMPLE:                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ BAD (No limit - System overload):                                    │
+│ class ConnectionPool {                                                  │
+│   private List<Connection> available = getConnections();  // 10       │
+│   void useConnection() {                                               │
+│     Connection conn = available.get(0);  // May not be available!     │
+│     conn.query("SELECT...");             // Could have 100 threads!   │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ ✅ GOOD (Semaphore - Max 10 concurrent):                               │
+│ class ConnectionPool {                                                  │
+│   private Semaphore permits = new Semaphore(10);  // 10 permits      │
+│   private List<Connection> connections = getConnections();  // 10     │
+│                                                                          │
+│   void useConnection() throws InterruptedException {                  │
+│     permits.acquire();  // Waits if no permits (max 10)               │
+│     try {                                                               │
+│       Connection conn = connections.get(0);                           │
+│       conn.query("SELECT...");                                        │
+│     } finally {                                                         │
+│       permits.release();  // Return permit                            │
+│     }                                                                   │
+│   }                                                                      │
+│ }                                                                        │
+│                                                                          │
+│ USE CASES:                                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ // Connection Pool:                                                     │
+│ Semaphore sem = new Semaphore(10);  // Max 10 connections            │
+│                                                                          │
+│ // Rate Limiter:                                                        │
+│ Semaphore rateLimiter = new Semaphore(100);  // Max 100 req/sec      │
+│                                                                          │
+│ // Binary Semaphore (like lock):                                       │
+│ Semaphore binary = new Semaphore(1);  // Only 1 permit               │
+│ binary.acquire();  // Like lock()                                     │
+│ binary.release();  // Like unlock()                                   │
+│                                                                          │
+│ PROS:                          │ CONS:                                 │
+│ ✅ Resource limiting           │ ❌ Manual acquire/release             │
+│ ✅ Flexible (any N)            │ ❌ No conditions                      │
+│ ✅ Deadlock prevention          │ ❌ More overhead than locks          │
+│ ✅ Good for pools              │ ⚠️ No fairness guarantee             │
+│                                                                          │
+│ WHEN TO USE: ★ FOR RESOURCE LIMITING                                   │
+│ • Connection pools                                                     │
+│ • Rate limiting (X requests/sec)                                       │
+│ • Thread pool sizing                                                   │
+│ • Resource quotas                                                      │
+│                                                                          │
+│ PERFORMANCE: 🐢 Slower (more overhead than locks)                    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║ QUICK REFERENCE: Which Solution to Use (DIT-AV-SCBRS)                   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Priority Order (Try in this order):                                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│ 1. D - DESIGN (Best if possible)     ★★★ ALWAYS TRY FIRST              │
+│ 2. I - IMMUTABLE (If applicable)     ★★★ GREAT FOR VALUES              │
+│ 3. T - THREADLOCAL (For thread-local)★★ FOR PER-THREAD STATE           │
+│ 4. A - ATOMIC (For simple ops)       ★★★ BEST FOR COUNTERS             │
+│ 5. V - VOLATILE (For flags only)     ★ ONLY FOR READS                  │
+│ 6. S - SYNCHRONIZED (Simple cases)   ★★ EASIEST LOCK                   │
+│ 7. C - COLLECTIONS (Thread-safe)     ★★ READY-MADE SOLUTIONS           │
+│ 8. B - BLOCKINGQUEUE (For queues)    ★★ PERFECT FOR ASYNC              │
+│ 9. R - REENTRANTLOCK (Complex)       ★★ ADVANCED FEATURES              │
+│ 10. S - SEMAPHORE (Resource limit)   ★ FOR POOLS/LIMITS                │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Quick Decision Table:                                                     │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Need                              → Solution                              │
+│ ────────────────────────────────────────────────────────────────────────│
+│ Simple counter                    → Atomic (A)                           │
+│ Boolean flag                      → volatile (V)                         │
+│ Shared map/list                   → Collections (C)                      │
+│ Immutable value                   → Immutable (I)                        │
+│ Single-threaded per resource      → Design (D)                           │
+│ Thread-specific data              → ThreadLocal (T)                      │
+│ Message queue                     → BlockingQueue (B)                    │
+│ Complex coordination              → ReentrantLock (R)                    │
+│ Simple mutual exclusion           → Synchronized (S)                     │
+│ Resource limiting                 → Semaphore (S)                        │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### HOW JVM WORKS
+
+THE BASIC IDEA:
+```
+───────────────
+
+```
+Java code → Compile → Bytecode → JVM → Machine Code → CPU Executes
+
+   .java file        .class file      (JVM reads this)
+
+EXAMPLE:
+public class Hello {
+  public static void main(String[] args) {
+    int x = 5;
+    System.out.println(x);
+  }
+}
+
+Step 1: WRITE CODE (Hello.java)
+Step 2: COMPILE (javac Hello.java)
+        Produces: Hello.class (bytecode - not runnable on CPU directly!)
+Step 3: RUN (java Hello)
+        JVM reads Hello.class
+        JVM converts bytecode to machine code
+        CPU executes it!
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ WHAT IS JVM? (Simple Definition)                                         │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ JVM = A virtual machine that:                                          │
+│                                                                          │
+│ 1. Reads bytecode files (.class)                                       │
+│ 2. Understands the instructions                                        │
+│ 3. Converts them to machine code your CPU understands                  │
+│ 4. Runs the code                                                       │
+│                                                                          │
+│ It's like a translator between Java and your computer!                 │
+│                                                                          │
+│ ╔════════════════════════════════════════════════════════════╗        │
+│ ║  .class File                                              ║        │
+│ ║  (bytecode - abstract instructions)                       ║        │
+│ ║                                                            ║        │
+│ ║  BIPUSH 5        (push 5 onto stack)                      ║        │
+│ ║  ISTORE 1        (store in variable)                      ║        │
+│ ║  GETSTATIC ...   (get System.out)                         ║        │
+│ ║  ILOAD 1         (load variable)                          ║        │
+│ ║  INVOKEVIRTUAL   (call println)                           ║        │
+│ ║  RETURN                                                   ║        │
+│ ╚════════════════════════════════════════════════════════════╝        │
+│              ↓ (JVM converts to CPU instructions)                       │
+│ ╔════════════════════════════════════════════════════════════╗        │
+│ ║  Machine Code (CPU instructions)                          ║        │
+│ ║                                                            ║        │
+│ ║  mov eax, 5                                               ║        │
+│ ║  mov [memory], eax                                        ║        │
+│ ║  mov eax, [PrintStream_address]                           ║        │
+│ ║  call print_function                                      ║        │
+│ ║  ret                                                      ║        │
+│ ╚════════════════════════════════════════════════════════════╝        │
+│              ↓ (CPU executes)                                          │
+│          Output: 5                                                     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ WHY DOES JAVA USE JVM? (Key Benefits)                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 1. WRITE ONCE, RUN ANYWHERE (WORA)                                     │
+│    ─────────────────────────────────────────────────────────────────  │
+│    Write Java code ONCE: Hello.java                                   │
+│    Compile ONCE: Hello.class                                          │
+│    Run on ANY machine with JVM:                                       │
+│    • Windows JVM reads Hello.class → Windows machine code             │
+│    • Mac JVM reads Hello.class → Mac machine code                     │
+│    • Linux JVM reads Hello.class → Linux machine code                 │
+│                                                                          │
+│    WITHOUT JVM:                                                        │
+│    • Write C code on Windows                                          │
+│    • Compile on Windows → Windows.exe                                 │
+│    • Move to Mac? Won't work! Must recompile on Mac!                 │
+│                                                                          │
+│ 2. MEMORY SAFETY                                                       │
+│    ─────────────────────────────────────────────────────────────────  │
+│    JVM manages memory automatically (Garbage Collection)              │
+│    No manual memory leaks (unlike C where you free() manually)        │
+│                                                                          │
+│ 3. SECURITY                                                            │
+│    ─────────────────────────────────────────────────────────────────  │
+│    JVM checks bytecode before running                                 │
+│    Can detect malicious code                                          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ JVM INTERNALS - CMFEGS (Trick to remember steps) (What happens when you run java Hello)                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ STEP 1: CLASS LOADING                                                  │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ JVM reads Hello.class file                                            │
+│ Stores it in memory                                                   │
+│ Checks if it's valid bytecode                                         │
+│                                                                          │
+│ STEP 2: MEMORY ALLOCATION                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ JVM allocates memory regions:                                         │
+│ • Heap: objects (int x = 5), arrays                                   │
+│ • Stack: method calls, local variables                                │
+│ • Method Area: class definitions, constants                           │
+│                                                                          │
+│ STEP 3: FIND MAIN METHOD                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ JVM looks for: public static void main(String[] args)                │
+│ This is the entry point                                               │
+│                                                                          │
+│ STEP 4: EXECUTE BYTECODE                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ JVM reads bytecode line by line (or compiles to machine code)        │
+│ Executes each instruction                                             │
+│                                                                          │
+│ STEP 5: GARBAGE COLLECTION (if needed)                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ JVM checks heap for unused objects                                    │
+│ Deletes them automatically                                            │
+│                                                                          │
+│ STEP 6: SHUTDOWN                                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ main() method ends                                                    │
+│ JVM cleans up and exits                                               │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ COMPARISON: JAVA vs C vs Python                                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ JAVA:                                                                   │
+│ Code → Compile (javac) → .class (bytecode)                            │
+│                           ↓ (JVM converts to machine code)             │
+│                        Runs fast! ⚡                                    │
+│                                                                          │
+│ C:                                                                      │
+│ Code → Compile (gcc) → Machine code                                   │
+│                        ↓ (directly on CPU)                            │
+│                     Runs super fast! ⚡⚡                              │
+│                     But: must recompile for each OS ❌                 │
+│                                                                          │
+│ PYTHON:                                                                 │
+│ Code → Python interpreter reads directly                              │
+│        ↓ (converts to machine code on-the-fly)                        │
+│        Runs slower 🐌 (no pre-compilation)                            │
+│                                                                          │
+│ SUMMARY:                                                               │
+│ • Java = Fast + Portable ⭐ (best of both)                            │
+│ • C = Super fast + Not portable                                       │
+│ • Python = Portable + Slow                                            │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ JVM MEMORY REGIONS (Simple)                                              │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ HEAP (Shared by all threads)                                           │
+│ ───────────────────────────────────────                               │
+│ Stores: Objects, arrays                                               │
+│ Example: User user = new User();  ← object created on heap           │
+│ Managed by: Garbage Collector (auto delete unused objects)            │
+│                                                                          │
+│ STACK (Per thread)                                                     │
+│ ───────────────────────────────────────                               │
+│ Stores: Local variables, method calls                                 │
+│ Example: int x = 5;  ← stored on stack                               │
+│ Auto deleted: When method ends, stack memory freed                    │
+│                                                                          │
+│ METHOD AREA (Shared)                                                   │
+│ ───────────────────────────────────────                               │
+│ Stores: Class definitions, methods, constants                         │
+│ Example: The User class definition stored here                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### GC - Garbage Collection
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ GARBAGE COLLECTION (GC) - SIMPLE EXPLANATION                             │
+├──────────────────────────────────────────────────────────────────────────┘
+
+```
+
+WHAT IS GC?
+```
+───────────
+
+```
+Your Java program creates objects in memory (heap)
+Some objects are no longer used
+GC = "Automatic cleanup of unused objects"
+
+Example:
+User user = new User();  // Created
+user = null;             // No longer needed
+// GC: "This object is garbage, delete it!" ✅
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ ALL GC ALGORITHMS (Timeline)                                              │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ┌─ JDK 1.0-1.3 ─────────────────────────────────────────────────────┐ │
+│ │ SERIAL GC (The Original)                                          │ │
+│ │ • One thread does all cleanup                                     │ │
+│ │ • SLOW but simple ⏱️                                              │ │
+│ │ • User app STOPS completely (pause time: 100ms+)                 │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│ ┌─ JDK 1.4 ──────────────────────────────────────────────────────┐   │
+│ │ PARALLEL GC (ParallelGC)                                         │   │
+│ │ • Multiple threads cleanup together                              │   │
+│ │ • FASTER than Serial ⚡                                          │   │
+│ │ • Still stops app (pause time: 50-100ms)                        │   │
+│ │ • Good for batch processing                                      │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│ ┌─ JDK 1.6 ──────────────────────────────────────────────────────┐   │
+│ │ CMS (Concurrent Mark Sweep)                                      │   │
+│ │ • Cleanup happens WHILE app runs (concurrent) 🏃                 │   │
+│ │ • Shorter pauses (pause time: 10-50ms)                          │   │
+│ │ • Better for interactive apps (web servers)                      │   │
+│ │ • More complex, uses more CPU                                    │   │
+│ │ ⚠️ DEPRECATED in Java 9, REMOVED in Java 14                     │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│ ┌─ JDK 1.7 (default JDK 9+) ─────────────────────────────────────┐   │
+│ │ G1 GC (Garbage First) ⭐ MODERN STANDARD                         │   │
+│ │ • Divides heap into regions (avoid full stops)                  │   │
+│ │ • Predictable pauses ✅ (pause time: <200ms)                    │   │
+│ │ • Works well for 4GB+ heaps                                      │   │
+│ │ • DEFAULT in Java 9+                                             │   │
+│ │ • Best for most applications                                     │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│ ┌─ JDK 11 ───────────────────────────────────────────────────────┐   │
+│ │ ZGC (Z Garbage Collector)                                        │   │
+│ │ • Ultra-low pause time ✅✅ (<10ms GUARANTEED)                 │   │
+│ │ • Runs concurrently with app                                    │   │
+│ │ • For LATENCY-CRITICAL apps (trading, real-time)                │   │
+│ │ • Uses more memory & CPU                                         │   │
+│ │ • Only for JDK 11+ (experimental initially)                     │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│ ┌─ JDK 12 ───────────────────────────────────────────────────────┐   │
+│ │ Shenandoah GC                                                    │   │
+│ │ • Another ultra-low pause time option                            │   │
+│ │ • Similar to ZGC (pause time: <10ms)                            │   │
+│ │ • Works on more platforms than ZGC                               │   │
+│ │ • For latency-critical apps                                      │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│ ┌─ JDK 15+ ──────────────────────────────────────────────────────┐   │
+│ │ Epsilon GC                                                       │   │
+│ │ • Does NOTHING (no garbage collection!)                         │   │
+│ │ • For testing/profiling only                                    │   │
+│ │ • App dies when heap runs out                                   │   │
+│ └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ QUICK COMPARISON TABLE                                                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Algorithm   │ Pause Time │ CPU Usage │ Memory │ Best For              │
+│ ─────────────┼────────────┼───────────┼────────┼───────────────────── │
+│ Serial      │ 100ms+     │ Low       │ Low    │ Single-threaded apps│
+│ Parallel    │ 50-100ms   │ High      │ Low    │ Batch processing    │
+│ CMS         │ 10-50ms    │ Very High │ High   │ Web servers (OLD)    │
+│ G1          │ <200ms     │ Medium    │ Medium │ Most modern apps ✅  │
+│ ZGC         │ <10ms      │ Very High │ High   │ Ultra-low latency   │
+│ Shenandoah  │ <10ms      │ Very High │ High   │ Ultra-low latency   │
+│ Epsilon     │ N/A        │ None      │ -      │ Testing only        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SIMPLE ANALOGY: Restaurant Cleanup                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SERIAL GC (One worker):                                                 │
+│ • One cleaner cleans everything                                        │
+│ • Restaurant CLOSED while cleaning (customers wait) ⏸️                  │
+│ • Takes 100ms                                                           │
+│                                                                          │
+│ PARALLEL GC (Multiple workers):                                         │
+│ • 4 cleaners work together                                             │
+│ • Restaurant CLOSED while cleaning (customers wait) ⏸️                  │
+│ • Takes 50ms (4x faster)                                               │
+│                                                                          │
+│ CMS (Cleaners work while open):                                        │
+│ • Cleaners work while customers eat                                    │
+│ • Brief FULL STOP occasionally (10-50ms)                              │
+│ • Restaurant mostly OPEN ✅                                             │
+│                                                                          │
+│ G1 (Smart cleanup zones):                                              │
+│ • Only close dirty sections, not entire restaurant                     │
+│ • Most sections stay OPEN                                              │
+│ • Brief stops per section (<200ms)                                     │
+│ • Modern restaurants use this! ✅                                       │
+│                                                                          │
+│ ZGC (Tiny breaks):                                                      │
+│ • Cleaners work while restaurant STAYS OPEN                            │
+│ • Only 5ms breaks (customers barely notice)                            │
+│ • Perfect for fancy restaurants! 🌟                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW TO USE EACH GC (Command Line)                                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Serial GC:                                                              │
+│ java -XX:+UseSerialGC MyApp                                            │
+│                                                                          │
+│ Parallel GC:                                                            │
+│ java -XX:+UseParallelGC MyApp                                          │
+│                                                                          │
+│ CMS (deprecated):                                                       │
+│ java -XX:+UseConcMarkSweepGC MyApp  (Java 8-13 only)                  │
+│                                                                          │
+│ G1 GC (default in Java 9+):                                            │
+│ java -XX:+UseG1GC MyApp                                                │
+│ or just: java MyApp  (G1 is default!)                                  │
+│                                                                          │
+│ ZGC (Java 11+):                                                         │
+│ java -XX:+UnlockExperimentalVMOptions -XX:+UseZGC MyApp               │
+│                                                                          │
+│ Shenandoah (Java 12+):                                                  │
+│ java -XX:+UnlockExperimentalVMOptions -XX:+UseShenandoahGC MyApp      │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ DECISION TREE: Which GC should you use?                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ What's your app?                                                        │
+│                                                                          │
+│ ├─ Web server / REST API                                               │
+│ │  └─→ Use G1 GC (default in Java 9+) ✅                              │
+│ │                                                                       │
+│ ├─ Batch processing / Data analysis                                    │
+│ │  └─→ Use Parallel GC (high throughput)                              │
+│ │                                                                       │
+│ ├─ Ultra-low latency needed (trading, real-time)                       │
+│ │  └─→ Use ZGC or Shenandoah (Java 11+)                               │
+│ │                                                                       │
+│ ├─ Old legacy app (Java 8)                                             │
+│ │  └─→ Use G1 or CMS                                                  │
+│ │                                                                       │
+│ ├─ Single-threaded / Very small heap                                   │
+│ │  └─→ Use Serial GC                                                  │
+│ │                                                                       │
+│ └─ Unsure / Normal case                                                │
+│    └─→ Just use default (G1 in Java 9+) ✅✅                          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ MEMORY TRICK: GC EVOLUTION                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Remember: S-P-C-G-Z-S-E                                                │
+│                                                                          │
+│ Serial → Parallel → Concurrent → G1 → ZGC → Shenandoah → Epsilon     │
+│                                                                          │
+│ Pattern: Getting FASTER, SMARTER, NEWER                               │
+│                                                                          │
+│ Modern choice: G1 or ZGC (depends on latency requirements)             │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ KEY FACTS TO REMEMBER                                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ✅ G1 GC = DEFAULT in Java 9 and later                                 │
+│ ✅ G1 GC = Best choice for 99% of apps                                 │
+│ ✅ ZGC = For latency-critical apps only                                │
+│ ❌ CMS = Deprecated and removed (don't use!)                           │
+│ ❌ Serial GC = Only for tiny apps                                      │
+│                                                                          │
+│ PAUSE TIME (impact on users):                                           │
+│ • Serial/Parallel: 50-100ms (noticeable delay)                         │
+│ • CMS: 10-50ms (brief stutter)                                         │
+│ • G1: <200ms (mostly acceptable)                                       │
+│ • ZGC/Shenandoah: <10ms (imperceptible) ✅                            │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### Deadlock detection in PROD
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW TO DETECT DEADLOCK IN PRODUCTION                                     │
+├──────────────────────────────────────────────────────────────────────────┘
+
+```
+
+QUICK RECAP: What is Deadlock?
+```
+──────────────────────────────
+
+```
+Thread A: Waiting for Lock B (but holds Lock A)
+Thread B: Waiting for Lock A (but holds Lock B)
+Result: Both threads STUCK FOREVER! 💀
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SYMPTOMS: How do you KNOW deadlock happened?                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 1. APP HANGS / FREEZES                                                  │
+│    ─────────────────────────────────────────────────────────────────   │
+│    • API requests never return (timeout after 30s)                     │
+│    • No exceptions in logs                                             │
+│    • App is still running (not crashed)                                │
+│    • CPU usage NORMAL (not spinning)                                   │
+│    → Likely deadlock! ⚠️                                               │
+│                                                                          │
+│ 2. SPECIFIC REQUESTS HANG                                               │
+│    ─────────────────────────────────────────────────────────────────   │
+│    • Some endpoints work, others timeout                               │
+│    • Thread pool exhausted (all threads stuck)                         │
+│    • Monitoring shows: Requests in queue but not being processed       │
+│    → Deadlock between specific operations! ⚠️                          │
+│                                                                          │
+│ 3. LOGS SHOW: "Thread blocked on lock"                                │
+│    ─────────────────────────────────────────────────────────────────   │
+│    • [WARNING] Thread-42 waiting for lock                             │
+│    • [WARNING] Thread-57 waiting for lock                             │
+│    • Both threads stuck at same line for minutes                      │
+│    → Probable deadlock! ⚠️                                             │
+│                                                                          │
+│ 4. PERIODIC FREEZES                                                    │
+│    ─────────────────────────────────────────────────────────────────   │
+│    • App works fine, then suddenly hangs                              │
+│    • After a minute, magically recovers                               │
+│    • Or hangs permanently                                             │
+│    → Deadlock! ⚠️                                                      │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ METHOD 1: THREAD DUMP (MOST IMPORTANT!)                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ WHAT IS IT?                                                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ A snapshot of ALL threads at a moment in time                          │
+│ Shows: What each thread is doing, what locks it holds, what it waits  │
+│                                                                          │
+│ HOW TO GET THREAD DUMP:                                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ OPTION 1: Using jstack (BEST)                                         │
+│ ─────────────────────────────                                          │
+│ $ jstack <PID> > thread_dump.txt                                       │
+│                                                                          │
+│ Find PID:                                                               │
+│ $ jps -l       # Lists all Java processes                             │
+│                                                                          │
+│ Example:                                                                │
+│ $ jps -l                                                               │
+│ 12345 com.example.MyApp                                                │
+│ $ jstack 12345 > thread_dump.txt                                       │
+│                                                                          │
+│ OPTION 2: Using kill signal (Linux/Mac)                               │
+│ ────────────────────────────────────────                               │
+│ $ kill -3 <PID>                                                        │
+│ # Dump is printed to stdout/logs                                       │
+│                                                                          │
+│ OPTION 3: JConsole (GUI)                                               │
+│ ─────────────────────────────                                          │
+│ $ jconsole <PID>                                                       │
+│ # Threads tab → Get Thread Dump button                                 │
+│                                                                          │
+│ OPTION 4: JVisualVM (Better GUI)                                       │
+│ ────────────────────────────────                                       │
+│ $ jvisualvm                                                            │
+│ # Select process → Threads tab → Thread Dump                          │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ WHAT TO LOOK FOR IN THREAD DUMP:                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Found one Java-level deadlock:                                         │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ "Thread-1":                                                             │
+│   waiting to lock monitor 0x00007f8b2d (object MyLock),               │
+│   which is held by "Thread-2"                                          │
+│                                                                          │
+│ "Thread-2":                                                             │
+│   waiting to lock monitor 0x00007f8b3e (object AnotherLock),          │
+│   which is held by "Thread-1"                                          │
+│                                                                          │
+│ ✅ DEADLOCK DETECTED! Look at the message!                             │
+│                                                                          │
+│ If you see:                                                             │
+│ "Found one Java-level deadlock"                                       │
+│ → DEFINITELY DEADLOCK! ✅                                              │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ HOW TO READ THREAD DUMP:                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ "Thread-1" prio=10 tid=0x00007f8b2d800000 nid=0x3e7c                │
+│ java.lang.Thread.State: BLOCKED (on object monitor)                  │
+│    at com.example.MyClass.method1(MyClass.java:42)                   │
+│    - waiting to lock <0x00007f8b2d> (a java.lang.Object)             │
+│    - locked <0x00007f8b3e> (a java.lang.Object)                      │
+│                                                                          │
+│ KEY PARTS:                                                              │
+│ • State: BLOCKED = Thread stuck waiting for lock ⚠️                   │
+│ • waiting to lock = What lock it needs                                │
+│ • locked = What lock it already holds                                 │
+│ • Line number (42) = Where it got stuck                               │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ METHOD 2: JMX MONITORING (Real-time monitoring)                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Enable JMX when starting app:                                          │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ java -Dcom.sun.management.jmxremote \                                 │
+│      -Dcom.sun.management.jmxremote.port=9010 \                       │
+│      -Dcom.sun.management.jmxremote.authenticate=false \              │
+│      -Dcom.sun.management.jmxremote.ssl=false \                       │
+│      MyApp                                                              │
+│                                                                          │
+│ Then use JConsole/JVisualVM to monitor:                                │
+│ • Threads tab shows thread counts                                      │
+│ • Detect BLOCKED threads                                              │
+│ • Get thread dump anytime                                             │
+│                                                                          │
+│ ✅ BENEFIT: Monitor BEFORE deadlock happens!                           │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ METHOD 3: APPLICATION LOGGING (Code-level detection)                     │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Add lock timeout monitoring:                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ synchronized (myLock) {                                               │
+│     log.info("Thread acquired lock: " + Thread.currentThread());      │
+│     try {                                                              │
+│         // do work                                                    │
+│     } finally {                                                        │
+│         log.info("Thread releasing lock: " + Thread.currentThread()); │
+│     }                                                                   │
+│ }                                                                       │
+│                                                                          │
+│ OR using ReentrantLock with timeout:                                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ReentrantLock lock = new ReentrantLock();                             │
+│                                                                          │
+│ if (lock.tryLock(5, TimeUnit.SECONDS)) {                             │
+│     try {                                                              │
+│         // do work                                                    │
+│     } finally {                                                        │
+│         lock.unlock();                                                │
+│     }                                                                   │
+│ } else {                                                               │
+│     log.error("DEADLOCK DETECTED! Could not acquire lock!"); ⚠️      │
+│     // Alert operations team!                                         │
+│     sendAlert("Possible deadlock on lock: " + lock);                 │
+│ }                                                                       │
+│                                                                          │
+│ ✅ BENEFIT: Catches deadlock BEFORE complete hang!                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ METHOD 4: MONITORING TOOLS                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ TOOL              │ What it does          │ When to use                 │
+│ ─────────────────┼───────────────────────┼─────────────────────────── │
+│ JConsole          │ Basic monitoring      │ Quick check                 │
+│ JVisualVM         │ Advanced monitoring   │ Deep analysis               │
+│ Datadog           │ Cloud monitoring      │ Production (paid)           │
+│ New Relic         │ Cloud monitoring      │ Production (paid)           │
+│ Prometheus        │ Metrics collection    │ Production (open source)    │
+│ Grafana           │ Metrics visualization │ Production (open source)    │
+│ Micrometer        │ Java metrics library  │ Custom monitoring           │
+│                                                                          │
+│ SPRING BOOT? Use Micrometer:                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Add dependency:                                                         │
+│ <dependency>                                                            │
+│     <groupId>io.micrometer</groupId>                                  │
+│     <artifactId>micrometer-registry-prometheus</artifactId>           │
+│ </dependency>                                                           │
+│                                                                          │
+│ Metrics exposed at: /actuator/prometheus                              │
+│ Monitor with: Prometheus + Grafana                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ METHOD 5: ALERTING RULES (Catch before it's too late)                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Set up alerts for:                                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ 1. Thread count spike                                                  │
+│    Alert if: blocked_threads > 10                                     │
+│                                                                          │
+│ 2. Request timeout rate                                                │
+│    Alert if: requests_timeout_rate > 5% in 1 minute                   │
+│                                                                          │
+│ 3. High GC pause time                                                  │
+│    Alert if: gc_pause_time > 500ms (sign of lock contention)         │
+│                                                                          │
+│ 4. Thread pool exhaustion                                              │
+│    Alert if: active_threads == max_threads for >30 seconds            │
+│                                                                          │
+│ 5. Database connection pool exhaustion                                 │
+│    Alert if: db_connections_available == 0                            │
+│                                                                          │
+│ Example Prometheus alert:                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ alert: DeadlockDetected                                               │
+│   expr: jvm_threads_live_threads{state="blocked"} > 5                │
+│   for: 1m                                                              │
+│   annotations:                                                         │
+│     summary: "Deadlock suspected! {{ $value }} blocked threads"      │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ STEP-BY-STEP: When app hangs in PROD                                     │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ STEP 1: Confirm deadlock (60 seconds)                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ $ jps -l                    # Find Java process ID                    │
+│ $ jstack <PID>              # Get thread dump                         │
+│                                                                          │
+│ Look for: "Found one Java-level deadlock"                            │
+│ If found → DEFINITELY DEADLOCK ✅                                      │
+│                                                                          │
+│ STEP 2: Analyze thread dump (30 seconds)                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Look for:                                                               │
+│ • Which threads are BLOCKED?                                          │
+│ • What locks are they waiting for?                                    │
+│ • Which method/line caused it?                                        │
+│                                                                          │
+│ STEP 3: Stop the bleeding (Immediate)                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Option A: Restart app                                                 │
+│ $ kill -9 <PID>                                                       │
+│ # Restart in another terminal                                         │
+│                                                                          │
+│ Option B: Graceful shutdown (if possible)                             │
+│ $ kill <PID>              # SIGTERM (graceful)                        │
+│                                                                          │
+│ STEP 4: Root cause analysis (Later)                                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Read thread dump carefully:                                           │
+│ Which method caused lock conflict?                                    │
+│ Fix the code to prevent lock ordering issue                           │
+│                                                                          │
+│ STEP 5: Deploy fix                                                     │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ # Usually fix lock order or use timeouts                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ EXAMPLE: Reading Thread Dump for Deadlock                                │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ╔════════════════════════════════════════════════════════════════════╗ │
+│ ║ Found one Java-level deadlock:                                     ║ │
+│ ║ ═══════════════════════════════════════════════════════════════   ║ │
+│ ║ "transfer-thread-1":                                              ║ │
+│ ║   waiting to lock monitor 0x12345 (a java.lang.Object),          ║ │
+│ ║   which is held by "transfer-thread-2"                            ║ │
+│ ║   at com.bank.TransferService.transfer(TransferService.java:42)   ║ │
+│ ║                                                                    ║ │
+│ ║ "transfer-thread-2":                                              ║ │
+│ ║   waiting to lock monitor 0x67890 (a java.lang.Object),          ║ │
+│ ║   which is held by "transfer-thread-1"                            ║ │
+│ ║   at com.bank.TransferService.transfer(TransferService.java:58)   ║ │
+│ ╚════════════════════════════════════════════════════════════════════╝ │
+│                                                                          │
+│ ANALYSIS:                                                               │
+│ ───────────                                                             │
+│ • Deadlock in TransferService.transfer() method                        │
+│ • Thread 1 at line 42 waiting for lock held by Thread 2               │
+│ • Thread 2 at line 58 waiting for lock held by Thread 1               │
+│ • Classic circular lock dependency!                                   │
+│                                                                          │
+│ FIX:                                                                    │
+│ ─────                                                                   │
+│ Look at lines 42 and 58 in TransferService.java                       │
+│ Likely: Transfer acquires lock on source, then destination            │
+│         But Thread 2 is doing opposite (dest, then source)            │
+│ Solution: Always acquire locks in SAME ORDER!                        │
+│                                                                          │
+│ synchronized(source) {          // Always lock source FIRST           │
+│     synchronized(destination) { // Then destination                   │
+│         // transfer logic                                             │
+│     }                                                                   │
+│ }                                                                       │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PREVENTION: Stop deadlock BEFORE PROD                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 1. USE LOCK TIMEOUTS (Best)                                            │
+│    ─────────────────────────────────────────────────────────────────   │
+│    if (lock.tryLock(5, TimeUnit.SECONDS)) {                          │
+│        // Do work                                                     │
+│    } else {                                                            │
+│        throw new LockTimeoutException("Deadlock suspected!");        │
+│    }                                                                   │
+│                                                                          │
+│ 2. LOCK ORDERING (Prevent circular dependencies)                       │
+│    ─────────────────────────────────────────────────────────────────   │
+│    Always acquire locks in same order:                               │
+│    • Lock A, then Lock B (never opposite)                            │
+│    • Assign IDs to locks, acquire in ascending order                 │
+│                                                                          │
+│ 3. AVOID NESTED LOCKS                                                  │
+│    ─────────────────────────────────────────────────────────────────   │
+│    synchronized(lock1) {                                             │
+│        synchronized(lock2) {  // ❌ Avoid this!                      │
+│            // Multiple locks = deadlock risk                         │
+│        }                                                              │
+│    }                                                                   │
+│                                                                          │
+│ 4. USE CONCURRENT COLLECTIONS                                         │
+│    ─────────────────────────────────────────────────────────────────   │
+│    ConcurrentHashMap map = new ConcurrentHashMap();                 │
+│    // No need for manual locking!                                    │
+│                                                                          │
+│ 5. USE ThreadPoolExecutor WITH PROPER SIZING                          │
+│    ─────────────────────────────────────────────────────────────────   │
+│    If thread pool is too small, tasks queue up and deadlock!         │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ CHEAT SHEET: Quick Reference                                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SUSPECT DEADLOCK?                                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ 1. $ jps -l                 # Find PID                                │
+│ 2. $ jstack <PID>           # Get thread dump                         │
+│ 3. Look for "Found one Java-level deadlock"                          │
+│ 4. If found: Restart app + Fix lock order                            │
+│                                                                          │
+│ MONITORING (Prevention):                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • JConsole / JVisualVM                                                │
+│ • Datadog / New Relic / Prometheus                                    │
+│ • Alert on: blocked_threads > threshold                              │
+│                                                                          │
+│ QUICK FIX:                                                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Always acquire locks in same order                                 │
+│ • Use lock.tryLock(timeout) instead of lock()                        │
+│ • Minimize nested locks                                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### OOM scenarios
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ OutOfMemoryError (OOM) IN PRODUCTION                                     │
+├──────────────────────────────────────────────────────────────────────────┘
+
+```
+
+WHAT IS OOM?
+```
+────────────
+
+```
+Java heap memory is FULL, no more space for new objects!
+
+Example:
+new User();  // No memory available!
+→ java.lang.OutOfMemoryError: Java heap space ❌
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ TYPES OF OOM ERRORS (and their causes)                                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ┌─ TYPE 1: HEAP SPACE OOM ──────────────────────────────────────────┐  │
+│ │ Error Message:                                                    │  │
+│ │ "java.lang.OutOfMemoryError: Java heap space"                    │  │
+│ │                                                                   │  │
+│ │ CAUSES:                                                           │  │
+│ │ ─────────────────────────────────────────────────────────────── │  │
+│ │ 1. Memory Leak (objects never released)                          │  │
+│ │    User user = new User();                                       │  │
+│ │    users.add(user);  // Added to list                           │  │
+│ │    user = null;      // Reference removed                       │  │
+│ │    // But user still in list! Not garbage collected!            │  │
+│ │                                                                   │  │
+│ │ 2. Too many objects at once                                     │  │
+│ │    List<String> data = new ArrayList<>();                        │  │
+│ │    for (int i = 0; i < 1_000_000_000; i++) {  // MASSIVE!       │  │
+│ │        data.add(new String("data" + i));                        │  │
+│ │    }  // Heap explodes!                                          │  │
+│ │                                                                   │  │
+│ │ 3. Heap too small for workload                                  │  │
+│ │    -Xmx256m (only 256MB heap)                                   │  │
+│ │    But app needs 1GB!                                           │  │
+│ │                                                                   │  │
+│ │ 4. Large file uploads/processing                                │  │
+│ │    byte[] data = readFile("large_10GB_file.bin");               │  │
+│ │    // Trying to load entire file into memory!                   │  │
+│ │                                                                   │  │
+│ │ 5. String concatenation in loops                                │  │
+│ │    String result = "";                                          │  │
+│ │    for (int i = 0; i < 1_000_000; i++) {                       │  │
+│ │        result += "data";  // Creates new String each time!     │  │
+│ │    }                                                             │  │
+│ │                                                                   │  │
+│ │ 6. Unbounded caches                                             │  │
+│ │    Map<String, User> cache = new HashMap<>();                  │  │
+│ │    // Adding users but never removing old ones                 │  │
+│ │    // Cache grows forever!                                      │  │
+│ │                                                                   │  │
+│ │ 7. Circular references                                          │  │
+│ │    Class A holds reference to B                                │  │
+│ │    Class B holds reference to A                                │  │
+│ │    Neither can be garbage collected!                            │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│ ┌─ TYPE 2: PERM GEN / METASPACE OOM ────────────────────────────────┐  │
+│ │ Error Message:                                                    │  │
+│ │ "java.lang.OutOfMemoryError: PermGen space" (Java 7)            │  │
+│ │ "java.lang.OutOfMemoryError: Metaspace" (Java 8+)               │  │
+│ │                                                                   │  │
+│ │ CAUSES:                                                           │  │
+│ │ ─────────────────────────────────────────────────────────────── │  │
+│ │ 1. Too many class definitions                                   │  │
+│ │    for (int i = 0; i < 1_000_000; i++) {                       │  │
+│ │        byte[] classBytes = generateClassCode();                │  │
+│ │        URLClassLoader.defineClass(classBytes);  // NEW CLASS!  │  │
+│ │    }  // Creating 1M classes!                                   │  │
+│ │                                                                   │  │
+│ │ 2. Class loaders not released                                   │  │
+│ │    URLClassLoader loader = new URLClassLoader(urls);           │  │
+│ │    // Closed but not garbage collected!                        │  │
+│ │                                                                   │  │
+│ │ 3. Web app hot deployment without cleanup                       │  │
+│ │    Deploy app 100 times (update JAR)                            │  │
+│ │    Old class definitions still in memory                        │  │
+│ │    Metaspace keeps growing                                      │  │
+│ │                                                                   │  │
+│ │ 4. Too many string constants                                    │  │
+│ │    String constants stored in Metaspace                        │  │
+│ │    "Intern" millions of strings                                 │  │
+│ │                                                                   │  │
+│ │ 5. Framework metadata                                           │  │
+│ │    Hibernate, Spring storing too much metadata                 │  │
+│ │                                                                   │  │
+│ │ ⚠️ NOTE: PermGen removed in Java 8!                             │  │
+│ │          Metaspace uses native memory (not heap)                │  │
+│ │          Grows automatically (unless capped)                    │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│ ┌─ TYPE 3: NATIVE MEMORY OOM ───────────────────────────────────────┐  │
+│ │ Error Message:                                                    │  │
+│ │ "java.lang.OutOfMemoryError: unable to create new native thread" │  │
+│ │ "java.lang.OutOfMemoryError: Direct buffer memory"               │  │
+│ │                                                                   │  │
+│ │ CAUSES:                                                           │  │
+│ │ ─────────────────────────────────────────────────────────────── │  │
+│ │ 1. Too many threads created                                     │  │
+│ │    for (int i = 0; i < 100_000; i++) {                         │  │
+│ │        new Thread(() -> { }).start();  // Creating 100K threads! │  │
+│ │    }  // Operating system can't handle it!                      │  │
+│ │                                                                   │  │
+│ │ 2. Direct ByteBuffer not released                               │  │
+│ │    ByteBuffer buffer = ByteBuffer.allocateDirect(1GB);         │  │
+│ │    buffer = null;  // Not garbage collected!                    │  │
+│ │                                                                   │  │
+│ │ 3. Memory limits on system                                      │  │
+│ │    Container/Docker limited to 1GB                              │  │
+│ │    But trying to allocate 2GB                                   │  │
+│ │                                                                   │  │
+│ │ 4. Socket/file descriptor exhaustion                            │  │
+│ │    Opening too many connections/files                           │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW TO DETECT OOM IN PRODUCTION (Step 1)                                 │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SYMPTOMS:                                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ✅ Error in logs: "OutOfMemoryError: Java heap space"                 │
+│ ✅ API responses become SLOW then TIMEOUT                             │
+│ ✅ App crashes or becomes unresponsive                                │
+│ ✅ High CPU usage (garbage collector working hard)                    │
+│ ✅ Memory usage graph hits ceiling (100%) and stays there             │
+│                                                                          │
+│ CHECK LOGS:                                                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ grep "OutOfMemoryError" logs/app.log                                  │
+│ grep "Exception in thread" logs/app.log                               │
+│                                                                          │
+│ CHECK MONITORING:                                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Datadog: Check "Heap used / Heap max" ratio                         │
+│ • Prometheus: jvm_memory_used_bytes / jvm_memory_max_bytes            │
+│ • New Relic: JVM > Heap tab                                           │
+│ • Alert if: heap usage > 90% for >5 minutes                           │
+│                                                                          │
+│ GET HEAP DUMP (when OOM happens):                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Heap dumps are automatically created if you configure:                │
+│ $ java -XX:+HeapDumpOnOutOfMemoryError \                             │
+│        -XX:HeapDumpPath=/logs/heap_dump.hprof \                       │
+│        MyApp                                                            │
+│                                                                          │
+│ This creates heap_dump.hprof when OOM occurs!                         │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ STEP 2: ANALYZE ROOT CAUSE (When OOM happens)                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ QUESTION 1: When did it happen?                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ grep "OutOfMemoryError" logs/app.log | head -1                        │
+│ Look at timestamp                                                      │
+│ Correlate with:                                                        │
+│ • New deployment?                                                      │
+│ • Traffic spike?                                                       │
+│ • Large report generation?                                             │
+│                                                                          │
+│ QUESTION 2: Which type of OOM?                                          │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ "Java heap space"          → Memory leak / Too many objects           │
+│ "PermGen space"            → Class metadata leak                      │
+│ "Metaspace"                → Class metadata leak                      │
+│ "Direct buffer memory"     → Direct ByteBuffer leak                   │
+│ "native thread"            → Too many threads                          │
+│                                                                          │
+│ QUESTION 3: Analyze heap dump                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Using Eclipse Memory Analyzer (MAT):                                   │
+│                                                                          │
+│ 1. Download MAT: https://www.eclipse.org/mat/downloads.php            │
+│ 2. Open heap_dump.hprof in MAT                                        │
+│ 3. Run "Leak Suspects" report                                         │
+│ 4. See which object is taking most memory                             │
+│                                                                          │
+│ Example:                                                                │
+│ HashMap with 10 million User objects (not being released)             │
+│ → Memory leak in HashMap!                                             │
+│                                                                          │
+│ COMMAND LINE (jhat):                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ jhat -J-Xmx4g heap_dump.hprof                                         │
+│ # Open browser: http://localhost:7000                                 │
+│ # Shows all objects and their references                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SOLUTIONS FOR EACH CAUSE                                                 │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ CAUSE 1: Memory Leak (objects not garbage collected)                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG CODE:                                                          │
+│ static List<User> cache = new ArrayList<>();  // Never cleared!       │
+│ public void addUser(User user) {                                      │
+│     cache.add(user);  // Grows forever!                               │
+│ }                                                                        │
+│                                                                          │
+│ ✅ SOLUTION 1: Clear cache periodically                                │
+│ static List<User> cache = new ArrayList<>();                          │
+│ public void addUser(User user) {                                      │
+│     cache.add(user);                                                  │
+│     if (cache.size() > 10_000) {  // Limit size                       │
+│         cache.clear();  // Clear old entries                          │
+│     }                                                                   │
+│ }                                                                        │
+│                                                                          │
+│ ✅ SOLUTION 2: Use bounded cache                                       │
+│ Map<String, User> cache = new LinkedHashMap<String, User>(16, 0.75f, │
+│     true) {                                                             │
+│         protected boolean removeEldestEntry(Map.Entry eldest) {       │
+│             return size() > 10_000;  // Auto-remove when full        │
+│         }                                                              │
+│     };                                                                   │
+│                                                                          │
+│ ✅ SOLUTION 3: Use Caffeine cache (thread-safe, expiry)                │
+│ LoadingCache<String, User> cache = Caffeine.newBuilder()             │
+│     .maximumSize(10_000)                                               │
+│     .expireAfterAccess(5, TimeUnit.MINUTES)                           │
+│     .build(key -> loadUser(key));                                     │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ CAUSE 2: Too many objects created at once                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG CODE:                                                          │
+│ List<String> allData = new ArrayList<>();                             │
+│ for (int i = 0; i < 100_000_000; i++) {  // 100M objects!            │
+│     allData.add(new String("data" + i));                             │
+│ }  // Heap explodes!                                                   │
+│                                                                          │
+│ ✅ SOLUTION: Process in batches (streaming)                            │
+│ int batchSize = 1_000;                                                │
+│ List<String> batch = new ArrayList<>(batchSize);                      │
+│ for (int i = 0; i < 100_000_000; i++) {                              │
+│     batch.add(new String("data" + i));                               │
+│     if (batch.size() >= batchSize) {                                 │
+│         processBatch(batch);  // Process 1000 at a time              │
+│         batch.clear();  // Free memory                                │
+│     }                                                                   │
+│ }                                                                        │
+│                                                                          │
+│ OR USE STREAMING:                                                      │
+│ Stream.generate(() -> generateData())                                 │
+│     .limit(100_000_000)                                               │
+│     .forEach(data -> {                                                │
+│         processData(data);  // Process one at a time                  │
+│     });  // No need to hold all in memory!                            │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ CAUSE 3: Heap size too small                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ CURRENT (insufficient):                                              │
+│ java -Xmx512m MyApp  # Only 512MB heap                                │
+│                                                                          │
+│ ✅ SOLUTION: Increase heap size                                        │
+│ java -Xmx4g MyApp   # 4GB heap                                        │
+│ java -Xms2g -Xmx4g MyApp  # Start at 2GB, max 4GB                   │
+│                                                                          │
+│ RULES:                                                                  │
+│ • Set Xms = Xmx (avoid dynamic resizing)                              │
+│ • Allocate 60-70% of available system memory                          │
+│ • Monitor if new heap size helps                                      │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ CAUSE 4: Large file uploads                                            │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG CODE:                                                          │
+│ byte[] fileContent = Files.readAllBytes(file);  // Load entire file! │
+│ processFile(fileContent);                                             │
+│                                                                          │
+│ ✅ SOLUTION: Stream processing                                         │
+│ try (InputStream is = Files.newInputStream(file)) {                  │
+│     byte[] buffer = new byte[8192];  // 8KB buffer                   │
+│     int bytesRead;                                                    │
+│     while ((bytesRead = is.read(buffer)) != -1) {                   │
+│         processChunk(buffer, bytesRead);  // Process 8KB at a time  │
+│     }                                                                   │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ CAUSE 5: String concatenation in loops                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG CODE:                                                          │
+│ String result = "";                                                    │
+│ for (int i = 0; i < 1_000_000; i++) {                                │
+│     result += "data";  // Creates 1M intermediate strings!           │
+│ }                                                                        │
+│                                                                          │
+│ ✅ SOLUTION: Use StringBuilder                                          │
+│ StringBuilder sb = new StringBuilder();                                │
+│ for (int i = 0; i < 1_000_000; i++) {                                │
+│     sb.append("data");  // No intermediate strings!                  │
+│ }                                                                        │
+│ String result = sb.toString();  # Only one final string              │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ CAUSE 6: Unbounded caches                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG CODE:                                                          │
+│ static Map<String, ExpensiveObject> cache = new HashMap<>();         │
+│ for (String key : keys) {                                             │
+│     cache.put(key, loadExpensiveObject(key));                        │
+│ }  // Cache grows forever, never clears!                             │
+│                                                                          │
+│ ✅ SOLUTION: Use time-based expiry (Caffeine)                         │
+│ Cache<String, ExpensiveObject> cache = Caffeine.newBuilder()         │
+│     .maximumSize(10_000)                                               │
+│     .expireAfterWrite(1, TimeUnit.HOURS)                             │
+│     .build();                                                          │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ CAUSE 7: Too many threads                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ WRONG CODE:                                                          │
+│ for (int i = 0; i < 1_000_000; i++) {                                │
+│     new Thread(() -> doWork()).start();  # 1M threads!              │
+│ }  # System can't handle it!                                          │
+│                                                                          │
+│ ✅ SOLUTION: Use thread pool (ExecutorService)                        │
+│ ExecutorService executor = Executors.newFixedThreadPool(100);       │
+│ for (int i = 0; i < 1_000_000; i++) {                                │
+│     executor.submit(() -> doWork());  # Only 100 threads!           │
+│ }                                                                        │
+│                                                                          │
+│ Increase limit if needed:                                             │
+│ ExecutorService executor = Executors.newFixedThreadPool(1000);      │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ EMERGENCY RESPONSE (Immediate actions when OOM happens)                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ STEP 1: Immediate (First 1 minute)                                     │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ✅ Restart app                                                          │
+│    # Temporary fix to restore service                                 │
+│    systemctl restart myapp                                             │
+│                                                                          │
+│ ✅ Get heap dump (if not auto-enabled)                                 │
+│    jmap -dump:live,format=b,file=heap.bin <PID>                     │
+│                                                                          │
+│ ✅ Collect logs                                                         │
+│    tail -1000 logs/app.log > oom_logs.txt                            │
+│                                                                          │
+│ STEP 2: Short term (Next 1 hour)                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ✅ Analyze heap dump (use MAT or jhat)                                │
+│    Identify which object is consuming memory                          │
+│                                                                          │
+│ ✅ Increase heap if quick fix                                         │
+│    -Xmx8g  (temporary, not permanent fix)                             │
+│                                                                          │
+│ ✅ Check if traffic spike is cause                                    │
+│    Monitor traffic patterns                                           │
+│                                                                          │
+│ STEP 3: Long term (Next 24 hours)                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ✅ Fix the root cause in code                                         │
+│    • Fix memory leak                                                  │
+│    • Add bounds to cache                                              │
+│    • Use streaming instead of loading all                             │
+│                                                                          │
+│ ✅ Deploy fix to production                                            │
+│                                                                          │
+│ ✅ Monitor memory usage                                                │
+│    Alert if heap usage > 80%                                          │
+│                                                                          │
+│ ✅ Review if heap size increase needed                                │
+│    (Not just masking problem with bigger heap!)                       │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PREVENTION: Setup before OOM happens                                     │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 1. AUTO HEAP DUMP ON OOM                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ java -XX:+HeapDumpOnOutOfMemoryError \                               │
+│      -XX:HeapDumpPath=/logs/heap.hprof \                              │
+│      -XX:OnOutOfMemoryError="kill -9 %p" \                            │
+│      MyApp                                                              │
+│                                                                          │
+│ 2. GC LOGGING                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ java -Xlog:gc*:file=gc.log:time,uptime,level,tags \                 │
+│      MyApp                                                              │
+│                                                                          │
+│ 3. MONITORING & ALERTING                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Alert if:                                                               │
+│ • Heap usage > 90% for 5 minutes                                      │
+│ • GC pause time > 500ms                                               │
+│ • OOM error detected                                                  │
+│                                                                          │
+│ 4. PROFILING IN DEV/STAGING                                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Use JProfiler, YourKit, JFR (Java Flight Recorder)                   │
+│ Identify memory leaks BEFORE PROD                                     │
+│                                                                          │
+│ 5. CODE REVIEW CHECKLIST                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Static collections (caches, lists)?                                 │
+│ • String concatenation in loops?                                      │
+│ • File loading (all at once)?                                         │
+│ • Unbounded thread creation?                                          │
+│ • Large object allocations?                                           │
+│                                                                          │
+│ 6. LOAD TESTING                                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Test app with realistic load                                          │
+│ Monitor memory growth                                                 │
+│ Catch issues before production                                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ QUICK REFERENCE: Common OOM Patterns & Fixes                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ PATTERN 1: Static collection grows forever                            │
+│ ───────────────────────────────────────────────────────────────────── │
+│ Problem:  static List cache = new ArrayList();  // Never cleared    │
+│ Symptom:  Memory grows over days/weeks                              │
+│ Fix:      Add expiry or size limit                                   │
+│                                                                          │
+│ PATTERN 2: Unbounded HashMap                                          │
+│ ───────────────────────────────────────────────────────────────────── │
+│ Problem:  Map<String, Data> map = new HashMap();  // Grows forever  │
+│ Symptom:  Memory grows with requests                                │
+│ Fix:      LinkedHashMap with LRU eviction OR Caffeine cache         │
+│                                                                          │
+│ PATTERN 3: Large array allocation                                    │
+│ ───────────────────────────────────────────────────────────────────── │
+│ Problem:  byte[] allData = new byte[Integer.MAX_VALUE];             │
+│ Symptom:  Immediate OOM on request                                  │
+│ Fix:      Stream/buffer processing                                   │
+│                                                                          │
+│ PATTERN 4: Thread explosion                                          │
+│ ───────────────────────────────────────────────────────────────────── │
+│ Problem:  for (i < count) new Thread().start();  # Too many threads │
+│ Symptom:  OutOfMemoryError: unable to create native thread          │
+│ Fix:      Use ExecutorService with fixed thread pool                │
+│                                                                          │
+│ PATTERN 5: String concatenation loop                                 │
+│ ───────────────────────────────────────────────────────────────────── │
+│ Problem:  String s = "";  for (i < count) s += data;               │
+│ Symptom:  Memory spike during string building                       │
+│ Fix:      Use StringBuilder                                          │
+│                                                                          │
+│ PATTERN 6: Class loader leak                                         │
+│ ───────────────────────────────────────────────────────────────────── │
+│ Problem:  URLClassLoader not closed; hot deployment                │
+│ Symptom:  OutOfMemoryError: Metaspace                               │
+│ Fix:      Always close URLClassLoader                                │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### 2 Phase commit Protocol
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ TWO-PHASE COMMIT (2PC) PROTOCOL                                          │
+├──────────────────────────────────────────────────────────────────────────┘
+
+```
+
+WHAT IS 2PC?
+```
+────────────
+
+```
+A protocol to ensure ATOMICITY across multiple databases/systems
+
+Simple Definition:
+"All databases commit together, or ALL rollback together"
+(No partial commits where some succeed and others fail)
+
+ANALOGY: Team dinner decision
+```
+─────────────────────────────
+
+```
+Person 1: "Can you go to restaurant?"
+Person 2: "Can you go to restaurant?"
+Person 3: "Can you go to restaurant?"
+
+If ALL say YES → Go to restaurant together! ✅
+If ANY say NO  → Nobody goes! ❌
+
+2PC ensures the same for database transactions!
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ THE PROBLEM IT SOLVES                                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SCENARIO: Bank transfer (Alice → Bob) across 2 databases               │
+│                                                                          │
+│ Database 1 (Alice's account):  Debit $100                              │
+│ Database 2 (Bob's account):    Credit $100                             │
+│                                                                          │
+│ WITHOUT 2PC (BAD):                                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Step 1: DB1 succeeds! Alice loses $100 ✅                              │
+│ Step 2: DB2 FAILS! Bob doesn't get $100 ❌                             │
+│                                                                          │
+│ RESULT: $100 LOST! 💀 (Money disappeared!)                            │
+│                                                                          │
+│ WITH 2PC (GOOD):                                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Coordinator: "Ready to transfer?"                                      │
+│ DB1: "Yes, I can debit $100" ✅                                        │
+│ DB2: "Yes, I can credit $100" ✅                                       │
+│ Coordinator: "COMMIT!" ✅                                              │
+│ DB1: Debit confirmed                                                   │
+│ DB2: Credit confirmed                                                  │
+│                                                                          │
+│ RESULT: Money safely transferred! ✅                                    │
+│                                                                          │
+│ OR IF ANY FAILS:                                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Coordinator: "Ready to transfer?"                                      │
+│ DB1: "Yes, I can debit $100" ✅                                        │
+│ DB2: "No! I can't credit (low balance for overdraft)" ❌              │
+│ Coordinator: "ROLLBACK!" ❌                                            │
+│ DB1: Rollback (Alice keeps her $100)                                  │
+│ DB2: Nothing to rollback (never changed)                              │
+│                                                                          │
+│ RESULT: No money lost, transaction atomic! ✅                          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW 2PC WORKS (The 2 Phases)                                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ PHASE 1: PREPARE (Voting Phase)                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Coordinator asks each participant:                                     │
+│ "Can you commit this transaction?"                                    │
+│                                                                          │
+│ Each Participant responds:                                             │
+│ YES: "I can do it! (but haven't committed yet)"                       │
+│ NO:  "I can't do it! (failure)"                                       │
+│                                                                          │
+│ WHAT HAPPENS IN BACKGROUND:                                            │
+│ Each participant:                                                      │
+│ 1. Executes the transaction                                           │
+│ 2. Acquires locks on affected rows                                    │
+│ 3. Writes UNDO log (for rollback)                                     │
+│ 4. Writes REDO log (for recovery)                                     │
+│ 5. Does NOT commit yet!                                               │
+│ 6. Reports: "Ready to commit" or "Cannot commit"                      │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ PHASE 2: COMMIT (Decision Phase)                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ If ALL said YES in Phase 1:                                            │
+│ ────────────────────────────────────────────────────────────────      │
+│ Coordinator: "COMMIT!"                                                 │
+│ Each participant:                                                      │
+│ 1. Commit the transaction                                             │
+│ 2. Release locks                                                       │
+│ 3. Report: "Committed"                                                │
+│                                                                          │
+│ If ANY said NO in Phase 1:                                             │
+│ ────────────────────────────────────────────────────────────────      │
+│ Coordinator: "ROLLBACK!"                                               │
+│ Each participant:                                                      │
+│ 1. Rollback using UNDO log                                            │
+│ 2. Release locks                                                       │
+│ 3. Report: "Rolled back"                                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ VISUAL: 2PC Execution Timeline                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SCENARIO: Transfer Alice→Bob across 2 databases                          │
+│                                                                          │
+│ Time  Coordinator        DB1 (Alice)         DB2 (Bob)                   │
+│ ─────────────────────────────────────────────────────────────────────    │
+│ T1    Send: "Prepare?"                                                   │
+│       └────────────────→ Execute Debit      └──────────────→ Execute     │
+│                         Write UNDO/REDO log                 Credit       │
+│                                              Write UNDO/REDO│            │
+│                                                             │            │
+│ T2    ◄────────────── Respond: "YES" ◄──────────────────── "YES"         │
+│       (Both ready)                                                       │
+│                                                                          │
+│ T3    Send: "COMMIT!"                                                  │
+│       └────────────────→ Lock confirmed     └──────────────→ Locks     │
+│                         Commit write to disk                 confirmed │
+│                                              Commit write   │          │
+│                                              to disk        │          │
+│                                                             │           │
+│ T4    ◄────────────── Confirm: "Done" ◄──────────────────── "Done"   │
+│       (Transaction complete)                                           │
+│                                                                          │
+│ RESULT: $100 transferred atomically! ✅                               │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ ROLLBACK SCENARIO (if DB2 says NO):                                    │
+│                                                                          │
+│ Time  Coordinator        DB1 (Alice)         DB2 (Bob)                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ T1    Send: "Prepare?"                                                 │
+│       └────────────────→ Execute Debit      └──────────────→ Execute   │
+│                         Ready               Validation FAILS│          │
+│                         (waiting)           (No overdraft)  │          │
+│                                                             │           │
+│ T2    ◄────────────── Respond: "YES" ◄──────────────────── "NO!" ❌  │
+│       (DB1 ready, but DB2 cannot do it)                               │
+│                                                                          │
+│ T3    Send: "ROLLBACK!"                                                │
+│       └────────────────→ Use UNDO log      └──────────────→ N/A       │
+│                         Rollback changes    (No changes to│            │
+│                         (Restore debit)     rollback)      │           │
+│                                                             │           │
+│ T4    ◄────────────── Confirm: "Done" ◄──────────────────── "OK"     │
+│       (Transaction aborted, atomically)                                │
+│                                                                          │
+│ RESULT: No money lost! Alice still has her $100! ✅                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PROS & CONS OF 2PC                                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ PROS (Advantages):                                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ✅ ATOMICITY: All-or-nothing (no partial commits)                      │
+│ ✅ CONSISTENCY: Databases stay consistent across systems               │
+│ ✅ SAFE: Money/data never lost in transfers                            │
+│ ✅ SIMPLE: Easy to understand & implement                              │
+│                                                                          │
+│ CONS (Disadvantages):                                                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ❌ SLOW: Two round trips needed (Prepare + Commit)                     │
+│ ❌ BLOCKING: Locks held during entire transaction                      │
+│ ❌ NOT SCALABLE: Doesn't work well with many databases                 │
+│ ❌ COORDINATION REQUIRED: Needs coordinator (single point of failure)   │
+│ ❌ NETWORK FAILURES: If coordinator crashes mid-transaction → problem  │
+│ ❌ PERFORMANCE: Can't use in distributed cloud systems (too slow)      │
+│ ❌ DEADLOCKS: High chance of deadlock with locks held longer          │
+│                                                                          │
+│ REAL COST:                                                              │
+│ API call to transfer:                                                  │
+│ • Without 2PC: 100ms (fast)                                            │
+│ • With 2PC: 500ms+ (5x slower!)                                        │
+│ And only works with 2-3 databases, not 100+                            │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ FAILURE SCENARIOS (What can go wrong?)                                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ FAILURE 1: Coordinator crashes after Prepare, before Commit           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Problem: DB1 and DB2 don't know if they should commit/rollback       │
+│ Locks held forever! ❌                                                │
+│ Solution: Participants wait for coordinator recovery (blocking)       │
+│                                                                          │
+│ FAILURE 2: DB1 crashes during Prepare (mid-transaction)              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Problem: Coordinator tells DB2 to rollback, but DB1 already wrote log│
+│ Solution: On recovery, DB1 reads UNDO log and rolls back             │
+│                                                                          │
+│ FAILURE 3: Network partition between Coordinator and DB2             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Problem: Coordinator doesn't know DB2's response to Prepare phase    │
+│ Solution: Coordinator times out and aborts transaction               │
+│                                                                          │
+│ FAILURE 4: DB1 committed, but Commit message lost on network         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Problem: DB2 never gets commit, stays locked                         │
+│ Solution: DB2 times out and rolls back (problem: inconsistency!)     │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ KEY ISSUE: Network partitions are HARD to handle!                     │
+│            2PC requires perfect network (not realistic)                 │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ WHEN TO USE 2PC                                                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ✅ USE 2PC When:                                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Multiple databases in SAME datacenter (low latency)                 │
+│ • Database transactions (SQL + transactions support it)               │
+│ • Safety critical (banking, payments)                                 │
+│ • Few databases (2-3, not 100s)                                       │
+│ • Strong consistency required                                         │
+│                                                                          │
+│ Example: Bank app with separate accounts DB and audit DB              │
+│          Both in same datacenter                                      │
+│                                                                          │
+│ ❌ DON'T USE 2PC When:                                                  │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Many microservices (distributed system)                             │
+│ • Cloud/multiple regions (high latency)                               │
+│ • High throughput needed                                              │
+│ • Services across internet                                            │
+│ • NoSQL databases (don't support 2PC)                                 │
+│                                                                          │
+│ Example: Amazon with 1000+ services across globe                      │
+│          2PC would kill performance!                                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ ALTERNATIVES TO 2PC (For distributed systems)                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ALT 1: SAGA PATTERN (Event-driven)                                     │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Each service commits immediately                                    │
+│ • If one fails, compensating transactions rollback previous ones     │
+│ • Eventual consistency (not atomic)                                   │
+│ • Better for microservices                                            │
+│                                                                          │
+│ Example:                                                                │
+│ Order Service: Create order ✅                                         │
+│ Payment Service: Process payment ✅                                    │
+│ If shipping fails: Payment Service refunds ✅ (compensation)          │
+│                                                                          │
+│ ALT 2: EVENTUAL CONSISTENCY                                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Services commit independently                                       │
+│ • Synchronize later via event queue                                   │
+│ • Temporary inconsistency, but eventual consistency                   │
+│ • Super scalable                                                       │
+│                                                                          │
+│ ALT 3: MESSAGE QUEUES (Event sourcing)                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • All changes as events in queue                                      │
+│ • Services subscribe to events                                        │
+│ • Eventually consistent                                               │
+│ • Audit trail (all events logged)                                     │
+│                                                                          │
+│ ALT 4: SINGLE DATABASE                                                  │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Don't split data across databases                                   │
+│ • Use single DB with transactions                                     │
+│ • Native 2PC not needed!                                              │
+│ • Scalability via sharding (each shard single DB)                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ REAL-WORLD EXAMPLES                                                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ USES 2PC:                                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Banks (money transfers, ACID required)                              │
+│ • Relational databases (PostgreSQL, MySQL with XA protocol)           │
+│ • Financial systems (strict consistency)                              │
+│ • Enterprise applications (limited databases, same datacenter)        │
+│                                                                          │
+│ DOESN'T USE 2PC:                                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Amazon (uses eventual consistency + Sagas)                          │
+│ • Netflix (event-driven architecture)                                 │
+│ • Google (Spanner uses Paxos, not 2PC)                               │
+│ • Twitter (message queues for async)                                  │
+│ • Uber (distributed transactions with Sagas)                          │
+│                                                                          │
+│ Why? Distributed systems prioritize AVAILABILITY over CONSISTENCY    │
+│ (CAP theorem: can't have both!)                                       │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ COMPARISON: 2PC vs Alternatives                                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Aspect           │ 2PC          │ SAGA         │ Eventual Consistency  │
+│ ─────────────────┼──────────────┼──────────────┼──────────────────── │
+│ Atomicity        │ Yes ✅       │ No (eventual)│ No (eventual)        │
+│ Consistency      │ Strong ✅    │ Eventual     │ Eventual             │
+│ Latency          │ High ❌      │ Low ✅       │ Low ✅               │
+│ Scalability      │ Poor ❌      │ Good ✅      │ Great ✅             │
+│ Complexity       │ Simple ✅    │ Complex ❌   │ Complex ❌           │
+│ Distributed      │ 2-3 DBs only │ Many services│ Many services        │
+│ Network Failures │ Problem ❌   │ Handled ✅   │ Handled ✅           │
+│ Use Case         │ Banking      │ Microservices│ Web scale            │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ IMPLEMENTATION EXAMPLE (SQL)                                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ // Using XA (Extended Architecture) protocol                           │
+│ // Supported by: PostgreSQL, MySQL, Oracle                             │
+│                                                                          │
+│ // Pseudocode                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ PHASE 1: PREPARE                                                       │
+│ ─────────────────────────────────                                      │
+│ Connection conn1 = getDB1();  // Alice's account DB                   │
+│ Connection conn2 = getDB2();  // Bob's account DB                     │
+│                                                                          │
+│ conn1.setAutoCommit(false);                                            │
+│ conn2.setAutoCommit(false);                                            │
+│                                                                          │
+│ PreparedStatement stmt1 = conn1.prepareStatement(                      │
+│     "UPDATE accounts SET balance = balance - 100 WHERE id = ?"        │
+│ );                                                                      │
+│ stmt1.execute();                                                        │
+│                                                                          │
+│ PreparedStatement stmt2 = conn2.prepareStatement(                      │
+│     "UPDATE accounts SET balance = balance + 100 WHERE id = ?"        │
+│ );                                                                      │
+│ stmt2.execute();                                                        │
+│                                                                          │
+│ // At this point: BOTH executed, BOTH ready                           │
+│                                                                          │
+│ PHASE 2: COMMIT                                                        │
+│ ─────────────────────────────────                                      │
+│ try {                                                                   │
+│     conn1.commit();  // Commit DB1                                    │
+│     conn2.commit();  // Commit DB2                                    │
+│     System.out.println("Transfer successful!");                       │
+│ } catch (SQLException e) {                                             │
+│     conn1.rollback();  // Rollback both if any fails                  │
+│     conn2.rollback();                                                  │
+│     System.out.println("Transfer failed, rolled back");               │
+│ }                                                                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### Serialization & Deserialization
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SERIALIZATION & DESERIALIZATION                                          │
+├──────────────────────────────────────────────────────────────────────────┘
+
+```
+
+SIMPLE DEFINITION
+```
+─────────────────
+
+```
+Serialization   = Convert OBJECT → BYTES (or String/JSON)
+Deserialization = Convert BYTES (or String/JSON) → OBJECT
+
+WHY DO WE NEED IT?
+```
+──────────────────
+
+```
+Objects live in memory (RAM)
+But you need to:
+• Save to disk (file)
+• Send over network (HTTP, sockets)
+• Store in database
+• Cache in Redis
+→ Must convert to bytes/string!
+
+ANALOGY: Packing a suitcase
+```
+────────────────────────────
+
+```
+Serialization   = Pack clothes into suitcase (object → bytes)
+Travel          = Send suitcase over network
+Deserialization = Unpack suitcase at destination (bytes → object)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SIMPLE EXAMPLE                                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ OBJECT IN MEMORY:                                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ User user = new User();                                                │
+│ user.setName("Alice");                                                 │
+│ user.setAge(25);                                                       │
+│ user.setEmail("alice@example.com");                                    │
+│                                                                          │
+│ In memory:                                                              │
+│ ┌──────────────────────────────┐                                       │
+│ │ User Object                  │                                       │
+│ │ ├─ name: "Alice"             │                                       │
+│ │ ├─ age: 25                   │                                       │
+│ │ └─ email: "alice@..."        │                                       │
+│ └──────────────────────────────┘                                       │
+│         ↓ (Serialization)                                               │
+│                                                                          │
+│ BYTES / JSON:                                                            │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ {                                                                        │
+│   "name": "Alice",                                                      │
+│   "age": 25,                                                            │
+│   "email": "alice@example.com"                                          │
+│ }                                                                        │
+│                                                                          │
+│ Can be:                                                                 │
+│ • Sent over network ✅                                                  │
+│ • Saved to file ✅                                                      │
+│ • Stored in database ✅                                                 │
+│ • Cached in Redis ✅                                                    │
+│                                                                          │
+│         ↑ (Deserialization)                                             │
+│                                                                          │
+│ BACK TO OBJECT:                                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ User user2 = deserialize(jsonString);                                  │
+│ // user2 is identical to original!                                    │
+│ // name: "Alice", age: 25, email: "alice@..."                         │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ REAL-WORLD SCENARIOS WHERE SERIALIZATION HAPPENS                         │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SCENARIO 1: API Response (REST)                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Server:                                                                 │
+│ GET /api/user/1                                                        │
+│ User user = database.findUser(1);                                      │
+│ return serializeToJson(user);  ← SERIALIZATION                         │
+│                                                                          │
+│ Client receives:                                                        │
+│ {                                                                        │
+│   "id": 1,                                                              │
+│   "name": "Alice",                                                      │
+│   "age": 25                                                             │
+│ }                                                                        │
+│                                                                          │
+│ Client:                                                                 │
+│ User user = deserializeFromJson(response);  ← DESERIALIZATION         │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ SCENARIO 2: Save to File                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ User user = new User("Alice", 25);                                     │
+│ byte[] bytes = serialize(user);  ← SERIALIZATION                        │
+│ Files.write(Paths.get("user.dat"), bytes);                             │
+│                                                                          │
+│ Later...                                                                │
+│ byte[] bytes = Files.readAllBytes(Paths.get("user.dat"));              │
+│ User user = deserialize(bytes);  ← DESERIALIZATION                     │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ SCENARIO 3: Send over Network                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Client:                                                                 │
+│ User user = new User("Alice", 25);                                     │
+│ byte[] bytes = serialize(user);  ← SERIALIZATION                        │
+│ socket.send(bytes);  ← Send over TCP                                    │
+│                                                                          │
+│ Server:                                                                 │
+│ byte[] bytes = socket.receive();                                        │
+│ User user = deserialize(bytes);  ← DESERIALIZATION                     │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ SCENARIO 4: Cache in Redis                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ User user = database.findUser(1);                                      │
+│ String json = serializeToJson(user);  ← SERIALIZATION                  │
+│ redis.set("user:1", json);                                             │
+│                                                                        │
+│ Later...                                                               │
+│ String json = redis.get("user:1");                                     │
+│ User user = deserializeFromJson(json);  ← DESERIALIZATION              │
+│                                                                        │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                        │
+│ SCENARIO 5: Database Storage (ORM)                                     │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ @Entity                                                                │
+│ class User {                                                           │
+│     @Column                                                            │
+│     String name;                                                       │
+│     @Column                                                            │
+│     int age;                                                           │
+│ }                                                                      │
+│                                                                        │
+│ User user = new User("Alice", 25);                                     │
+│ userRepository.save(user);  # Hibernate serializes to DB               │
+│                             # (INSERT INTO users VALUES...)            │
+│                                                                        │
+│ User loaded = userRepository.findById(1);  # Deserializes from DB      │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ JAVA SERIALIZATION METHODS                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ METHOD 1: Java Native Serialization (Serializable interface)             │
+│ ─────────────────────────────────────────────────────────────────────    │
+│                                                                          │
+│ CODE:                                                                    │
+│ ─────────────────────────────────────────────────────────────────────    │
+│ import java.io.*;                                                        │
+│                                                                          │
+│ class User implements Serializable {                                     │
+│     private static final long serialVersionUID = 1L;                     │
+│     String name;                                                         │
+│     int age;                                                             │
+│ }                                                                        │
+│                                                                          │
+│ // SERIALIZATION                                                         │
+│ User user = new User("Alice", 25);                                       │
+│ FileOutputStream fos = new FileOutputStream("user.dat");                 │
+│ ObjectOutputStream oos = new ObjectOutputStream(fos);                    │
+│ oos.writeObject(user);  ← Converts object to bytes                       │
+│ oos.close();                                                             │
+│                                                                          │
+│ // DESERIALIZATION                                                       │
+│ FileInputStream fis = new FileInputStream("user.dat");                   │
+│ ObjectInputStream ois = new ObjectInputStream(fis);                      │
+│ User user2 = (User) ois.readObject();  ← Converts bytes to object        │
+│ ois.close();                                                             │
+│                                                                          │
+│ PROS: ✅ Native Java support, works with all objects                     │
+│ CONS: ❌ Binary format (not human-readable), slow, large file size       │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════    │
+│                                                                          │
+│ METHOD 2: JSON Serialization (Most popular!)                            │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Using Jackson library:                                                  │
+│                                                                          │
+│ // SERIALIZATION                                                        │
+│ User user = new User("Alice", 25);                                     │
+│ ObjectMapper mapper = new ObjectMapper();                              │
+│ String json = mapper.writeValueAsString(user);                         │
+│ // Result: {"name":"Alice","age":25}                                   │
+│                                                                          │
+│ // DESERIALIZATION                                                      │
+│ String json = "{\"name\":\"Alice\",\"age\":25}";                       │
+│ User user = mapper.readValue(json, User.class);                        │
+│                                                                          │
+│ PROS: ✅ Human-readable, lightweight, widely supported, standard       │
+│ CONS: ❌ Slightly slower than binary                                    │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ METHOD 3: Protocol Buffers (Google's format)                            │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Define schema:                                                          │
+│ syntax = "proto3";                                                      │
+│ message User {                                                          │
+│   string name = 1;                                                      │
+│   int32 age = 2;                                                        │
+│ }                                                                        │
+│                                                                          │
+│ // SERIALIZATION                                                        │
+│ User user = User.newBuilder()                                          │
+│     .setName("Alice")                                                  │
+│     .setAge(25)                                                         │
+│     .build();                                                           │
+│ byte[] bytes = user.toByteArray();                                      │
+│                                                                          │
+│ // DESERIALIZATION                                                      │
+│ User user2 = User.parseFrom(bytes);                                    │
+│                                                                          │
+│ PROS: ✅ Super fast, compact, type-safe, backward compatible           │
+│ CONS: ❌ Need schema definition, more setup                            │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ COMPARISON TABLE:                                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Format              Speed  Size  Readability  Compatibility            │
+│ ──────────────────┼──────┼──────┼────────────┼──────────────────    │
+│ Java Native       Medium Large   Binary       ❌ Java only             │
+│ JSON              Slow   Medium  Human ✅     ✅ Universal             │
+│ Protocol Buffers  Fast   Small   Binary       ✅ With schema           │
+│ XML               Slow   Large   Human ✅     ✅ Universal             │
+│ MessagePack       Fast   Small   Binary       ✅ Multiple langs        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ WHICH TO USE?                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • REST API / Web          → JSON ✅ (most common)                      │
+│ • Performance critical    → Protocol Buffers ✅                         │
+│ • Java internal only      → Java Native (if needed)                    │
+│ • Microservices           → gRPC + Protocol Buffers ✅                 │
+│ • Human debugging needed  → JSON ✅                                     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ COMMON ISSUES & HOW TO AVOID THEM                                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ISSUE 1: Serialization with new fields                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ OLD VERSION (saved to file):                                            │
+│ class User {                                                            │
+│     String name;                                                        │
+│     int age;                                                            │
+│ }                                                                        │
+│                                                                          │
+│ NEW VERSION (after adding field):                                       │
+│ class User {                                                            │
+│     String name;                                                        │
+│     int age;                                                            │
+│     String email;  ← NEW FIELD                                         │
+│ }                                                                        │
+│                                                                          │
+│ PROBLEM: ❌ Can't deserialize old data (field missing!)                 │
+│                                                                          │
+│ SOLUTION:                                                                │
+│ class User implements Serializable {                                    │
+│     static final long serialVersionUID = 1L;  # ALWAYS include this   │
+│     String name;                                                        │
+│     int age;                                                            │
+│     String email = "default@example.com";  # Provide default           │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ ISSUE 2: Performance problem (slow serialization)                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ SLOW: Serialize object with 1M fields every request                    │
+│ for (User user : millionUsers) {                                       │
+│     String json = mapper.writeValueAsString(user);  # SLOW!           │
+│     socket.send(json);                                                 │
+│ }                                                                        │
+│                                                                          │
+│ SOLUTION 1: Only serialize needed fields                               │
+│ @JsonIgnore                                                             │
+│ private String internalData;  # Not serialized                         │
+│                                                                          │
+│ @JsonProperty("n")  # Shorter field name                               │
+│ private String name;                                                    │
+│                                                                          │
+│ SOLUTION 2: Use Protocol Buffers (50x faster)                          │
+│ byte[] bytes = user.toByteArray();  # Much faster than JSON           │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ ISSUE 3: Security vulnerability (untrusted data)                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ DANGEROUS:                                                            │
+│ byte[] untrustedData = request.getBody();                              │
+│ User user = (User) ois.readObject(untrustedData);                      │
+│ // Attacker can execute arbitrary code!                               │
+│                                                                          │
+│ ✅ SAFE:                                                                │
+│ String json = request.getBody();  # JSON is text, harder to exploit  │
+│ User user = mapper.readValue(json, User.class);                       │
+│ // Mapper validates structure                                         │
+│                                                                          │
+│ RULE: Never deserialize untrusted Java serialized data!                │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ ISSUE 4: Circular references (infinite loop)                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ PROBLEMATIC:                                                          │
+│ class User {                                                            │
+│     String name;                                                        │
+│     Company company;                                                    │
+│ }                                                                        │
+│                                                                          │
+│ class Company {                                                         │
+│     String name;                                                        │
+│     List<User> employees;  ← References back to User                   │
+│ }                                                                        │
+│                                                                          │
+│ User → Company → List<User> → Company → ... (infinite!)               │
+│                                                                          │
+│ SOLUTION:                                                                │
+│ class User {                                                            │
+│     String name;                                                        │
+│     @JsonIgnore  # Don't serialize this                                │
+│     Company company;                                                    │
+│ }                                                                        │
+│                                                                          │
+│ OR break cycle differently depending on context                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ ISSUE 5: Null values                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ❌ PROBLEM:                                                              │
+│ User user = null;                                                       │
+│ String json = mapper.writeValueAsString(user);  # Result: "null"      │
+│                                                                          │
+│ Later:                                                                   │
+│ User user2 = mapper.readValue(json, User.class);                       │
+│ user2.getName();  # NullPointerException! ❌                          │
+│                                                                          │
+│ SOLUTION:                                                                │
+│ if (json.equals("null")) {                                             │
+│     user = new User();  # Create default                              │
+│ } else {                                                                │
+│     user = mapper.readValue(json, User.class);                        │
+│ }                                                                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ STEP-BY-STEP: Serialize/Deserialize with Jackson (Most Common)          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ SETUP:                                                                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Add dependency (Maven):                                                 │
+│ <dependency>                                                            │
+│     <groupId>com.fasterxml.jackson.core</groupId>                    │
+│     <artifactId>jackson-databind</artifactId>                          │
+│     <version>2.15.2</version>                                           │
+│ </dependency>                                                            │
+│                                                                          │
+│ STEP 1: Create class                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ class User {                                                            │
+│     private String name;                                               │
+│     private int age;                                                    │
+│                                                                          │
+│     // Getters/Setters (required for deserialization!)                 │
+│     public String getName() { return name; }                           │
+│     public void setName(String name) { this.name = name; }            │
+│     public int getAge() { return age; }                                │
+│     public void setAge(int age) { this.age = age; }                   │
+│ }                                                                        │
+│                                                                          │
+│ STEP 2: SERIALIZATION (Object → JSON)                                  │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ User user = new User();                                                │
+│ user.setName("Alice");                                                 │
+│ user.setAge(25);                                                       │
+│                                                                          │
+│ ObjectMapper mapper = new ObjectMapper();                              │
+│ String json = mapper.writeValueAsString(user);                         │
+│                                                                          │
+│ System.out.println(json);                                              │
+│ // Output: {"name":"Alice","age":25}                                   │
+│                                                                          │
+│ STEP 3: DESERIALIZATION (JSON → Object)                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ String json = "{\"name\":\"Bob\",\"age\":30}";                         │
+│                                                                          │
+│ ObjectMapper mapper = new ObjectMapper();                              │
+│ User user = mapper.readValue(json, User.class);                        │
+│                                                                          │
+│ System.out.println(user.getName());  // Output: Bob                   │
+│ System.out.println(user.getAge());   // Output: 30                    │
+│                                                                          │
+│ STEP 4: File I/O                                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ // Write to file                                                        │
+│ mapper.writeValue(new File("user.json"), user);                        │
+│                                                                          │
+│ // Read from file                                                       │
+│ User user2 = mapper.readValue(new File("user.json"), User.class);     │
+│                                                                          │
+│ STEP 5: API Response                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ @GetMapping("/user/{id}")                                              │
+│ public User getUser(@PathVariable int id) {                           │
+│     User user = database.findUser(id);                                 │
+│     return user;  # Spring auto-serializes to JSON ✅                  │
+│ }                                                                        │
+│                                                                          │
+│ @PostMapping("/user")                                                  │
+│ public void saveUser(@RequestBody User user) {                        │
+│     // Spring auto-deserializes from JSON ✅                           │
+│     database.save(user);                                               │
+│ }                                                                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ ADVANCED: Customizing Serialization                                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ IGNORE FIELDS                                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ class User {                                                            │
+│     String name;                                                        │
+│     @JsonIgnore                                                        │
+│     String password;  ← Won't be serialized                            │
+│ }                                                                        │
+│                                                                          │
+│ RENAME FIELDS IN JSON                                                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ class User {                                                            │
+│     @JsonProperty("user_name")                                         │
+│     String name;  ← Called "user_name" in JSON                         │
+│ }                                                                        │
+│                                                                          │
+│ CUSTOM SERIALIZATION                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ class User {                                                            │
+│     @JsonSerialize(using = CustomUserSerializer.class)                │
+│     User user;                                                          │
+│ }                                                                        │
+│                                                                          │
+│ public class CustomUserSerializer extends JsonSerializer<User> {      │
+│     public void serialize(User value, JsonGenerator gen, ...) {       │
+│         gen.writeStartObject();                                        │
+│         gen.writeStringField("name", value.getName().toUpperCase());  │
+│         gen.writeEndObject();                                          │
+│     }                                                                    │
+│ }                                                                        │
+│                                                                          │
+│ DATE FORMATTING                                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ class User {                                                            │
+│     @JsonFormat(pattern = "yyyy-MM-dd")                               │
+│     LocalDate birthDate;  ← Formatted as 2025-01-15                   │
+│ }                                                                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ SUMMARY TABLE                                                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Aspect              Serialization           Deserialization            │
+│ ─────────────────────┼──────────────────────┼──────────────────────── │
+│ Direction           Object → Bytes/JSON    Bytes/JSON → Object        │
+│ Purpose             Send, store, cache     Reconstruct object         │
+│ Common Use          API response, file     API request, load from DB  │
+│ Serializable?       Yes                    Yes                        │
+│ Reversible?         Yes                    Yes                        │
+│ Performance         Medium                 Medium                     │
+│ Data Loss?          No (lossless)          No (lossless)              │
+│ Human Readable      JSON yes, Binary no    N/A                        │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### EXECUTOR SERVICE & THREAD POOL
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ EXECUTOR SERVICE & THREAD POOL                                           │
+├──────────────────────────────────────────────────────────────────────────┘
+
+```
+
+WHAT IS A THREAD POOL?
+```
+──────────────────────
+
+```
+A collection of PRE-CREATED threads ready to execute tasks
+
+WHY DO WE NEED IT?
+```
+──────────────────
+
+```
+Creating threads is EXPENSIVE!
+new Thread() → Allocates memory, resources
+Thread creation time: ~1ms per thread
+
+WITHOUT ThreadPool (BAD):
+```
+────────────────────────
+
+```
+1M requests arrive
+1M new threads created
+→ 1 second wasted just creating threads!
+→ App crashes (too many threads!)
+→ Slow
+
+WITH ThreadPool (GOOD):
+```
+───────────────────────
+
+```
+1M requests arrive
+Reuse 100 existing threads
+→ Instant execution!
+→ App survives!
+→ Fast
+
+ANALOGY: Restaurant workers
+```
+──────────────────────────
+
+```
+WITHOUT pool:
+Customer arrives → Hire new chef → Cook → Chef leaves
+(Expensive, slow)
+
+WITH pool:
+Customers arrive → Assign to available chef from pool
+(Efficient, fast)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ BASIC CONCEPT: Reusing Threads                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ WITHOUT ThreadPool:                                                      │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Task 1: new Thread(() -> { doTask1(); }).start();                     │
+│ Task 2: new Thread(() -> { doTask2(); }).start();                     │
+│ Task 3: new Thread(() -> { doTask3(); }).start();                     │
+│                                                                          │
+│ ↓ (Each task needs new thread)                                         │
+│                                                                          │
+│ Thread 1 ─┐                                                             │
+│ Thread 2 ─├─ Created, used, discarded (WASTE!)                         │
+│ Thread 3 ─┘                                                             │
+│                                                                          │
+│ WITH ThreadPool:                                                         │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ ExecutorService executor = Executors.newFixedThreadPool(2);            │
+│ executor.submit(() -> { doTask1(); });  # Execute on Thread-1          │
+│ executor.submit(() -> { doTask2(); });  # Execute on Thread-2          │
+│ executor.submit(() -> { doTask3(); });  # Execute on Thread-1 (reused!)│
+│                                                                          │
+│ ↓ (Reuse threads)                                                       │
+│                                                                          │
+│ Pool size: 2                                                            │
+│ Thread-1 ─┐                                                             │
+│ Thread-2 ─┴─ Reused for multiple tasks (EFFICIENT!)                    │
+│                                                                          │
+│ Task Queue:                                                              │
+│ [Task1] [Task2] [Task3] → Assigned to available threads               │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ HOW THREAD POOL WORKS                                                    │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ Step 1: Create ThreadPool                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ExecutorService executor = Executors.newFixedThreadPool(3);            │
+│                                                                          │
+│ Creates: 3 worker threads (Thread-1, Thread-2, Thread-3)              │
+│ Waiting for tasks...                                                    │
+│                                                                          │
+│ ┌─────────────────────────┐                                            │
+│ │ ThreadPool (3 threads)  │                                            │
+│ ├─────────────────────────┤                                            │
+│ │ Thread-1: IDLE ✅       │                                            │
+│ │ Thread-2: IDLE ✅       │                                            │
+│ │ Thread-3: IDLE ✅       │                                            │
+│ └─────────────────────────┘                                            │
+│                                                                          │
+│ Step 2: Submit Tasks                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ executor.submit(() -> { doTask1(); });                                 │
+│ executor.submit(() -> { doTask2(); });                                 │
+│ executor.submit(() -> { doTask3(); });                                 │
+│ executor.submit(() -> { doTask4(); });  # More tasks than threads!    │
+│                                                                          │
+│ Task Distribution:                                                       │
+│ ┌─────────────────────────┐     ┌──────────────┐                      │
+│ │ ThreadPool              │     │ Task Queue   │                      │
+│ ├─────────────────────────┤     ├──────────────┤                      │
+│ │ Thread-1: Task1 ⚙️      │     │ Task4        │ ← Waiting            │
+│ │ Thread-2: Task2 ⚙️      │     └──────────────┘                      │
+│ │ Thread-3: Task3 ⚙️      │                                            │
+│ └─────────────────────────┘                                            │
+│                                                                          │
+│ Step 3: Tasks Complete                                                  │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ Thread-1 finishes Task1                                                 │
+│ → Picks up Task4 from queue                                            │
+│ → Starts Task4                                                          │
+│                                                                          │
+│ ┌─────────────────────────┐     ┌──────────────┐                      │
+│ │ ThreadPool              │     │ Task Queue   │                      │
+│ ├─────────────────────────┤     ├──────────────┤                      │
+│ │ Thread-1: Task4 ⚙️      │     │ (empty)      │ ← All assigned       │
+│ │ Thread-2: Task2 ⚙️      │     └──────────────┘                      │
+│ │ Thread-3: Task3 ⚙️      │                                            │
+│ └─────────────────────────┘                                            │
+│                                                                          │
+│ Step 4: Shutdown                                                        │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ executor.shutdown();  # Stop accepting new tasks                        │
+│                       # Wait for running tasks to complete             │
+│                       # Then terminate threads                         │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ EXECUTOR SERVICE TYPES                                                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ TYPE 1: FIXED THREAD POOL (Most common)                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ExecutorService executor = Executors.newFixedThreadPool(10);           │
+│                                                                          │
+│ • FIXED number of threads: 10                                          │
+│ • Threads never terminate (until shutdown)                             │
+│ • If all 10 busy: new tasks wait in queue                              │
+│ • Queue size: UNLIMITED (can run out of memory!)                        │
+│                                                                          │
+│ WHEN TO USE:                                                             │
+│ ✅ Web servers (requests from network)                                 │
+│ ✅ Background jobs                                                     │
+│ ✅ Batch processing                                                    │
+│ ✅ Most common use case                                                │
+│                                                                          │
+│ Example:                                                                │
+│ ExecutorService executor = Executors.newFixedThreadPool(100);          │
+│ for (HttpRequest req : requests) {                                     │
+│     executor.submit(() -> handleRequest(req));                         │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ TYPE 2: CACHED THREAD POOL (Dynamic sizing)                             │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ExecutorService executor = Executors.newCachedThreadPool();            │
+│                                                                          │
+│ • NUMBER of threads: DYNAMIC (grows as needed)                         │
+│ • Max threads: 2^31 - 1 (practical: unlimited)                         │
+│ • Idle threads: Destroyed after 60 seconds                             │
+│ • Perfect for: Short-lived, many tasks                                 │
+│                                                                          │
+│ HOW IT WORKS:                                                            │
+│ Task 1 arrives → Create Thread-1 → Execute                             │
+│ Task 2 arrives → Create Thread-2 → Execute                             │
+│ ...                                                                      │
+│ Task 1000 arrives → Create Thread-1000 → Execute                       │
+│ Task 1001 arrives → Thread-1 finished? YES → Reuse Thread-1            │
+│                                                                          │
+│ WHEN TO USE:                                                             │
+│ ✅ Many short-lived tasks                                              │
+│ ✅ Bursty traffic (peaks and valleys)                                  │
+│ ✅ Microservices (brief operations)                                    │
+│ ⚠️  Not for long-running tasks (creates too many threads)             │
+│                                                                          │
+│ Example:                                                                │
+│ ExecutorService executor = Executors.newCachedThreadPool();            │
+│ for (int i = 0; i < 1000; i++) {                                      │
+│     executor.submit(() -> {                                            │
+│         // Quick operation (100ms)                                     │
+│         doQuickWork();                                                 │
+│     });                                                                  │
+│ }  # Reuses threads as they finish                                     │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ TYPE 3: SINGLE THREAD EXECUTOR                                          │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ExecutorService executor = Executors.newSingleThreadExecutor();        │
+│                                                                          │
+│ • ONLY 1 thread (always)                                               │
+│ • Tasks executed sequentially (one at a time)                          │
+│ • Queue size: UNLIMITED                                                │
+│ • If thread crashes: new one created                                   │
+│                                                                          │
+│ WHEN TO USE:                                                             │
+│ ✅ Serial operations (order matters)                                   │
+│ ✅ Initialization/cleanup                                              │
+│ ✅ Background logging, monitoring                                      │
+│ ✅ File I/O (avoid concurrent writes)                                  │
+│                                                                          │
+│ Example:                                                                │
+│ ExecutorService executor = Executors.newSingleThreadExecutor();        │
+│ executor.submit(() -> System.out.println("First"));   # Prints first  │
+│ executor.submit(() -> System.out.println("Second"));  # Prints second │
+│ executor.submit(() -> System.out.println("Third"));   # Prints third  │
+│ # ORDER GUARANTEED!                                                    │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ TYPE 4: SCHEDULED EXECUTOR (Delayed/Periodic tasks)                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ScheduledExecutorService executor =                                     │
+│     Executors.newScheduledThreadPool(5);                               │
+│                                                                          │
+│ // Run after 2 seconds                                                  │
+│ executor.schedule(() -> {                                               │
+│     System.out.println("Delayed task");                                │
+│ }, 2, TimeUnit.SECONDS);                                                │
+│                                                                          │
+│ // Run every 5 seconds                                                  │
+│ executor.scheduleAtFixedRate(() -> {                                    │
+│     System.out.println("Periodic task");                               │
+│ }, 0, 5, TimeUnit.SECONDS);                                             │
+│                                                                          │
+│ WHEN TO USE:                                                             │
+│ ✅ Periodic tasks (every N seconds)                                    │
+│ ✅ Delayed execution                                                   │
+│ ✅ Health checks, cleanup jobs                                         │
+│ ✅ Polling                                                             │
+│                                                                          │
+│ Example: Health check every 10 seconds                                 │
+│ ScheduledExecutorService executor =                                     │
+│     Executors.newScheduledThreadPool(1);                               │
+│ executor.scheduleAtFixedRate(() -> {                                    │
+│     checkHealth();                                                      │
+│ }, 0, 10, TimeUnit.SECONDS);                                            │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ TYPE 5: WORK STEALING POOL (ForkJoinPool)                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ForkJoinPool executor = ForkJoinPool.commonPool();                     │
+│ // Or:                                                                   │
+│ ForkJoinPool executor = new ForkJoinPool(8);                           │
+│                                                                          │
+│ • Parallel computation on multi-core systems                           │
+│ • "Work stealing" algorithm (threads steal work from others)           │
+│ • Ideal for divide-and-conquer problems                                │
+│ • Used by parallel streams                                             │
+│                                                                          │
+│ WHEN TO USE:                                                             │
+│ ✅ Divide-and-conquer algorithms                                       │
+│ ✅ Parallel processing (multicore)                                     │
+│ ✅ Heavy computation                                                   │
+│ ⚠️  Not for I/O-bound tasks                                            │
+│                                                                          │
+│ Example:                                                                │
+│ List<Integer> numbers = Arrays.asList(1, 2, 3, 4, 5, ...);            │
+│ int sum = numbers.parallelStream()  # Uses ForkJoinPool internally   │
+│     .mapToInt(n -> n * 2)                                              │
+│     .sum();                                                             │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ COMPARISON TABLE:                                                       │
+│                                                                          │
+│ Type              Threads  Scaling   Best For              Risk        │
+│ ────────────────┼─────────┼──────────┼─────────────────┼──────────── │
+│ Fixed            Fixed    None      Web servers       Queue memory  │
+│ Cached           Dynamic  Auto      Short-lived       Too many thr  │
+│ Single           1        None      Sequential        Bottleneck    │
+│ Scheduled        Fixed    None      Periodic          Can delay     │
+│ ForkJoinPool     Multiple Divide    Heavy compute     Use sparingly │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PRACTICAL USAGE: Step-by-Step                                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ STEP 1: Create ExecutorService                                          │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ExecutorService executor = Executors.newFixedThreadPool(10);           │
+│ // Creates 10 worker threads                                           │
+│                                                                          │
+│ STEP 2: Submit Tasks                                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ // Option A: Runnable (no return value)                                │
+│ executor.submit(() -> {                                                │
+│     System.out.println("Task executing...");                           │
+│     doSomething();                                                      │
+│ });                                                                      │
+│                                                                          │
+│ // Option B: Callable (returns value)                                  │
+│ Future<Integer> future = executor.submit(() -> {                       │
+│     System.out.println("Task executing...");                           │
+│     return 42;  # Return value                                         │
+│ });                                                                      │
+│                                                                          │
+│ STEP 3: Optionally Wait for Result (Future)                            │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ try {                                                                    │
+│     Integer result = future.get();  # Block until done                 │
+│     System.out.println("Result: " + result);  // 42                   │
+│ } catch (InterruptedException | ExecutionException e) {               │
+│     e.printStackTrace();                                                │
+│ }                                                                        │
+│                                                                          │
+│ STEP 4: Submit Multiple Tasks                                           │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ List<Future<Integer>> futures = new ArrayList<>();                     │
+│ for (int i = 0; i < 100; i++) {                                        │
+│     Future<Integer> future = executor.submit(() -> {                   │
+│         return calculateSomething();                                   │
+│     });                                                                  │
+│     futures.add(future);                                               │
+│ }                                                                        │
+│                                                                          │
+│ STEP 5: Wait for All Tasks                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ for (Future<Integer> future : futures) {                               │
+│     Integer result = future.get();  # Wait for each                    │
+│ }                                                                        │
+│                                                                          │
+│ OR use invokeAll:                                                       │
+│ List<Callable<Integer>> tasks = new ArrayList<>();                     │
+│ for (int i = 0; i < 100; i++) {                                        │
+│     tasks.add(() -> calculateSomething());                             │
+│ }                                                                        │
+│ List<Future<Integer>> futures = executor.invokeAll(tasks);             │
+│ // Wait for ALL to complete                                            │
+│                                                                          │
+│ STEP 6: Shutdown Executor                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ // Option 1: Graceful shutdown                                         │
+│ executor.shutdown();  # No new tasks accepted                          │
+│                      # Wait for running tasks to finish                │
+│ try {                                                                    │
+│     if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {            │
+│         executor.shutdownNow();  # Force stop                          │
+│     }                                                                    │
+│ } catch (InterruptedException e) {                                      │
+│     executor.shutdownNow();                                             │
+│ }                                                                        │
+│                                                                          │
+│ // Option 2: Force stop (not recommended)                              │
+│ executor.shutdownNow();  # Interrupt all threads immediately           │
+│                         # Not graceful!                                │
+│                                                                          │
+│ System.out.println("Executor terminated!");                            │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ THREADPOOLEXECUTOR: Advanced (Custom Configuration)                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ For fine-grained control, use ThreadPoolExecutor:                       │
+│                                                                          │
+│ ThreadPoolExecutor executor = new ThreadPoolExecutor(                  │
+│     10,                           // Core threads (always alive)        │
+│     50,                           // Max threads (if queue full)        │
+│     60, TimeUnit.SECONDS,        // Idle timeout                        │
+│     new LinkedBlockingQueue<>(100)  // Task queue (capacity: 100)      │
+│ );                                                                       │
+│                                                                          │
+│ PARAMETERS:                                                              │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ 1. Core Pool Size (10)                                                  │
+│    • Threads created immediately                                       │
+│    • Always kept alive (even if idle)                                  │
+│                                                                          │
+│ 2. Max Pool Size (50)                                                   │
+│    • If queue full → create more threads (up to max)                   │
+│    • After max reached → reject tasks                                  │
+│                                                                          │
+│ 3. Keep Alive Time (60 seconds)                                        │
+│    • Threads beyond core size terminate after idle time                │
+│    • Shrinks pool when load decreases                                  │
+│                                                                          │
+│ 4. Queue                                                                │
+│    • LinkedBlockingQueue: FIFO, bounded                                │
+│    • SynchronousQueue: Direct handoff (no queue)                       │
+│    • PriorityQueue: Priority-based                                     │
+│                                                                          │
+│ 5. RejectedExecutionHandler (optional)                                  │
+│    What to do when queue full & max threads reached?                   │
+│    • CallerRunsPolicy: Caller thread executes task                     │
+│    • DiscardPolicy: Discard task                                       │
+│    • AbortPolicy (default): Throw exception                            │
+│                                                                          │
+│ LIFECYCLE:                                                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ Load: 5 requests                                                        │
+│ └─ Use core threads (5 threads)                                        │
+│    No queue needed                                                      │
+│                                                                          │
+│ Load: 15 requests                                                       │
+│ ├─ Use core threads (10)                                               │
+│ └─ Queue remaining (5) → execute when threads free                     │
+│                                                                          │
+│ Load: 120 requests                                                      │
+│ ├─ Use core threads (10)                                               │
+│ ├─ Fill queue (100)                                                    │
+│ └─ Create more threads (up to 50 max)                                  │
+│    10 + 40 = 50 total threads executing                                │
+│    10 tasks rejected (or handled by RejectedExecutionHandler)          │
+│                                                                          │
+│ Load decreases                                                          │
+│ └─ Threads beyond core size (> 10) terminate after 60s idle            │
+│    Back to 10 core threads                                             │
+│                                                                          │
+│ EXAMPLE: Web Server Configuration                                       │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ThreadPoolExecutor executor = new ThreadPoolExecutor(                  │
+│     100,              # Core: handle 100 concurrent requests            │
+│     500,              # Max: spike up to 500                            │
+│     60, TimeUnit.SECONDS,   # Shrink after 60s of low load            │
+│     new LinkedBlockingQueue<>(1000),  # Queue up to 1000 tasks        │
+│     new ThreadFactory() {  # Custom thread naming                       │
+│         public Thread newThread(Runnable r) {                          │
+│             Thread t = new Thread(r);                                  │
+│             t.setName("HttpWorker-" + t.getId());                     │
+│             return t;                                                   │
+│         }                                                                │
+│     },                                                                   │
+│     new ThreadPoolExecutor.CallerRunsPolicy()  # If overloaded         │
+│ );                                                                       │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ COMMON MISTAKES & HOW TO AVOID                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ MISTAKE 1: Creating new thread per task                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ❌ WRONG:                                                                │
+│ for (Task task : tasks) {                                              │
+│     new Thread(() -> task.run()).start();  # Creates 1000 threads!   │
+│ }                                                                        │
+│                                                                          │
+│ ✅ RIGHT:                                                               │
+│ ExecutorService executor = Executors.newFixedThreadPool(10);           │
+│ for (Task task : tasks) {                                              │
+│     executor.submit(() -> task.run());  # Reuses 10 threads           │
+│ }                                                                        │
+│ executor.shutdown();                                                    │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ MISTAKE 2: Not shutting down executor                                   │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ❌ WRONG:                                                                │
+│ ExecutorService executor = Executors.newFixedThreadPool(10);           │
+│ for (Task task : tasks) {                                              │
+│     executor.submit(() -> task.run());                                 │
+│ }                                                                        │
+│ // Never shut down → threads keep running forever!                     │
+│ // App won't exit!                                                      │
+│                                                                          │
+│ ✅ RIGHT:                                                               │
+│ ExecutorService executor = Executors.newFixedThreadPool(10);           │
+│ for (Task task : tasks) {                                              │
+│     executor.submit(() -> task.run());                                 │
+│ }                                                                        │
+│ executor.shutdown();  # Important!                                      │
+│ executor.awaitTermination(1, TimeUnit.MINUTES);                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ MISTAKE 3: Unbounded queue (memory leak)                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ❌ WRONG:                                                                │
+│ executor = new ThreadPoolExecutor(                                      │
+│     10, 10, 60, TimeUnit.SECONDS,                                      │
+│     new LinkedBlockingQueue<>()  # UNLIMITED! ❌                       │
+│ );                                                                        │
+│ for (int i = 0; i < 1_000_000; i++) {                                  │
+│     executor.submit(() -> doWork());  # 1M tasks queued!              │
+│ }                                                                        │
+│ // Queue grows to 1M tasks → OutOfMemoryError!                        │
+│                                                                          │
+│ ✅ RIGHT:                                                               │
+│ executor = new ThreadPoolExecutor(                                      │
+│     10, 50, 60, TimeUnit.SECONDS,                                      │
+│     new LinkedBlockingQueue<>(1000),  # BOUNDED!                       │
+│     new ThreadPoolExecutor.AbortPolicy()  # Reject if full             │
+│ );                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ MISTAKE 4: Not handling Future exceptions                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ❌ WRONG:                                                                │
+│ Future<Integer> future = executor.submit(() -> {                       │
+│     int x = 10 / 0;  // Exception! But not caught                     │
+│     return x;                                                           │
+│ });                                                                      │
+│ executor.shutdown();                                                    │
+│ // Exception silently ignored!                                         │
+│                                                                          │
+│ ✅ RIGHT:                                                               │
+│ Future<Integer> future = executor.submit(() -> {                       │
+│     try {                                                                │
+│         int x = 10 / 0;                                                │
+│         return x;                                                       │
+│     } catch (Exception e) {                                             │
+│         System.err.println("Error: " + e);                             │
+│         throw e;                                                        │
+│     }                                                                    │
+│ });                                                                      │
+│ try {                                                                    │
+│     Integer result = future.get();  # Gets exception                   │
+│ } catch (ExecutionException e) {                                        │
+│     System.err.println("Task failed: " + e.getCause());                │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ MISTAKE 5: Pool size too small/too large                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ❌ TOO SMALL:                                                            │
+│ // Only 2 threads for web server                                       │
+│ newFixedThreadPool(2)  # Can't handle 100 concurrent requests!        │
+│                                                                          │
+│ ❌ TOO LARGE:                                                            │
+│ // 10,000 threads                                                       │
+│ newFixedThreadPool(10_000)  # Massive memory usage!                    │
+│                                                                          │
+│ ✅ RIGHT:                                                               │
+│ CPU-bound tasks:      coreSize = number of CPU cores                  │
+│ I/O-bound tasks:      coreSize = 2 * number of CPU cores              │
+│ Web server:           coreSize = 100-500                              │
+│                                                                          │
+│ Get CPU count:                                                          │
+│ int cores = Runtime.getRuntime().availableProcessors();                │
+│ executor = Executors.newFixedThreadPool(cores * 2);  # I/O-bound     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ REAL-WORLD EXAMPLES                                                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ EXAMPLE 1: Web Server (Handle HTTP Requests)                            │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ public class WebServer {                                                │
+│     private ExecutorService executor;                                   │
+│                                                                          │
+│     public WebServer() {                                                │
+│         // Handle up to 1000 concurrent requests                       │
+│         executor = Executors.newFixedThreadPool(100);                  │
+│     }                                                                    │
+│                                                                          │
+│     public void handleRequest(HttpRequest request) {                   │
+│         executor.submit(() -> {                                         │
+│             try {                                                       │
+│                 HttpResponse response = processRequest(request);       │
+│                 sendResponse(response);                                │
+│             } catch (Exception e) {                                     │
+│                 sendErrorResponse(e);                                   │
+│             }                                                           │
+│         });                                                              │
+│     }                                                                    │
+│                                                                          │
+│     public void shutdown() {                                            │
+│         executor.shutdown();                                            │
+│         try {                                                           │
+│             executor.awaitTermination(30, TimeUnit.SECONDS);           │
+│         } catch (InterruptedException e) {                              │
+│             executor.shutdownNow();                                     │
+│         }                                                               │
+│     }                                                                    │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ EXAMPLE 2: Parallel Batch Processing                                    │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ public class BatchProcessor {                                            │
+│     public void processRecords(List<Record> records) {                │
+│         int cores = Runtime.getRuntime().availableProcessors();        │
+│         ExecutorService executor =                                      │
+│             Executors.newFixedThreadPool(cores);                       │
+│                                                                          │
+│         List<Future<Result>> futures = new ArrayList<>();              │
+│         for (Record record : records) {                                │
+│             futures.add(executor.submit(() -> {                        │
+│                 return processRecord(record);                          │
+│             }));                                                        │
+│         }                                                                │
+│                                                                          │
+│         List<Result> results = new ArrayList<>();                      │
+│         for (Future<Result> future : futures) {                        │
+│             try {                                                       │
+│                 results.add(future.get());  # Wait for all            │
+│             } catch (Exception e) {                                     │
+│                 System.err.println("Processing failed: " + e);         │
+│             }                                                           │
+│         }                                                               │
+│                                                                          │
+│         executor.shutdown();                                            │
+│         return results;                                                 │
+│     }                                                                    │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ EXAMPLE 3: Scheduled Tasks (Health Check)                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ public class HealthChecker {                                            │
+│     private ScheduledExecutorService executor;                          │
+│                                                                          │
+│     public HealthChecker() {                                            │
+│         executor = Executors.newScheduledThreadPool(1);                │
+│     }                                                                    │
+│                                                                          │
+│     public void startHealthCheck() {                                    │
+│         // Run every 10 seconds, starting immediately                  │
+│         executor.scheduleAtFixedRate(() -> {                            │
+│             try {                                                       │
+│                 if (!isHealthy()) {                                     │
+│                     alertOps("System unhealthy!");                      │
+│                 }                                                       │
+│             } catch (Exception e) {                                     │
+│                 e.printStackTrace();                                    │
+│             }                                                           │
+│         }, 0, 10, TimeUnit.SECONDS);                                    │
+│     }                                                                    │
+│                                                                          │
+│     private boolean isHealthy() {                                       │
+│         // Check database, memory, etc.                                │
+│         return true;  // Placeholder                                    │
+│     }                                                                    │
+│ }                                                                        │
+│                                                                          │
+│ ═════════════════════════════════════════════════════════════════════  │
+│                                                                          │
+│ EXAMPLE 4: Timeout for Long-Running Tasks                               │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ ExecutorService executor = Executors.newFixedThreadPool(10);            │
+│                                                                          │
+│ Future<String> future = executor.submit(() -> {                        │
+│     // Long operation                                                   │
+│     return heavyComputation();                                          │
+│ });                                                                      │
+│                                                                          │
+│ try {                                                                    │
+│     // Wait max 5 seconds, then timeout                                │
+│     String result = future.get(5, TimeUnit.SECONDS);                   │
+│     System.out.println("Result: " + result);                           │
+│ } catch (TimeoutException e) {                                          │
+│     System.out.println("Task took too long!");                         │
+│     future.cancel(true);  # Cancel the task                            │
+│ } catch (ExecutionException e) {                                        │
+│     System.out.println("Task failed: " + e.getCause());                │
+│ }                                                                        │
+│                                                                          │
+│ executor.shutdown();                                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PERFORMANCE & SIZING GUIDE                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ HOW TO SIZE THREAD POOL:                                                │
+│ ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│ N = number of CPU cores                                                │
+│ W = ratio of wait time to compute time                                 │
+│                                                                          │
+│ Threads = N * (1 + W)                                                   │
+│                                                                          │
+│ EXAMPLES:                                                                │
+│ ────────────────────────────────────────────────────────────────────── │
+│                                                                          │
+│ CPU-bound (heavy computation, no I/O):                                  │
+│ • W ≈ 0 (no waiting)                                                    │
+│ • Threads = N * 1 = N                                                   │
+│ • Example: 8 cores → use 8 threads                                      │
+│                                                                          │
+│ I/O-bound (database, network):                                          │
+│ • W ≈ 10 (wait 90% of time, compute 10%)                              │
+│ • Threads = N * (1 + 10) = 11N                                          │
+│ • Example: 8 cores → use 88 threads                                     │
+│                                                                          │
+│ Web server (high I/O, some compute):                                    │
+│ • W ≈ 2-5                                                               │
+│ • Threads = 100-500 (depends on W)                                      │
+│ • Example: 8 cores → use 50-100 threads                                 │
+│                                                                          │
+│ MEMORY COST PER THREAD:                                                 │
+│ ─────────────────────────────────────────────────────────────────────  │
+│ • Thread stack: ~1MB (default)                                          │
+│ • 100 threads = ~100MB                                                  │
+│ • 1000 threads = ~1GB                                                   │
+│ → Be careful with pool size!                                            │
+│                                                                          │
+│ GET CPU COUNT:                                                          │
+│ int cores = Runtime.getRuntime().availableProcessors();                │
+│                                                                          │
+│ EXAMPLE CONFIGURATION:                                                  │
+│ int cores = Runtime.getRuntime().availableProcessors();                │
+│ int poolSize;                                                            │
+│ if (isIOBound) {                                                        │
+│     poolSize = cores * 2;  # I/O-bound                                 │
+│ } else {                                                                │
+│     poolSize = cores;  # CPU-bound                                     │
+│ }                                                                        │
+│ ExecutorService executor = Executors.newFixedThreadPool(poolSize);     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### Transaction Propagation in Spring
+
+```
+┌────────────────────┬──────────────┬──────────────────┬─────────────────────┬──────────────────────┐
+│ PROPAGATION        │ JOIN EXIST?  │ IF NONE EXISTS   │ USE CASE            │ KEY RISK             │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ REQUIRED           │ ✓ YES        │ Create new       │ Business logic      │ Cascading rollbacks  │
+│ (default)          │              │                  │ Default choice      │                      │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ REQUIRES_NEW       │ ✗ NO         │ Create new       │ Audit logs          │ Orphaned data        │
+│                    │ (suspend)    │ (suspend parent) │ Soft errors         │ Deadlock potential   │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ NESTED             │ ✓ YES        │ Create new       │ Partial rollback    │ MySQL doesn't        │
+│                    │ (savepoint)  │                  │ within TX           │ support it           │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ SUPPORTS           │ ✓ IF EXISTS  │ None (auto)      │ Read-only queries   │ Half-transactional   │
+│                    │              │                  │ Optional behavior   │ behavior             │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ NOT_SUPPORTED      │ ✗ SUSPEND    │ None (auto)      │ Non-critical work   │ Inconsistency        │
+│                    │              │                  │ Deferred tasks      │ risk                 │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ MANDATORY          │ ✓ REQUIRED   │ ERROR ✗          │ Critical paths      │ Exception if no TX   │
+│                    │              │ (exception)      │ Enforce consistency │ (expected behavior)  │
+├────────────────────┼──────────────┼──────────────────┼─────────────────────┼──────────────────────┤
+│ NEVER              │ ✗ FORBIDDEN  │ None (auto)      │ Should never run    │ Exception if in TX   │
+│                    │              │ (exception)      │ in transaction      │ (expected behavior)  │
+└────────────────────┴──────────────┴──────────────────┴─────────────────────┴──────────────────────┘
+
+```
+~~~~
+
+
+---
+
+### PROJECT SCENARIO: Rating Microservice Transaction Bug
+
+```
+┌─────────────────────────┬──────────────┬───────────────────┬────────────────────┐
+│ COMPONENT               │ SPRING BEAN? │ @TRANSACTIONAL    │ PROBLEM             │
+├─────────────────────────┼──────────────┼───────────────────┼────────────────────┤
+│ RatingService           │ ✓ YES        │ REQUIRED (TX1)    │ Starts transaction  │
+│                         │ @Service     │                   │                     │
+├─────────────────────────┼──────────────┼───────────────────┼────────────────────┤
+│ ValidationService       │ ✓ YES        │ REQUIRED          │ Joins TX1 ✓         │
+│ (injected)              │ @Autowired   │ (joins parent)    │ Validates rating    │
+├─────────────────────────┼──────────────┼───────────────────┼────────────────────┤
+│ RatingHistoryBuilder    │ ✗ NO ✗✗✗    │ REQUIRES_NEW      │ @TX IGNORED         │
+│ (new C() created)       │ created with │ (ignored!)        │ Runs in TX1         │
+│                         │ new          │                   │ Exception here      │
+│                         │              │                   │ → Rolls back ALL    │
+├─────────────────────────┼──────────────┼───────────────────┼────────────────────┤
+│ AuditService            │ ✓ YES        │ REQUIRES_NEW      │ Never runs          │
+│ (injected)              │ @Autowired   │ (separate TX)     │ TX1 already rolled  │
+└─────────────────────────┴──────────────┴───────────────────┴────────────────────┘
+
+```
+
+RESULT OF EXCEPTION IN RatingHistoryBuilder:
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────┬──────────────────────────────────────┐
+│ m3 IS Spring bean (@Autowired)       │ m3 NOT Spring bean (new C())         │
+├──────────────────────────────────────┼──────────────────────────────────────┤
+│ @Transactional(REQUIRES_NEW) ✓ WORKS │ @Transactional(REQUIRES_NEW) ✗ IGNORED
+│                                      │                                      │
+│ Exception in m3:                     │ Exception in m3:                     │
+│  ├─ Creates separate TX2 ✓           │  ├─ NO separate TX ✗                │
+│  ├─ Exception propagates             │  ├─ Exception propagates             │
+│  └─ TX2 rolls back (m3's work)       │  └─ NO rollback of "m3's TX"         │
+│     but TX1 NOT affected             │     (no TX boundary to rollback)     │
+│                                      │                                      │
+│ If m2 catches:                       │ If m2 catches:                       │
+│  ├─ TX1 continues                    │  ├─ TX1 continues                    │
+│  ├─ TX2 already rolled back ✓        │  ├─ m3's changes still in TX1 ✓      │
+│  └─ TX1 can commit (m3's work lost)  │  └─ m3's changes persist in TX1      │
+│                                      │                                      │
+│ If m2 doesn't catch:                 │ If m2 doesn't catch:                 │
+│  ├─ TX1 rolls back (marked)          │  ├─ TX1 rolls back (marked)          │
+│  ├─ TX2 already rolled back ✓        │  ├─ m3's changes rolled back too     │
+│  └─ Both TX gone                     │  └─ (part of TX1)                    │
+└──────────────────────────────────────┴──────────────────────────────────────┘
+
+```
+
+WITH Spring bean (proxy):
+  Exception → Separate TX already exists
+           → That TX can rollback independently
+           → Parent TX unaffected
+
+WITHOUT Spring bean (no proxy):
+  Exception → No separate TX
+           → Exception just marks parent TX for rollback
+           → No independent rollback possible
+           → m3's changes follow parent's fate
+
+m3 is NOT a Spring bean (new C()) with @Transactional(REQUIRES_NEW)
+
+Exception in m3:
+```
+  ├─ Exception PROPAGATES ✓ (normal Java throw/catch)
+  └─ NO SEPARATE TX in m3 ✗
+     └─ @Transactional(REQUIRES_NEW) is ignored
+     └─ No TX boundary = No separate rollback for m3
+
+```
+
+m3's changes are part of TX1 (parent)
+```
+  ├─ If exception caught by m2 → TX1 continues
+  │  └─ m3's changes persist in TX1
+  │  └─ m2 can decide: commit or throw again
+  │
+  └─ If exception NOT caught → Propagates to m1
+     └─ TX1 rolls back (entire chain)
+     └─ m3's changes also rolled back (because no boundary)           
+
+```
+~~~~
+
+
+---
+
+### SPRING FRAMEWORK PHILOSOPHY: COMPLETE OVERVIEW
+
+SPRING PHILOSOPHY MEMORY TRICK
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+PRIMARY MNEMONIC: "PACED"
+(Spring helps you work at a GOOD PACE)
+
+```
+┌─────┬──────────────────────────────────────────────────────────────────┐
+│ P   │ POJO (Plain Old Java Objects)                                    │
+│     │ Your code stays yours, no framework lock-in                      │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ A   │ Aspect-Oriented Programming (AOP)                                │
+│     │ Separate cross-cutting concerns (@Transactional, logging)        │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ C   │ Convention over Configuration                                    │
+│     │ Smart defaults, minimal XML/config needed                        │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ E   │ Ecosystem (batteries included)                                   │
+│     │ Spring Data, Security, Cloud, Kafka all built-in                 │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ D   │ Dependency Injection / IoC (Inversion of Control)                │
+│     │ Framework owns object lifecycle, not your code                   │
+└─────┴──────────────────────────────────────────────────────────────────┘
+
+```
+
+SECONDARY MNEMONIC: "FUET"
+(Additional Spring philosophies)
+
+```
+┌─────┬──────────────────────────────────────────────────────────────────┐
+│ F   │ Fail Fast (problems visible at startup, not runtime)             │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ U   │ Unchecked Exceptions (clean signatures, no throws pollution)     │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ E   │ Explicit over Implicit (code self-documents with annotations)    │
+├─────┼──────────────────────────────────────────────────────────────────┤
+│ T   │ Testability (POJOs work without Spring)                          │
+└─────┴──────────────────────────────────────────────────────────────────┘
+
+```
+
+COMBINED: "PACED FUET"
+
+Use PACED for core principles, FUET for secondary ones.
+
+HOW TO REMEMBER
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+Think of it as:
+  "Spring keeps you PACED (productive) by handling FUET (framework details)"
+
+Or simply:
+  "Move at a good PACE" (PACED)
+  "Work SWIFTLY" (Separate concerns, Write POJO, Inject dependencies, Fail fast,
+                  Test easily, less boilerplate, Yearly conventions)
+
+SPRING FAIL-FAST MECHANISMS
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────┬─────────────────────────────┬──────────────────────┐
+│ MECHANISM                │ WHAT IT VALIDATES           │ WHEN CAUGHT          │
+├──────────────────────────┼─────────────────────────────┼──────────────────────┤
+│ EAGER BEAN CREATION      │ All beans created upfront   │ Startup (0s)         │
+│                          │ Missing @Service/@Bean? ✗   │ NOT at 3am            │
+│                          │ Constructor fails? ✗        │                      │
+├──────────────────────────┼─────────────────────────────┼──────────────────────┤
+│ AUTOWIRED TYPE CHECKING  │ @Autowired field type match │ Startup (bean create)│
+│                          │ No qualifying bean? ✗       │ NOT at runtime       │
+│                          │ Multiple beans same type? ✗ │                      │
+├──────────────────────────┼─────────────────────────────┼──────────────────────┤
+│ CIRCULAR DEPENDENCY      │ A→B→C→A detected           │ Startup (bean create)│
+│ DETECTION                │ Prevents infinite loops ✓   │ NOT at StackOverflow │
+├──────────────────────────┼─────────────────────────────┼──────────────────────┤
+│ PROXY CREATION           │ @Transactional can proxy?   │ Startup (proxy create│
+│ (@Transactional)         │ Method interceptable? ✓     │ NOT on first call    │
+│                          │ TransactionManager exist? ✓ │                      │
+├──────────────────────────┼─────────────────────────────┼──────────────────────┤
+│ CONFIGURATION VALIDATION │ @Value properties exist?    │ Startup (@Bean init) │
+│ (@Value, @Bean)          │ @Bean initialization works? │ NOT on first use     │
+│                          │ Database connection valid? ✗│                      │
+├──────────────────────────┼─────────────────────────────┼──────────────────────┤
+│ ANNOTATION PROCESSING    │ @Component found?           │ Startup (class scan) │
+│                          │ @Bean method valid?         │ NOT at first call    │
+│                          │ @Autowired field accessible?│                      │
+└──────────────────────────┴─────────────────────────────┴──────────────────────┘
+
+```
+
+TIMELINE: WHEN EACH MECHANISM FIRES
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+Spring Startup Flow:
+```
+┌─────────┐
+│ Scan    │ ← Annotation Processing (finds @Service, @Bean, @Autowired)
+│ 0.1s    │
+└────┬────┘
+     │
+┌────▼─────────────┐
+│ Create Beans     │ ← Eager Bean Creation (constructor called)
+│ 0.5s             │ ← Configuration Validation (@Bean initialization)
+└────┬─────────────┘
+     │
+┌────▼────────────┐
+│ Validate DI     │ ← Autowired Type Checking (field injection)
+│ 0.7s            │ ← Circular Dependency Detection (graph check)
+└────┬────────────┘
+     │
+┌────▼──────────┐
+│ Create Proxies│ ← Proxy Creation (@Transactional, @Async, @Cacheable)
+│ 0.9s          │
+└────┬──────────┘
+     │
+┌────▼────────────┐
+│ ✓ START SUCCESS │ ← All validations passed OR
+│ 1.0s            │ ✗ STARTUP FAILURE (exception thrown)
+└─────────────────┘
+
+```
+
+
+WHAT GETS CAUGHT (5 CATEGORIES)
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌───────────────────────────┬────────────────────────┬──────────────────────┐
+│ ERROR TYPE                │ EXAMPLE                │ MECHANISM THAT CATCHES
+├───────────────────────────┼────────────────────────┼──────────────────────┤
+│ Missing bean              │ No @Service found      │ Eager Bean Creation  │
+├───────────────────────────┼────────────────────────┼──────────────────────┤
+│ Type mismatch             │ @Autowired wrong type  │ Type Checking        │
+├───────────────────────────┼────────────────────────┼──────────────────────┤
+│ Circular dependency       │ A→B→A                 │ Circular Detection   │
+├───────────────────────────┼────────────────────────┼──────────────────────┤
+│ Config error              │ @Value property null  │ Config Validation    │
+├───────────────────────────┼────────────────────────┼──────────────────────┤
+│ Proxy/TX error            │ @Transactional invalid│ Proxy Creation       │
+└───────────────────────────┴────────────────────────┴──────────────────────┘
+
+```
+
+
+KEY INSIGHT
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+  Without Mechanism         With Spring Mechanism      Difference
+```
+  ─────────────────         ──────────────────         ──────────
+
+```
+  Error at 3am             Error at startup           Caught in dev
+  NullPointerException     NoSuchBeanDefinition       Clear error
+  Production crash         Can't start server         Prevent deploy
+~~~~
+
+
+---
+
+### MOST IMPORTANT SPRING ANNOTATIONS
+
+MOST IMPORTANT SPRING ANNOTATIONS
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────┬──────────────────────────┬──────────────────┬─────────────────┐
+│ ANNOTATION      │ WHAT IT DOES             │ SIGNIFICANCE     │ WHEN TO USE     │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @SpringBootApp  │ Enables Spring Boot      │ Start here!      │ Main class      │
+│ lication        │ Auto-config + component  │ Zero-config app  │ (1 per app)     │
+│                 │ scan + embedded server   │                  │                 │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Service        │ Marks class as Spring    │ DI container     │ Business logic  │
+│                 │ bean (service layer)     │ knows to manage  │ classes         │
+│                 │ @Component shorthand     │ its lifecycle    │                 │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Component      │ Generic Spring bean      │ IoC principle    │ Reusable beans  │
+│                 │ Auto-instantiated        │ (inversion of    │ (if not @Service│
+│                 │ Singleton by default     │ control)         │ /@Repository)   │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Autowired      │ Dependency injection     │ Eliminates new   │ Field/constructor
+│                 │ Spring finds + injects   │ keyword (tight   │ to inject deps  │
+│                 │ matching bean            │ coupling gone)   │                 │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Bean           │ Factory method for bean  │ Fine-grained     │ Config class    │
+│                 │ Creates object manually  │ bean creation    │ @Bean methods   │
+│                 │ Returned to Spring       │ control          │                 │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Configuration  │ Class holds @Bean        │ Central config   │ Holds @Bean     │
+│                 │ methods (bean factories) │ location         │ definitions     │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Transactional  │ TX boundaries via AOP    │ Declarative TX   │ Methods needing │
+│                 │ Automatic rollback on ex │ (no code)        │ transaction     │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Value          │ Inject property values   │ Externalize config
+│                 │ From application.yml/env │ (12-factor app)  │ Config values   │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Repository     │ @Component for data      │ Semantic meaning │ Data access     │
+│                 │ layer + persistence ex   │ (DAO layer)      │ classes         │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @RestController │ @Controller + @Response │ REST endpoints   │ API controllers │
+│                 │ Body (JSON by default)   │ without boiler   │                 │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @RequestMapping │ Maps HTTP to methods     │ Request routing  │ Controller      │
+│ /GetMapping     │ @GetMapping shorthand    │ (which URL→which │ methods         │
+│ /PostMapping    │ for common HTTP verbs    │ method)          │                 │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Aspect         │ Cross-cutting concern    │ AOP (separate    │ Logging, metrics
+│                 │ Define before/after logic│ concerns)        │ security checks │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Cacheable      │ Cache method results     │ Performance      │ Read-heavy      │
+│                 │ Return cached if exists  │ (50-100x faster) │ methods         │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Async          │ Run method in thread pool│ Non-blocking     │ Background jobs │
+│                 │ Non-blocking return      │ (don't block UI) │ notifications   │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @Qualifier      │ Specify which bean when │ Resolve ambiguity│ When multiple   │
+│                 │ multiple candidates     │ (no guessing)    │ beans same type │
+├─────────────────┼──────────────────────────┼──────────────────┼─────────────────┤
+│ @EnableCaching  │ Turn on caching support  │ Enable @Cacheable│ Config class    │
+│                 │ (bootstraps cache layer) │ annotations      │ (1 per app)     │
+└─────────────────┴──────────────────────────┴──────────────────┴─────────────────┘
+
+```
+
+TOP 5 CRITICAL ANNOTATIONS (Must Know)
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 1. @SpringBootApplication (1 per app, main class)                          │
+│    └─ Enables auto-config + component scanning + embedded server           │
+│                                                                             │
+│ 2. @Service (mark business logic classes)                                  │
+│    └─ Spring manages lifecycle, DI container knows about it                │
+│                                                                             │
+│ 3. @Autowired (inject dependencies)                                        │
+│    └─ Eliminates new keyword, enables loose coupling, testability         │
+│                                                                             │
+│ 4. @Transactional (transaction boundaries)                                 │
+│    └─ Declarative TX via AOP, automatic rollback, critical for data       │
+│                                                                             │
+│ 5. @RestController (API endpoints)                                         │
+│    └─ Automatically serializes to JSON, handles HTTP routing               │
+└────────────────────────────────────────────────────────────────────────────┘
+
+```
+
+ANNOTATION HIERARCHY (What implies what)
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+@SpringBootApplication
+```
+  └─ @Configuration + @EnableAutoConfiguration + @ComponentScan
+     └─ finds @Service, @Component, @Repository
+        └─ Spring creates singletons of all
+           └─ @Autowired injects dependencies
+              └─ @Transactional wraps with TX proxy
+                 └─ @RequestMapping routes HTTP to @RestController methods
+
+```
+
+SIGNIFICANCE BY CATEGORY
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────┬────────────────────────────────────────────────────────────┐
+│ CATEGORY        │ ANNOTATIONS & SIGNIFICANCE                                │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Lifecycle       │ @SpringBootApplication (start app)                         │
+│                 │ @Configuration (define beans)                              │
+│                 │ → Control when/how objects created                         │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Dependency      │ @Service, @Component, @Repository (mark beans)             │
+│ Management      │ @Autowired (inject deps)                                   │
+│                 │ → Remove tight coupling, enable testing                    │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Web/API         │ @RestController (API endpoints)                            │
+│                 │ @RequestMapping, @GetMapping, @PostMapping (routing)      │
+│                 │ → HTTP to Java method mapping automatic                    │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Data/TX         │ @Transactional (TX boundaries)                             │
+│                 │ @Repository (DAO pattern)                                  │
+│                 │ → Automatic rollback, fail-safe operations                 │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Configuration   │ @Value (externalize config)                                │
+│                 │ @PropertySource (load properties)                          │
+│                 │ → Config changes without code recompile                    │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Performance     │ @Cacheable (cache results)                                 │
+│                 │ @Async (non-blocking)                                      │
+│                 │ → Fast responses, don't block threads                      │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Aspects         │ @Aspect (cross-cutting)                                    │
+│                 │ @Transactional (AOP TX)                                    │
+│                 │ @Cacheable (AOP caching)                                   │
+│                 │ → Concerns separated, code stays clean                     │
+└─────────────────┴────────────────────────────────────────────────────────────┘
+
+```
+
+HOW ANNOTATIONS IMPLEMENT PACED PHILOSOPHY
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+P = POJO
+```
+  └─ Classes are plain Java, @Service/@Component don't change class
+
+```
+
+A = AOP (Aspect-Oriented)
+```
+  └─ @Transactional, @Aspect, @Cacheable separate concerns via AOP
+
+```
+
+C = Convention
+```
+  └─ @SpringBootApplication auto-config, sensible defaults
+
+```
+
+E = Ecosystem
+```
+  └─ @RestController, @Repository, @Cacheable all built-in
+
+```
+
+D = Dependency Injection
+```
+  └─ @Autowired, @Bean, @Configuration enable DI
+
+```
+
+KEY INSIGHT: Annotations are the LANGUAGE of Spring
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+Without annotations (old Spring):
+```
+  ├─ 1000s lines of XML config
+  ├─ Hard to understand
+  ├─ Disconnected from code
+  └─ Maintenance nightmare
+
+```
+
+With annotations (modern Spring):
+```
+  ├─ Code documents itself
+  ├─ Single source of truth
+  ├─ IDE-friendly (autocomplete)
+  └─ Easy to understand intent (@Transactional shows TX is here)
+
+```
+~~~~
+
+
+---
+
+### HOW @SpringBootApplication + main() STARTS A WEB APP
+
+HOW @SpringBootApplication + main() STARTS A WEB APP
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+WHAT @SpringBootApplication DOES
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ @SpringBootApplication is META-ANNOTATION (combines 3 annotations):          │
+│                                                                                │
+│ @SpringBootApplication                                                        │
+│   ├─ @Configuration (make this class a bean factory)                         │
+│   ├─ @EnableAutoConfiguration (auto-detect & configure beans)                │
+│   └─ @ComponentScan (find @Service, @Component, @Repository)                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+```
+
+THE main() METHOD: ENTRY POINT
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ @SpringBootApplication                                                        │
+│ public class Application {                                                    │
+│   public static void main(String[] args) {                                   │
+│     SpringApplication.run(Application.class, args);  ← KEY LINE              │
+│   }                                                                            │
+│ }                                                                              │
+│                                                                                │
+│ SpringApplication.run() does ALL the heavy lifting                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+```
+
+STEP-BY-STEP: WHAT SpringApplication.run() DOES
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────┬────────────────────┬──────────────────────────────────────────────────┐
+│ #   │ STEP               │ WHAT HAPPENS                                     │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 1   │ Create Spring      │ new SpringApplication(Application.class)         │
+│     │ Application        │ └─ Reads @SpringBootApplication meta-annotation  │
+│     │ Instance           │                                                  │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 2   │ Scan for           │ Finds all @Service, @Component, @Repository      │
+│     │ Components         │ in same package + sub-packages                   │
+│     │ (@ComponentScan)   │ └─ Example: UserService, RatingController found │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 3   │ Auto-Configuration │ Detects what's on classpath:                     │
+│     │ (@EnableAutoConfig)│ ├─ Spring Data JPA? → Configure DB access       │
+│     │                    │ ├─ Spring Security? → Configure auth             │
+│     │                    │ ├─ Spring Web? → Configure web server            │
+│     │                    │ └─ Redis? → Configure cache                      │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 4   │ Create Spring      │ new ApplicationContext()                         │
+│     │ Container (DI)     │ └─ Singleton container that holds all beans      │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 5   │ Instantiate All    │ For each bean found (@Service, etc.):            │
+│     │ Beans (Eager)      │ ├─ new UserService()  (calls constructor)        │
+│     │                    │ ├─ new RatingController()                        │
+│     │                    │ └─ Inject dependencies via @Autowired            │
+│     │                    │ └─ Validate all dependencies resolved            │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 6   │ Create Proxies     │ For each @Transactional, @Cacheable, @Async:     │
+│     │ (AOP)              │ └─ Wrap bean in proxy (intercept method calls)   │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 7   │ Start Embedded     │ Detect embedded server on classpath:             │
+│     │ Web Server         │ ├─ Spring Web? → Use Tomcat (default)            │
+│     │                    │ ├─ Or Jetty, Undertow                            │
+│     │                    │ └─ new TomcatServletWebServerFactory()           │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 8   │ Register           │ TomcatServletWebServer.start()                   │
+│     │ Controllers        │ ├─ Scans for @RestController                     │
+│     │                    │ ├─ Maps @RequestMapping to servlet handlers      │
+│     │ (Request Routing)  │ └─ Example: POST /rating → RatingController      │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 9   │ Bind Port          │ server.setPort(8080)  [from application.yml]     │
+│     │                    │ └─ Listens on http://localhost:8080              │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 10  │ Print Banner       │ "  .   ____          _            __ _ _"        │
+│     │ + Ready Message    │ " / \\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \"     │
+│     │                    │ "( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \"     │
+│     │                    │ " \\/  ___)| |_)| | | | | || (_| |  ) ) ) )"     │
+│     │                    │ "  '  |____|.__|_| |_|_| |_|\__, | / / / /"      │
+│     │                    │ " Tomcat started on port(s): 8080 (http) ...     │
+├─────┼────────────────────┼──────────────────────────────────────────────────┤
+│ 11  │ READY              │ ✓ Application listening                          │
+│     │                    │ ✓ First HTTP request will be handled             │
+└─────┴────────────────────┴──────────────────────────────────────────────────┘
+
+```
+
+VISUAL TIMELINE
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+main() called
+    ↓
+SpringApplication.run(Application.class, args)
+    ↓ (0ms)
+```
+    ├─ Read @SpringBootApplication
+    │
+    ├─ Scan classpath for @Service/@Component
+    │   └─ Found: UserService, RatingController, DataRepository (10ms)
+    │
+    ├─ Auto-configure beans
+    │   └─ DataSource, TransactionManager, Jackson, Tomcat (50ms)
+    │
+    ├─ Create ApplicationContext (Spring DI container)
+    │   └─ Instantiate all beans, inject dependencies (100ms)
+    │   └─ Validate: all @Autowired resolved? YES ✓
+    │
+    ├─ Create AOP Proxies
+    │   └─ Wrap @Transactional methods (10ms)
+    │
+    ├─ Start Embedded Tomcat
+    │   ├─ Create TomcatServletWebServerFactory
+    │   ├─ Register @RestController handlers
+    │   ├─ Bind to port 8080
+    │   └─ (30ms)
+    │
+    ├─ Print banner + "Tomcat started" (5ms)
+    │
+
+```
+    ↓ (Total: ~200ms)
+    
+✓ READY: Listening on http://localhost:8080
+
+User sends: GET /ratings/123
+    ↓
+Tomcat receives request
+    ↓
+DispatcherServlet (Spring's front controller)
+    ↓
+Maps to: RatingController.get(123)
+    ↓
+Bean already created, proxy already set up
+    ↓
+Method executes, returns JSON
+    ↓
+Response sent (1-10ms)
+
+
+WHAT HAPPENS IN BACKGROUND (No manual coding needed)
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ YOU WRITE:                     │ SPRING AUTOMATICALLY DOES:                │
+├────────────────────────────────┼───────────────────────────────────────────┤
+│ @SpringBootApplication         │ • Enables auto-config                     │
+│ public class Application { }    │ • Scans components                        │
+│                                │ • Creates beans                           │
+│ @Service                       │ • Registers in DI container               │
+│ public class UserService { }    │ • Resolves @Autowired                     │
+│                                │                                           │
+│ @RestController                │ • Instantiates controller                 │
+│ public class UserController {   │ • Maps URLs to methods                    │
+│   @GetMapping("/user/{id}")     │ • Handles HTTP requests                   │
+│   public User get(int id) {}    │ • Serializes response to JSON             │
+│ }                              │ • Starts web server                       │
+└────────────────────────────────┴───────────────────────────────────────────┘
+
+```
+
+WHY THIS ARCHITECTURE MATTERS
+```
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────┬──────────────────────────────────────────┐
+│ BENEFIT                         │ HOW                                      │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Zero Configuration              │ Auto-config detects defaults             │
+│ (works out of box)              │ (Tomcat, Jackson, DataSource)            │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Fail Fast                       │ All beans created at startup             │
+│                                 │ Missing dependencies? Error at start     │
+│                                 │ (not 3am in production)                  │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Embedded Server                 │ No need to install/configure Tomcat      │
+│ (no separate Tomcat)            │ Just run jar (java -jar app.jar)        │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ DI Container Ready              │ Beans exist before first request         │
+│ (no lazy loading issues)        │ Thread-safe, singletons, fast            │
+└─────────────────────────────────┴──────────────────────────────────────────┘
+
+```
+
+DEVELOPER EXPERIENCE
+```
+════════════════════════════════════════════════════════════════════════════════
+
+```
+
+WITHOUT Spring Boot:
+  1. Download Tomcat
+  2. Extract Tomcat
+  3. Configure web.xml
+  4. Configure DataSource in context.xml
+  5. Deploy WAR file
+  6. Restart Tomcat
+  7. Check logs for errors
+```
+  └─ (30 minutes, many error points)
+
+```
+
+WITH Spring Boot:
+  1. @SpringBootApplication + main()
+  2. Run main()
+  3. Server ready in 1-2 seconds
+```
+  └─ (10 seconds, fail-fast errors)
+
+```
+~~~~
+
+---
+
