@@ -5696,8 +5696,20 @@ m3's changes are part of TX1 (parent)
      └─ m3's changes also rolled back (because no boundary)           
 
 ```
-~~~~
 
+**Plain-English walkthrough of this bug:**
+
+The call chain is `RatingService` → `ValidationService` → `RatingHistoryBuilder` → (would call) `AuditService`. `RatingService` and `ValidationService` are real Spring beans, so `ValidationService`'s `REQUIRED` just joins TX1 — fine so far. The break is `RatingHistoryBuilder`, which was created with plain **`new RatingHistoryBuilder()`** instead of being injected as a bean.
+
+**The core bug:** `@Transactional` only works through Spring's AOP proxy — Spring can only wrap a method in a transaction if the call comes from outside, through a bean the container manages. `RatingHistoryBuilder` was never wrapped in a proxy because it was hand-built with `new`, so its `@Transactional(REQUIRES_NEW)` is just inert text with zero effect.
+
+**The consequence:** the intent was "isolate `RatingHistoryBuilder`'s work in its own transaction, so if it fails, it fails alone." Instead, its code just runs as ordinary code inside the parent TX1. When it throws, there's no separate TX to roll back — the exception marks the **entire TX1** for rollback, wiping out `RatingService`'s and `ValidationService`'s already-correct work too.
+
+**And it gets worse:** `AuditService` was specifically given `REQUIRES_NEW` so an audit log entry survives *even if the main transaction fails*. But TX1 already rolled back before execution ever reached `AuditService` — so it never runs, and the one piece of code meant to guarantee a record of what happened leaves no record.
+
+**The fix:** make `RatingHistoryBuilder` a real Spring bean (`@Component` + `@Autowired`, not `new`) — then `REQUIRES_NEW` actually creates a separate TX2, and a failure there rolls back only TX2 while TX1 commits normally (exactly what the right-hand "m3 IS Spring bean" column above shows).
+
+**Interview one-liner:** "`@Transactional` is proxy-based — it only fires when the call comes from outside the object through Spring's container-managed bean. Manually instantiating with `new` (or calling a method on `this` from inside the same class) bypasses the proxy entirely, so the annotation is silently ignored — a classic, hard-to-spot Spring bug."
 
 ---
 
