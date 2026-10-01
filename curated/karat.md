@@ -442,19 +442,19 @@ Practice spotting and fixing these bug *shapes* fast (confirmed pattern: a faili
 
 Each problem below is buggy code plus a failing test, exactly like the real Karat format. Try to spot and fix it yourself before jumping to the linked solution — all 11 solutions are collected separately in the [Code Solutions](#code-solutions-segment-2) section so you aren't shown the fix while reading the bug.
 
-1. [equals/hashCode Using Only Partial Fields](#problem-1-equals-and-hashcode-using-only-partial-fields) — the real confirmed Trade reconciliation bug
-2. [String to Numeric Parsing Bug](#problem-2-string-to-numeric-parsing-bug)
-3. [Transactional Ignored Because Built with new](#problem-3-transactional-ignored-because-built-with-new)
-4. [Reference Equality Instead of equals](#problem-4-reference-equality-instead-of-equals)
-5. [Mutable Key Mutated After Insertion](#problem-5-mutable-key-mutated-after-insertion)
-6. [Wrong Comparator Implementation](#problem-6-wrong-comparator-implementation)
-7. [Off-by-One Loop Bound](#problem-7-off-by-one-loop-bound)
-8. [Missing Null Check](#problem-8-missing-null-check)
-9. [SimpleDateFormat Shared Across Threads](#problem-9-simpledateformat-shared-across-threads)
-10. [Java Streams Misuse](#problem-10-java-streams-misuse)
-11. [List Passed by Reference and Mutated by Callee](#problem-11-list-passed-by-reference-and-mutated-by-callee)
+1. [Problem 1](#problem-1)
+2. [Problem 2](#problem-2)
+3. [Problem 3](#problem-3)
+4. [Problem 4](#problem-4)
+5. [Problem 5](#problem-5)
+6. [Problem 6](#problem-6)
+7. [Problem 7](#problem-7)
+8. [Problem 8](#problem-8)
+9. [Problem 9](#problem-9)
+10. [Problem 10](#problem-10)
+11. [Problem 11](#problem-11)
 
-##### Problem 1: equals and hashCode Using Only Partial Fields
+##### Problem 1
 *(→ [Solution](#solution-1-equals-and-hashcode-using-only-partial-fields))*
 
 The failing test — `reconcile()` should return trades from the feed that aren't yet booked, but returns an empty list:
@@ -504,7 +504,7 @@ class TradeReconciler {
 // Actual:   unbooked is EMPTY — both trades are "equal" because equals()/hashCode() only look at symbol
 ```
 
-##### Problem 2: String to Numeric Parsing Bug
+##### Problem 2
 *(→ [Solution](#solution-2-string-to-numeric-parsing-bug))*
 
 ```java
@@ -524,10 +524,8 @@ class PriceFeed {
 // Actual:   throws NumberFormatException on "N/A", test never reaches the assertion
 ```
 
-##### Problem 3: Transactional Ignored Because Built with new
+##### Problem 3
 *(→ [Solution](#solution-3-transactional-ignored-because-built-with-new))*
-
-See the full walkthrough in [citi.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug) — summarized here as a standalone bug-fix drill:
 
 ```java
 @Service
@@ -554,7 +552,7 @@ class RatingHistoryBuilder {
 // Actual:   the exception rolls back the ENTIRE outer transaction — everything is lost
 ```
 
-##### Problem 4: Reference Equality Instead of equals
+##### Problem 4
 *(→ [Solution](#solution-4-reference-equality-instead-of-equals))*
 
 ```java
@@ -571,7 +569,7 @@ class OrderLookup {
 // Actual:   returns false — different String objects, == compares references, not content
 ```
 
-##### Problem 5: Mutable Key Mutated After Insertion
+##### Problem 5
 *(→ [Solution](#solution-5-mutable-key-mutated-after-insertion))*
 
 ```java
@@ -604,7 +602,7 @@ class BalanceCache {
 }
 ```
 
-##### Problem 6: Wrong Comparator Implementation
+##### Problem 6
 *(→ [Solution](#solution-6-wrong-comparator-implementation))*
 
 ```java
@@ -621,7 +619,7 @@ class TradeByPriceComparator implements Comparator<Trade> {
 // Actual:   sort is unstable/wrong because compare() returns 0 for genuinely different prices
 ```
 
-##### Problem 7: Off-by-One Loop Bound
+##### Problem 7
 *(→ [Solution](#solution-7-off-by-one-loop-bound))*
 
 ```java
@@ -641,7 +639,7 @@ class MovingAverage {
 // Actual:   either wrong average (includes prices[3]=40) or ArrayIndexOutOfBoundsException if windowSize == prices.length - 1
 ```
 
-##### Problem 8: Missing Null Check
+##### Problem 8
 *(→ [Solution](#solution-8-missing-null-check))*
 
 ```java
@@ -657,7 +655,7 @@ class CustomerService {
 // Actual:   throws NullPointerException — intermittent in production because it only happens for incomplete profiles
 ```
 
-##### Problem 9: SimpleDateFormat Shared Across Threads
+##### Problem 9
 *(→ [Solution](#solution-9-simpledateformat-shared-across-threads))*
 
 ```java
@@ -675,7 +673,7 @@ class ReportGenerator {
 //           because SimpleDateFormat mutates internal Calendar fields and isn't synchronized
 ```
 
-##### Problem 10: Java Streams Misuse
+##### Problem 10
 *(→ [Solution](#solution-10-java-streams-misuse))*
 
 ```java
@@ -694,7 +692,7 @@ class InventoryService {
 //           because `peek` is an intermediate op and there's no terminal op (forEach/collect/count) to trigger it
 ```
 
-##### Problem 11: List Passed by Reference and Mutated by Callee
+##### Problem 11
 *(→ [Solution](#solution-11-list-passed-by-reference-and-mutated-by-callee))*
 
 ```java
@@ -757,6 +755,8 @@ double computeTotal(String[] priceStrings) {
 **Why it works:** unparseable or missing entries are explicitly skipped instead of crashing the whole computation — the loop keeps going and the valid entries still sum correctly.
 
 ##### Solution 3: Transactional Ignored Because Built with new
+
+See the full walkthrough in [citi.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug).
 
 ```java
 @Service
