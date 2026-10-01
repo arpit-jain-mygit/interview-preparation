@@ -4286,8 +4286,21 @@ If ANY say NO  → Nobody goes! ❌
 └──────────────────────────────────────────────────────────────────────────┘
 
 ```
-~~~~
 
+**Real example: transferring money from ICICI to HDFC — 2PC or SAGA?**
+
+The "Use Case: Banking" row above is about a transfer **within one bank, across its own databases** (like the Alice/Bob example — same bank, 2PC is realistic there). A transfer **between two different banks** is a different situation, and the answer flips: **use SAGA, not 2PC.**
+
+**Why 2PC is out here:** 2PC needs one coordinator that both participants trust, which blocks/locks both databases until it says commit. ICICI and HDFC are separate companies — neither will let an outside coordinator lock their core banking database while it waits on the other bank's answer. There's no shared transaction manager across two different organizations, so 2PC isn't just a bad fit, it's not available at all.
+
+**What's actually used — SAGA with a compensating transaction:**
+1. Debit ICICI (its own local transaction, committed immediately).
+2. Credit HDFC (a separate local transaction).
+3. If step 2 fails, run a **compensating transaction** — refund the ICICI debit — instead of rolling back a shared transaction that doesn't exist across two banks.
+
+**The catch:** this gives **eventual consistency**, not true strong consistency — there's a real window where money has left ICICI but hasn't landed in HDFC yet. Real interbank transfers make that window safe with two things layered on top of the saga: **idempotency keys** (so a retried debit/credit never double-applies) and **reconciliation** (a background check that triggers the compensating refund if the credit never lands).
+
+**One-line answer if asked directly:** "True strong consistency isn't achievable across two independent banks — there's no shared coordinator to make 2PC possible. Interbank transfers use SAGA with a compensating transaction plus idempotent retries: eventual consistency with a safety net, not ACID strong consistency."
 
 ---
 
