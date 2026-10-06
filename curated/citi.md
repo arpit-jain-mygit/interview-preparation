@@ -6375,6 +6375,8 @@ Build it as three beats that map onto the JD. Don't recite the resume line by li
 
 > "I've spent about 22 years building enterprise platforms in Java and on the cloud, the last nearly 8 as Director of Engineering at S&P Global Ratings. There I led a 70-engineer global organization that owned the data and applied-AI platform across 4 business lines. **Scale and reliability:** we re-architected legacy monoliths into event-driven microservices on Kafka and Kubernetes. Incidents dropped 60% and MTTR went from 2 hours to 20 minutes, with 99%+ availability at 10K+ documents a day. **AI in the product:** I shipped a multi-modal LLM extraction pipeline that took a task from 2 analyst-days to 20 minutes. It won the President's Award. **Cost:** about $180K a year out of cloud spend. Before S&P, I spent 10 years at ADP as an application architect on enterprise HCM SaaS. I led the move to microservices and grew a 200+ engineer architecture community. Since June I've gone deep on agentic AI: an IIT Hyderabad applied-AI program, where I built PlantGuard, a multi-agent copilot on LangGraph and MCP with human sign-off on actions, plus the Claude developer certification. What draws me to Redwood is exactly that intersection: mission-critical orchestration with agents acting through a governed layer, built from Hyderabad."
 
+Each S&P line above has a fuller spoken story in [25.14](#2514-resume-highlights-as-stories).
+
 ### 25.4 JD → Evidence Map (Know Where Each Proof Lives)
 
 | JD asks for | Your evidence | Full story |
@@ -6515,3 +6517,57 @@ $180K/yr cloud cost cut, ~27 FTEs/yr     EC2 -70%, Databricks -97.5%
 500+ ETL jobs migrated to Databricks     85% model → 99.2% system accuracy
 Redwood: 300+ hires by end-2027, Gartner SOAP MQ Leader 3 yrs running
 ```
+
+### 25.14 Resume Highlights as Stories
+
+Your three S&P resume bullets, told as four short spoken stories: **the problem → what we did → what changed → the lesson**. Each takes about 30–45 seconds. Use them when asked "tell me about your biggest achievement", or to expand any line of the 25.3 opening.
+
+#### Story 1: "The Platform Everyone Depended On" (scale)
+
+> "At S&P, analysts across 4 business lines and 50 asset classes depended on financial documents getting into our systems quickly and correctly. Every rating decision started there. But each business line had grown its own way of doing it, so there was no single, trustworthy pipeline.
+>
+> I led the 70-engineer global team that built **one platform for all of them**. Now we process 10,000+ documents a day at 95% accuracy, with responses under 2 seconds and 99%+ availability.
+>
+> What I learned: when every business line runs on your platform, reliability isn't a feature. It's the product."
+
+**Hook:** *Many business lines, one platform.*
+
+#### Story 2: "From Firefighting to Calm" (reliability)
+
+> "When I took over, we averaged **60 production incidents a month**, and each one took about **2 hours** to fix. The teams were good. The problem was a speed-over-safety culture sitting on top of fragile legacy monoliths.
+>
+> We attacked both. On the technology side, we broke the monoliths into event-driven microservices on Kafka, Kubernetes and Spring Boot, so one failure couldn't take everything down. On the culture side, we added four habits: a pre-flight checklist before every deploy, canary releases so bugs hit 5% of users instead of 100%, runbooks so on-call engineers weren't guessing, and blameless postmortems so people reported problems instead of hiding them.
+>
+> Incidents fell to **24 a month (60% fewer)**, and fix time went from **2 hours to 20 minutes**. The lesson: you can't fix incidents with architecture alone. You have to change the habits too."
+
+**Hook:** *60 became 24, and 2 hours became 20 minutes.* Full mechanism: [Cutting production incidents 60%](#cutting-production-incidents-60-explained-simply).
+
+#### Story 3: "The Bill Nobody Was Watching" (cost)
+
+> "Our cloud bill kept climbing, and when we dug in, it wasn't one big mistake. It was **one small mistake copied hundreds of times**. Our data pipelines were built from a shared template that kept clusters running and oversized even when nothing was happening. On one job that's nothing. Across 500+ jobs, it was a big number.
+>
+> So we fixed the template, not each job one by one. Clusters now start for a job and shut down when it finishes. We use cheaper spot instances where an interruption is safe, and we moved 500+ ETL jobs onto Databricks.
+>
+> Databricks compute dropped **97.5%** and EC2 dropped **70%**, saving about **$180K a year**, with a projected **40–50% lower** total cost of ownership. The lesson: at scale, fix the pattern, not the instance."
+
+**Hook:** *A small waste times 500 is a big bill.* Full mechanism: [Small inefficiency at scale](#small-inefficiency-at-scale-explained-simply-with-the-math), [§4 Databricks answer](#4-cloud--infrastructure-at-scale).
+
+#### Story 4: "Two Days to Twenty Minutes" (AI, President's Award)
+
+> "Analysts were spending **two full days** manually pulling numbers out of complex financial documents (tables, scans, mixed layouts) before they could do the actual analysis.
+>
+> We built a multi-modal LLM pipeline to read those documents. The model alone wasn't good enough for ratings work, so we put a safety net around it. It auto-approves only high-confidence results, sends uncertain ones to a human, and checks everything against business rules. We also automated how new document templates get added. That used to take **24 days per template**, and across 1,000 templates it now takes **under an hour**.
+>
+> Two days of work became **20 minutes (97.9% faster)**. It freed about **27 people's worth of time** every year and won the **President's Award**. The lesson: in an enterprise, AI earns trust through the system around the model, not the model alone."
+
+**Hook:** *Two days became 20 minutes, and the AI was trusted because of the safety net.* Full mechanism: [§10 GenAI](#10-genai-wildcard).
+
+#### Tying Them Together
+
+> "I **built** a platform everyone depended on, **made it reliable**, **made it cheap**, and then **made it smart**."
+
+**Build → Reliable → Cheap → Smart.** That's the arc, and it also matches Redwood's pitch: reliable orchestration first, AI on top.
+
+**Defensive notes:**
+- **"How is it 97.9%?"** 2 analyst-days is about 16 working hours, or 960 minutes. 20 ÷ 960 ≈ 2.1% of the original time, which is 97.9% faster.
+- ⚠ Story 3's "template copied 500 times" and Story 4's "safety net" mechanism come from the write-ups in §4/§15 and §10. Check that they match what really happened before you tell them as fact.
