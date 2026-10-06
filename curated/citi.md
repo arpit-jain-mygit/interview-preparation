@@ -6610,7 +6610,7 @@ Redwood: 300+ hires by end-2027, Gartner SOAP MQ Leader 3 yrs running
 
 ### 25.14 Resume Highlights as Stories
 
-Your three S&P resume bullets, told as four short spoken stories: **the problem → what we did → what changed → the lesson**. Each takes about 30–45 seconds. Use them when asked "tell me about your biggest achievement", or to expand any line of the 25.3 opening.
+Your three S&P resume bullets, told as four short spoken stories (plus three deep dives, Stories 5–7): **the problem → what we did → what changed → the lesson**. Each takes about 30–45 seconds. Use them when asked "tell me about your biggest achievement", or to expand any line of the 25.3 opening.
 
 #### Story 1: "The Platform Everyone Depended On" (scale)
 
@@ -6650,7 +6650,7 @@ Your three S&P resume bullets, told as four short spoken stories: **the problem 
 >
 > Databricks compute dropped **97.5%** and EC2 dropped **70%**, saving about **$180K a year**, with a projected **40–50% lower** total cost of ownership. The lesson: at scale, fix the pattern, not the instance."
 
-**Hook:** *A small waste times 500 is a big bill.* Full mechanism: [Small inefficiency at scale](#small-inefficiency-at-scale-explained-simply-with-the-math), [§4 Databricks answer](#4-cloud--infrastructure-at-scale).
+**Hook:** *A small waste times 500 is a big bill.* Full mechanism: [Small inefficiency at scale](#small-inefficiency-at-scale-explained-simply-with-the-math), [§4 Databricks answer](#4-cloud--infrastructure-at-scale). Deeper versions: [Story 5 (job clusters)](#story-5-the-template-that-cost-us-42-hours-a-day-job-cluster-redesign), [Story 6 (spot)](#story-6-cheap-compute-thats-allowed-to-disappear-spot-instances).
 
 #### Story 4: "Two Days to Twenty Minutes" (AI, President's Award)
 
@@ -6660,7 +6660,69 @@ Your three S&P resume bullets, told as four short spoken stories: **the problem 
 >
 > Two days of work became **20 minutes (97.9% faster)**. It freed about **27 people's worth of time** every year and won the **President's Award**. The lesson: in an enterprise, AI earns trust through the system around the model, not the model alone."
 
-**Hook:** *Two days became 20 minutes, and the AI was trusted because of the safety net.* Full mechanism: [§10 GenAI](#10-genai-wildcard).
+**Hook:** *Two days became 20 minutes, and the AI was trusted because of the safety net.* Full mechanism: [§10 GenAI](#10-genai-wildcard). Deeper version: [Story 7](#story-7-two-days-to-twenty-minutes--the-full-version-llm-extraction-presidents-award).
+
+#### Deep-Dive Stories (When They Ask "Tell Me More")
+
+Stories 3 and 4 are the 40-second versions. Use these when the interviewer leans in. Each one is about 60–90 seconds, followed by the questions most likely to come next.
+
+#### Story 5: "The Template That Cost Us 42 Hours a Day" (job-cluster redesign)
+
+> "We had 500+ ETL jobs on Databricks, and the bill kept growing faster than the work. When we dug in, no single job looked wrong. The real cause was the **shared template** every new pipeline was created from. It used always-on or oversized clusters as a 'safe' default, so each job wasted a few idle minutes. Five minutes on one job is nothing. Across 500+ jobs it was about **42 hours of idle compute every day**, and nobody owned that number.
+>
+> We fixed it in three moves. First, **fix the template, not the jobs**: every job now gets a **job cluster** that starts for the run and shuts down when it finishes, sized to the job's real load. Second, **make cost visible**: per-job cost reporting plus an automated policy check (Databricks cluster policies), so an oversized cluster is flagged when it's created, not months later on the bill. Third, **roll out in waves**, with the SLA-critical jobs handled separately.
+>
+> There was a catch. Job clusters have a **cold start** of a few minutes, and some pipelines fed a downstream SLA. For those we used **instance pools**, pre-warmed just before the batch window, so they kept the savings without missing deadlines.
+>
+> Together with spot instances, this took Databricks compute down **97.5%**. The lesson: sharing a template was right. Sharing it **without a feedback loop** was the real mistake."
+
+**Hook:** *Fix the template, not 500 jobs.*
+
+**Likely follow-ups:**
+- *Why did 500 jobs share one bad default?* Standardization was correct practice. What was missing was cost visibility and a sizing check. [Small inefficiency at scale](#small-inefficiency-at-scale-explained-simply-with-the-math)
+- *Doesn't a job cluster make every run slower?* Yes, by a few minutes. Instance pools, pre-baked images and shared multi-task clusters claw most of that back. [Job-cluster cold start](#job-cluster-cold-start--getting-the-savings-without-the-wait), [Scheduling pool warm-up](#can-instance-pool-warm-up-be-scheduled)
+- *Did anyone push back?* Two conflict versions: the platform team wanted a manual review gate ([Conflict 1](#conflict-1-change-management-between-the-microservices-team-and-the-legacy-platform-team)), and cold start broke another team's SLA ([Conflict 3](#conflict-3-a-new-teams-cost-optimization-breaks-an-sla-the-legacy-team-has-to-firefight)).
+- *Redwood bridge:* this is a scheduling-and-orchestration problem: when to start compute, how warm to keep it, and which jobs carry SLAs. It's exactly the domain RunMyJobs customers live in.
+
+#### Story 6: "Cheap Compute That's Allowed to Disappear" (spot instances)
+
+> "After the job-cluster fix, our clusters were smaller and short-lived, but we were still paying full on-demand prices for them. Spot instances cost a fraction as much, but the cloud provider can take them back at short notice. The real question wasn't 'should we use spot?' It was '**which work can survive a machine disappearing?**'
+>
+> So we drew a line. The **driver** of a Spark job always stays on-demand, because losing it kills the whole job. **Worker nodes** go on spot, because if one is reclaimed, Spark simply re-runs the lost tasks on another node and the job just gets a bit slower. We turned on **spot with fallback to on-demand**, so a job never stalls waiting for spot capacity, and added **checkpointing** on long stages so a lost worker doesn't restart everything. And we kept **SLA-critical paths off spot entirely**, because saving money on a job that then misses its deadline is no saving at all.
+>
+> Spot on top of right-sized job clusters is what took compute cost down that steeply. We applied the same rule to interruption-tolerant EC2 workloads, which is part of the **70% EC2** reduction. Overall that's about **$180K a year**. The lesson: **classify work by how well it tolerates failure, then buy compute to match.**"
+
+**Hook:** *Driver on-demand, workers on spot, SLA paths off spot.*
+
+**Likely follow-ups:**
+- *What happens when AWS reclaims a spot worker mid-job?* Spark reschedules the lost tasks, and checkpointing limits the rework. The job slows down but doesn't fail. [§4 Databricks answer](#4-cloud--infrastructure-at-scale)
+- *How did you decide which jobs could use spot?* By SLA tightness and restart cost. It's the same "what can tolerate movement" split used for cloud bursting. [§14 placement answer](#14-xip-specific-technical-questions)
+- *How do you stop savings from eroding over time?* Per-job cost dashboards and policy checks at creation (Story 5), reviewed monthly.
+- ⚠ *Verify before saying live:* how much of the 70% EC2 cut came from spot versus right-sizing or shutting down idle capacity. Have your real split ready.
+
+#### Story 7: "Two Days to Twenty Minutes" — the Full Version (LLM extraction, President's Award)
+
+> "Every rating starts with numbers buried in financial documents: annual reports, statements, filings, often scanned, full of tables, in different layouts across **50 asset classes**. An analyst spent about **two working days** per complex document just pulling the data out before any real analysis began. Skilled people were spending most of their time copying.
+>
+> We built a **multi-modal LLM extraction pipeline**. It reads the page as both text and image, so tables and scans work, and returns structured data. The model wasn't the hard part. **Trust** was. On its own, the model was about **85% accurate**, and that isn't acceptable for ratings. So we built a safety net around it:
+> - **Confidence routing:** results above 0.9 confidence are auto-approved, 0.7–0.9 go to a reviewer, and anything below 0.7 goes to manual extraction.
+> - **Business-rule validation:** amounts must be positive, dates valid, entities mappable, and totals must reconcile.
+> - **Sampling audits:** a regular spot-check of auto-approved results, with an alert if accuracy dips.
+>
+> That took the system to about **99.2% accuracy** and cut manual review by roughly **60%**. The second bottleneck was **onboarding new document templates**, which took about **24 days each**. We automated that too, so across **1,000 templates** it now takes **under an hour**.
+>
+> End result: **2 analyst-days became 20 minutes (97.9% faster)**, about **27 FTEs a year** of analyst time freed for real analysis, and the **President's Award**. The lesson: in an enterprise, **you don't ship a model, you ship a system people can trust.**"
+
+**Hook:** *85% model, 99.2% system: trust is the product.*
+
+**Likely follow-ups:**
+- *How did you handle hallucinations?* The model never gets the last word. Rules validation catches impossible values, confidence routing sends doubt to a human, and audits catch drift. [§10 GenAI](#10-genai-wildcard)
+- *How did you measure accuracy?* Against a labeled golden set per document type, re-run on every prompt or model change, plus production sampling. It's the same golden-set eval habit as PlantGuard (25.7).
+- *How did analysts come to trust it?* Start in **assist mode**: the AI pre-fills, the analyst confirms. Widen auto-approval only where measured accuracy earned it. Reviewers' corrections fed back into prompts and rules.
+- *Cost and latency?* Route by difficulty (a cheaper model for simple pages, the strong model for complex tables), cache repeated templates, and track cost per document.
+- *Data security?* Enterprise model endpoints with no training on our data, access control per business line, and a full audit trail of what was extracted and who approved it.
+- *Redwood bridge:* AI that acts inside a governed process, with confidence thresholds, human sign-off and an audit trail, is exactly the model behind Redwood's agents and MCP server (25.7).
+- ⚠ *Verify before saying live:* how template onboarding was actually automated (for example, LLM-drafted schema mappings reviewed by a human), and the real eval set and model choices. The mechanism above comes from §10's DCP write-up. The headline numbers are from your resume.
 
 #### Tying Them Together
 
