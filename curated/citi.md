@@ -48,7 +48,8 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 21. [Spring Framework Reference](#21-spring-framework-reference)
 22. [OOPS (Object-Oriented Design) Reference](#22-oops-object-oriented-design-reference)
 23. [Advanced Java](#23-advanced-java)
-24. [Citi Karat Screening Round](#how-springbootapplication--main-starts-a-web-app) *(GitHub didn't generate an anchor for this heading — link lands just above it; scroll down slightly)*
+24. [Citi Karat Screening Round](#24-citi-karat-screening-round)
+25. [Redwood — Director of Engineering (AI & Full-Stack SaaS), Site-Lead Round](#25-redwood--director-of-engineering-ai--full-stack-saas-site-lead-round)
 
 ---
 
@@ -6320,7 +6321,6 @@ WITH Spring Boot:
   └─ (10 seconds, fail-fast errors)
 
 ```
-~~~~
 
 ---
 
@@ -6338,3 +6338,180 @@ WITH Spring Boot:
 | **[Why Candidates Fail — Hard Rules](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#4-why-candidates-fail--hard-rules)** | Any overlay app or visible tab-switching on the shared screen → removal/flag; running out of time explaining-only on problem 2 → rejection; going silent while coding loses communication points. |
 | **[Practice Questions by Segment](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/karat.md#5-practice-questions-by-segment)** | Full practice list split into the 3 segments — Java/Spring conceptual rapid-fire, bug-fix-on-given-codebase shapes, and single-pass counting/array algorithms — plus a bonus OOP-design/code-review drill list. |
 
+
+---
+
+## 25. Redwood — Director of Engineering (AI & Full-Stack SaaS), Site-Lead Round
+
+**Round:** Rajkumar Paulraj, VP Engineering and India Country Head, Redwood Software (Hyderabad).
+**Role:** Director of Engineering, AI & Full-Stack SaaS, Hyderabad. Full JD: [`Redwood-Director-Engineering-JD.md`](Redwood-Director-Engineering-JD.md).
+**How to use this section:** it is written for *this* round only. Where a strong answer already exists elsewhere in this doc or repo, the answer below gives you the Redwood framing in a few lines and links to the full story, so you don't have to maintain two copies. Answers marked ⚠ are constructed shapes, not documented history. Put your own real specifics in before you use them.
+
+### 25.1 Who You're Talking To, and What This Round Actually Tests
+
+Public facts (sources at the end of 25.2): Rajkumar opened Redwood's new global centre in HITEC City in April 2026 (30,000 sq ft). Redwood calls it its primary operational hub and a key driver of agentic AI and global product development. The stated plan is 300+ hires across engineering, cloud and business operations by end of 2027. In the launch coverage, Rajkumar said Hyderabad was chosen for its talent pool, scale and ecosystem.
+
+What that means for you. A site lead who is building a 300-person centre from scratch is hiring a Director to be **one of the people who builds the site with them**, not only a delivery manager. So expect this round to test four things, roughly in this order:
+
+1. **Can you build and scale teams in Hyderabad?** That covers hiring, building a leadership bench, culture, retention, and onboarding new hires fast.
+2. **Can the India site own products, not just execute tickets from HQ?** This is about earning trust and decision rights with global product and architecture leadership.
+3. **Can you make AI real?** Both an AI-first SDLC inside engineering and agentic features in the product, with enterprise-grade governance.
+4. **Will you run a reliable enterprise SaaS?** RunMyJobs is mission-critical: customers' finance closes and SAP batch chains run on it.
+
+Expect fewer deep coding or system-design drills than in a panel round, and more "how would you…" and "tell me about a time…" questions. Keep every answer short: the punchline first, then one number, then stop and let them pull.
+
+### 25.2 Redwood in One Minute (Public Info)
+
+- **What they sell:** workload automation and **service orchestration** (SOAP). That means scheduling and orchestrating business-critical jobs and process chains across ERP (SAP especially), cloud, mainframe and data tools. Flagship SaaS: **RunMyJobs by Redwood**. Also **ActiveBatch** and **Tidal** (both acquired, both historically on-prem-heavy) and **Finance Automation** (record-to-report, financial close).
+- **Where they are now:** named a Leader in the **2026 Gartner Magic Quadrant for Service Orchestration and Automation Platforms**, the third year in a row. Positioning: "orchestrate the enterprise from hybrid cloud to agentic AI."
+- **AI direction (RunMyJobs 2026.3):** a **Redwood MCP server** that gives AI models governed access to 50+ tools across nine AWS regions with full auditability, validated with Microsoft Copilot, SAP Joule and Claude Code. **MCP + Agent2Agent (A2A)** support, so AI agents can trigger workflows. An **Operations Agent** that detects failures and SLA risks in real time and gives operators enriched context.
+- **Why that matters to you:** their AI story is "agents act, but through governed, auditable orchestration." That is the same design philosophy as PlantGuard (agents recommend, a human signs off on the action, every step is traced). Lead with that bridge.
+
+Sources: [Redwood opens tech hub in Hyderabad (Deccan Chronicle)](https://deccanchronicle.com/business/redwood-software-opens-tech-hub-in-hyderabad-1952278) · [Redwood global centre, AI-led innovation (UNI)](https://www.uniindia.com/redwood-software-opens-global-centre-in-hyderabad-bets-big-on-ai-led-innovation/business-economy/news/3818765.html) · [India technology center (VARINDIA)](https://varindia.com/news/redwood-software-sets-up-india-technology-center-in-hyderabad) · [Gartner SOAP MQ 2026 (Redwood)](https://www.redwood.com/press-releases/gartner-soaps-mq-2026/) · [Agentic orchestration at SAP Sapphire (Redwood)](https://www.redwood.com/press-releases/redwood-software-to-showcase-agentic-orchestration-platform-at-sap-sapphire/)
+
+### 25.3 Your 60-Second Opening ("Walk Me Through Your Background")
+
+Build it as three beats that map onto the JD. Don't recite the resume line by line.
+
+> "I've spent about 22 years building enterprise platforms in Java and on the cloud, the last nearly 8 as Director of Engineering at S&P Global Ratings. There I led a 70-engineer global organization that owned the data and applied-AI platform across 4 business lines. **Scale and reliability:** we re-architected legacy monoliths into event-driven microservices on Kafka and Kubernetes. Incidents dropped 60% and MTTR went from 2 hours to 20 minutes, with 99%+ availability at 10K+ documents a day. **AI in the product:** I shipped a multi-modal LLM extraction pipeline that took a task from 2 analyst-days to 20 minutes. It won the President's Award. **Cost:** about $180K a year out of cloud spend. Before S&P, I spent 10 years at ADP as an application architect on enterprise HCM SaaS. I led the move to microservices and grew a 200+ engineer architecture community. Since June I've gone deep on agentic AI: an IIT Hyderabad applied-AI program, where I built PlantGuard, a multi-agent copilot on LangGraph and MCP with human sign-off on actions, plus the Claude developer certification. What draws me to Redwood is exactly that intersection: mission-critical orchestration with agents acting through a governed layer, built from Hyderabad."
+
+### 25.4 JD → Evidence Map (Know Where Each Proof Lives)
+
+| JD asks for | Your evidence | Full story |
+|---|---|---|
+| Lead multiple teams, large org | 70-engineer global org (S&P); 200+ engineer architecture community (ADP) | [§7](#7-mentoring--people-development), [§19](#19-behavioral-qa-index) |
+| Enterprise SaaS | ADP HCM and Garnishment: global enterprise customers, mission-critical | 25.11 (own the "internal platform" gap) |
+| Java / Spring Boot, microservices, distributed | Event-driven re-architecture, Kafka, K8s, Spring Boot | [§16](#16-microservices-when-pitfalls-culture-patterns), [§3](#3-distributed-systems--large-scale-compute-design) |
+| Cloud (AWS/Azure/GCP) | AWS SA cert, CKAD; 70% EC2 / 97.5% Databricks compute cut | [§18](#18-aws-likely-questions-and-dcp-mapped-concepts), [§4](#4-cloud--infrastructure-at-scale) |
+| Highly available, secure, resilient | 99%+ availability, 60% fewer incidents, MTTR 6× | [Cutting incidents 60%](#cutting-production-incidents-60-explained-simply) |
+| DevOps, CI/CD, productivity | Canary, pre-flight checklists, runbooks, CI/CD adoption pilot | [§6](#6-engineering-leadership--agile-execution) |
+| AI/GenAI in products | LLM extraction pipeline (President's Award), 1,000-template onboarding automation | [§10](#10-genai-wildcard), 25.7 |
+| AI-first SDLC, AI dev tools | Claude Code daily use, Claude cert, rollout playbook | 25.6, [ProductSquads Q1–Q3](ProductSquads-JD-Expected-Questions.md#1-ai-native-engineering--coding-agent-adoption-high-priority) |
+| LLMs / agents (good to have) | PlantGuard: LangGraph, MCP, hybrid RAG, guardrails, evals, LangFuse | 25.7, [MCP.md](MCP.md), [LangChain/LangGraph](LangChain-LangGraph-LangSmith.md) |
+| Workflow automation / orchestration (good to have) | Camunda BPMN workflow in DCP; 500+ ETL job orchestration on Databricks | 25.8 |
+| Geographically distributed teams | Global org; Madrid/NY/Singapore trust story | [§7](#7-mentoring--people-development) |
+| Modernize existing platforms | Monolith → microservices roadmap, 500+ jobs migrated | [Roadmap](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+
+### 25.5 Building and Scaling the Hyderabad Centre
+
+**Q: We're growing to 300+ people here. How would you build your part of it: hiring, structure, the first 90 days?**
+A ⚠: Hire leaders before headcount. If I start by filling 30 engineer seats, I end up with 30 people waiting on me. In the first 30 days, I learn the product, the current team and where HQ actually sees gaps, and I hire or identify 2 or 3 strong engineering managers or tech leads. Each team gets a clear product area it owns end to end (a service plus its on-call, not "the India half of a feature"). Hiring runs as a funnel with a calibrated bar: a structured loop, a written rubric, and a debrief where every interviewer writes their vote down before anyone talks, so the bar doesn't drift as volume rises. I'd keep the ratio of senior to new at roughly 1:3 in each team for the first year, so knowledge spreads faster than headcount grows. Onboarding has one metric: days to first production commit. I'd target under two weeks, and AI tooling plus good docs help a lot here. By day 90 I'd want each team owning a real roadmap item, a hiring plan that leadership trusts, and a visible early win.
+
+**Q: How do you make sure Hyderabad becomes a product-owning site and not an "offshore execution centre"?**
+A: This is the [Madrid/NY/Singapore trust story in §7](#7-mentoring--people-development): real ownership beats better meetings. Concretely: ask for **whole product areas with decision rights**, not tasks. Put India engineers in architecture reviews as authors, not attendees. Keep a public decision log, and run async-first rituals so the HQ timezone isn't always the default. Earn the trust before asking for more scope: deliver one area with visibly high quality (incidents, predictability), then use that track record to ask for the next. The Singapore attrition result (30% → 5%) in that story is the proof point that ownership also fixes retention.
+
+**Q: Hyderabad is a hot market. How do you retain good engineers?**
+A: Money gets people in the door. Growth and ownership keep them. Three things I rely on: (1) visible career paths, a dual IC/manager ladder so strong engineers don't become managers just to get promoted; (2) interesting problems, and agentic AI at Redwood is a real draw, so give people AI work, not only maintenance; (3) managers who actually run 1:1s about growth. Link to the [post-outage retention story](#7-mentoring--people-development): investment in a person's growth, made concretely, is what made the 4-year engineer stay.
+
+**Q: How do you build a leadership bench, and do you have examples of people you've grown?**
+A: Full answer: [ProductSquads Q12](ProductSquads-JD-Expected-Questions.md#q12-youve-led-large-teams-at-sp-global-how-do-you-identify-and-develop-future-technical-leads-and-managers-do-you-have-examples-of-engineers-youve-promoted). Redwood framing: in a fast-growing site, the bench is the bottleneck. Spot people who already lead informally, give them a stretch scope with a safety net, and promote on demonstrated scope. The [reskilling story](#7-mentoring--people-development) has the strongest numbers: three engineers grew into lead-architect roles.
+
+**Q: How do you handle an underperformer, especially while hiring fast?**
+A: Full answer: [ProductSquads Q13](ProductSquads-JD-Expected-Questions.md#q13-how-do-you-handle-performance-issues-walk-us-through-a-specific-example-where-you-addressed-someone-who-wasnt-meeting-expectations). One-liner: be clear early about expectations, give support with a timeline, and decide. In a growing site, tolerating low performance quietly lowers the bar for every new hire.
+
+### 25.6 AI-First SDLC (Inside Engineering)
+
+**Q: How would you drive AI adoption across the engineering lifecycle here?**
+A: Full playbooks: [ProductSquads Q1 (coding agents and guardrails)](ProductSquads-JD-Expected-Questions.md#q1-your-recent-projects-show-genai-work-but-how-would-you-lead-a-team-to-adopt-ai-coding-agents-like-claude-code-at-scale-what-guardrails-would-you-establish), [Q2 (AI-ready specs without weakening ownership)](ProductSquads-JD-Expected-Questions.md#q2-tell-us-about-a-time-you-helped-engineers-break-down-work-into-ai-ready-specs-and-prompts-how-would-you-ensure-ai-improves-productivity-without-weakening-engineer-ownership), [Q3 (prompts vs. tickets)](ProductSquads-JD-Expected-Questions.md#q3-how-would-you-teach-a-team-to-think-in-prompts-vs-traditional-tickets-what-challenges-did-you-anticipate). The Redwood-shaped version:
+
+- **Start with the pain, not the tool.** Pick 2 or 3 measurable bottlenecks, such as test coverage on legacy ActiveBatch/Tidal code, PR review wait time, or onboarding time. Then pilot AI where it hits them. This is the same pilot-first approach as the [CI/CD adoption story in §6](#6-engineering-leadership--agile-execution): let a small team's data convert the skeptics.
+- **Across the whole SDLC, not just code generation:** spec and design drafts, test generation for untested legacy code (the biggest win for an acquired codebase), AI-assisted PR review as a first pass, incident summaries and runbook drafts, and docs.
+- **Guardrails:** humans own every merge. AI-written code gets the same review, tests and security scans. Use an approved tool list with enterprise data controls (no customer data in prompts). Pay extra attention to licence and secret scanning.
+- **Measure outcomes, not usage:** DORA metrics (lead time, deployment frequency, change failure rate, MTTR) plus escaped defects. If lead time drops but change failure rate rises, AI is creating debt, not productivity.
+- **Your credibility:** you use Claude Code yourself, hold the Claude developer certification, and built PlantGuard with these tools. Say it. A Director who has done it personally drives adoption faster than one who mandates it.
+
+**Q: How do you stop AI-generated code from lowering quality or eroding engineers' understanding of the system?**
+A: "You ship it, you own it, you can explain it." In review, the author must be able to explain any AI-written block. Keep architecture decisions and the critical paths (scheduling core, security, multi-tenancy) human-designed. Watch change failure rate and code churn as early-warning signals. See [ProductSquads Q20](ProductSquads-JD-Expected-Questions.md#q20-youve-built-strong-operational-excellence-cultures-how-would-you-adapt-that-to-an-ai-native-fast-shipping-environment-what-principles-carry-over-vs-need-to-change) for which operational-excellence principles carry over to an AI-native team.
+
+**Q: How do you stay technically current while running a large org?**
+A: Full answer: [ProductSquads Q6](ProductSquads-JD-Expected-Questions.md#q6-how-do-you-stay-technically-current-in-fast-moving-domains-like-ai-when-youre-managing-large-teams). The proof is your last 4 months: IIT Hyderabad program, PlantGuard, Claude certification.
+
+### 25.7 AI Inside the Product (Agentic Orchestration)
+
+**Q: Tell me about AI you've actually put into production.**
+A: The LLM extraction pipeline at S&P: 2 analyst-days → 20 minutes, President's Award. The mechanism is in [§10](#10-genai-wildcard). The lesson that matters for Redwood: **the model was only about 85% accurate on its own. The product was trustworthy because of the system around it**: confidence-based routing (auto-approve, review, or manual), rules validation, and sampling audits. End-to-end accuracy reached 99.2%. Enterprise AI is a reliability problem more than a model problem.
+
+**Q: Our customers want AI agents to trigger and fix workflows. What worries you about agents taking actions in mission-critical orchestration, and how would you design it?**
+A: The worry is an agent doing the wrong thing confidently, at machine speed, on a finance close. Design it the way PlantGuard works:
+- **Agents act only through governed tools** (an MCP server like Redwood's), never by direct system access. Each tool has scoped permissions, tenant isolation, rate limits and a full audit log.
+- **Risk-tiered autonomy:** read-only actions such as diagnosing or summarizing run freely. Low-risk reversible actions (retry a failed job, reschedule) can be autonomous with policy limits. High-impact actions (skip a step in a finance close, change a production schedule) need **human sign-off**. In PlantGuard, parts ordering requires a human to approve.
+- **Guardrails and circuit breakers:** validate inputs and outputs, cap blast radius, and trip a breaker that falls back to "notify the operator" if the agent misbehaves or the LLM provider degrades.
+- **Observability and evals:** trace every agent step (LangFuse in PlantGuard), plus a golden-set eval suite that runs in CI so prompt or model changes can't silently regress behaviour.
+
+**Q: How would you build something like the Operations Agent (detect failures and SLA risks early)?**
+A: Predict, don't just react. The same instinct as scaling on consumer lag instead of CPU ([§3](#3-distributed-systems--large-scale-compute-design)): watch leading indicators (job duration against its history, queue depth, upstream delays) and project whether the downstream SLA will be missed *while there's still time to act*. The LLM's job is the part rules are bad at: correlating logs, past incidents and runbooks into a plain-English "what's wrong and what to try", using RAG over runbooks and prior incident tickets. The detection itself stays deterministic and testable.
+
+**Q: How do you choose models and control LLM cost and latency in a SaaS product?**
+A: Route by task: a small, cheap model for classification and routing, and a big model only where reasoning quality pays off. Cache aggressively (prompt caching, semantic caching for repeated questions). Set per-tenant budgets and track cost per action as a product metric. Use an abstraction layer (LiteLLM in PlantGuard) so you can switch providers without a rewrite. Background: [GenAI.md model-selection factors](AI-ML/GenAI.md), [RAG.md](AI-ML/RAG.md).
+
+### 25.8 Enterprise SaaS Engineering, Architecture and Modernization
+
+**Q: How would you think about scaling and reliability for a platform like RunMyJobs?**
+A: A scheduler's job is that the right job runs **exactly once, on time**, even when parts of the system fail. The core ideas map onto what you've built: durable state with idempotent execution (the [non-idempotent consumer incident](#real-incident-the-non-idempotent-kafka-consumer) is the cautionary tale: a scheduler that double-runs a payment job is worse than one that is late). Then: leader election or partitioned ownership of schedules so there's no single point of failure; multi-AZ by default and a deliberate decision on multi-region ([Multi-region vs. multi-AZ](#multi-region-vs-multi-az-why-the-jump-is-harder-than-it-looks)); tenant isolation so one noisy customer can't delay another's SLA; and SLOs defined per customer-facing promise (on-time start, completion), not per server.
+
+**Q: Redwood has acquired products (ActiveBatch, Tidal) with on-prem heritage. How would you modernize them toward cloud and SaaS?**
+A: Strangler pattern, no big bang. Full roadmap: [Monolith → microservices, DCP version](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) and [why it was low-risk](#what-makes-this-low-risk-not-a-big-bang). The Redwood angle: customers run critical batch on these products, so modernization must be invisible to them. Use contract tests on the existing APIs and agent protocols, migrate tenants in waves with rollback, and invest early in AI-generated test coverage for the legacy code, because you can't refactor safely what you can't test. Also look for **shared platform services** (auth, observability, connectors, an AI/MCP layer) so three products stop solving the same problem three times. That converges them without forcing a rewrite.
+
+**Q: How do you set engineering standards across many teams without becoming a bottleneck?**
+A: Full answer: [ProductSquads Q19](ProductSquads-JD-Expected-Questions.md#q19-how-do-you-establish-architecture-governance-without-becoming-a-bottleneck-in-a-fast-moving-team). One-liner: put standards in **paved roads** (templates, CI checks, golden paths), not in review meetings. The [500-job template story](#small-inefficiency-at-scale-explained-simply-with-the-math) shows both sides: one shared template multiplies a mistake, and fixing the template multiplies the fix.
+
+**Q: The role is full-stack. How deep are you on modern frontend?**
+A: Be honest: your depth is backend, distributed systems and AI. You have hands-on Angular from personal projects (PaperMind, EtymoBreak). Then say how you lead outside your deepest area: hire a strong frontend lead, set measurable quality bars (Core Web Vitals, accessibility, design-system adoption), and understand enough to review architecture decisions such as state management, micro-frontends and API contracts. Full answer: [ProductSquads Q14](ProductSquads-JD-Expected-Questions.md#q14-the-role-mentions-reacttypescript-nodejs-rest-apis-microservices-your-background-is-stronger-in-javapythonspring-boot-how-would-you-lead-teams-in-technologies-outside-your-deep-expertise).
+
+**Q: How do you get to 60% fewer incidents? Would that transfer here?**
+A: Yes, it's process, not domain. [Full story](#cutting-production-incidents-60-explained-simply): pre-flight checklists, canary deploys, runbooks, blameless postmortems. 60 → 24 incidents a month, MTTR 2 hours → 20 minutes. For a scheduler customers depend on, canary-by-tenant matters even more.
+
+### 25.9 Delivery, Stakeholders and Communicating Upward
+
+**Q: How do you know your teams are healthy and delivering?**
+A: Three lenses, reviewed monthly: **delivery** (predictability: committed vs. delivered, plus DORA lead time), **quality** (change failure rate, escaped defects, incidents and MTTR) and **people** (attrition, engagement, hiring funnel health). One rule: don't commit 100% of capacity. The [§19 Q7 note](#19-behavioral-qa-index) commits 190 of 250 points, leaving a buffer for unknowns.
+
+**Q: How do you balance roadmap features against tech debt and reliability work?**
+A: [Tech-debt coalition story in §6](#6-engineering-leadership--agile-execution) (50/50 split, monthly dashboards, 2M-LOC monolith shrunk 40%). For when leadership won't rank priorities, see [Conflict 2](#conflict-2-feature-delivery-vs-keeping-the-lights-on-when-leadership-wont-rank-them).
+
+**Q: Tell me about a conflict with another team or leader.**
+A: Pick by shape. Culture clash: [team dysfunction](#resolving-team-dysfunction-explained-simply). Cross-team cost impact: [Conflict 1](#conflict-1-change-management-between-the-microservices-team-and-the-legacy-platform-team). Peer with no shared manager, or Security vs. deadline: [archetypes in §17](#17-conflict-scenarios-for-behavioral-questions). For a site lead, the most relevant is **India site vs. HQ disagreement**. Use the peer-disagreement shape: move it from opinion to requirements and agree up front on who breaks the tie.
+
+**Q: How do you communicate risk and progress to senior leadership?**
+A: Start with the decision you need from them, give status in business terms (customer impact, dates, cost), and raise risk early with options attached, never just a problem. The concrete example: you got a skeptical CFO behind a slower deploy process by translating it into incident cost, $400K/month → $100K/month ([§4](#4-cloud--infrastructure-at-scale)).
+
+### 25.10 Motivation and Fit
+
+**Q: Why Redwood, and why this role?**
+A: Three honest reasons. (1) **The problem:** orchestration is where AI agents move from chatting to acting inside the enterprise, and Redwood already sits on the systems those actions touch (SAP, finance, data). Governed agentic orchestration is exactly what you built in PlantGuard and in production at S&P. (2) **The moment:** building a new global hub in Hyderabad, your city, means you shape the teams and culture, not inherit them. (3) **The fit:** enterprise reliability plus applied AI plus people leadership at scale is the combination you've spent 22 years building.
+
+**Q: You left S&P in June. What have you been doing, and why the gap?**
+A: Own it confidently, no apology. "After 8 years I took a deliberate break to go deep on agentic AI rather than learn it on the side: the IIT Hyderabad applied-AI program, building PlantGuard end to end, and the Claude developer certification. I wanted to come back to a leadership role with hands-on fluency in where engineering is going." *(Personalize the reason for leaving S&P and keep it positive and forward-looking.)*
+
+**Q: Your enterprise SaaS experience is mainly an internal platform at S&P. Is that a gap?**
+A: Partly, and say so. Then reframe: ADP was a true multi-customer enterprise SaaS product (HCM, Garnishment) for 10 years. At S&P the platform served 4 business lines with external-facing SLAs (99%+, <2s), and you ran it like a product: SLOs, cost per unit, internal customers with real alternatives. What you'll ramp on is Redwood's specific customer and release motions, not how to build multi-tenant enterprise software.
+
+### 25.11 Gaps — Own These Honestly
+
+- **Workload-automation domain:** no direct experience as a scheduler *vendor*, but strong experience as a heavy *user* of orchestration (500+ Databricks jobs, Camunda BPMN workflows). Say you know the customer's pain from the inside.
+- **Building a site from zero:** you've led a global org and a 200+ engineer community, but haven't opened a centre. Be ready with the 90-day plan in 25.5 instead.
+- **Frontend depth:** see 25.8. Lead through a strong frontend lead.
+- **Azure:** AWS and GCP certified. Redwood's MCP server runs on AWS, so lean on that.
+- **Employment gap since June 2026:** see 25.10. Frame it as deliberate upskilling, with PlantGuard as proof.
+
+### 25.12 Questions to Ask Rajkumar
+
+- What does the Hyderabad centre own end to end today, and what do you want it to own by end of 2027? Where does this Director role sit in that plan?
+- Of the 300+ hires, how is the split between engineering, cloud/SRE and business operations, and how much of the engineering leadership layer is still to be hired?
+- How are decision rights shared between Hyderabad and the other engineering sites, especially for architecture and roadmap?
+- Which products would this role cover: RunMyJobs, ActiveBatch, Tidal, Finance Automation, or the shared AI/MCP layer?
+- How far along is AI adoption inside Redwood's own engineering, and what would you want this role to change in the first 6 months?
+- What does success look like for this role at 6 and 12 months, from your point of view as site lead?
+- What is the hardest part of building the centre so far: hiring, ramp-up speed, or getting HQ to trust the site with ownership?
+
+### 25.13 Numbers to Say Without Thinking
+
+```
+70 engineers, global org (S&P)          200+ engineer community (ADP)
+99%+ availability, 95% accuracy, <2s     10K+ documents/day, 4 business lines
+Incidents 60 → 24/month (-60%)            MTTR 2 hrs → 20 min (6×)
+$180K/yr cloud cost cut, ~27 FTEs/yr     EC2 -70%, Databricks -97.5%
+2 analyst-days → 20 min (President's)     1,000 templates: 24 days → <1 hour
+500+ ETL jobs migrated to Databricks     85% model → 99.2% system accuracy
+Redwood: 300+ hires by end-2027, Gartner SOAP MQ Leader 3 yrs running
+```
