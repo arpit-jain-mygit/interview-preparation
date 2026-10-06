@@ -6610,7 +6610,7 @@ Redwood: 300+ hires by end-2027, Gartner SOAP MQ Leader 3 yrs running
 
 ### 25.14 Resume Highlights as Stories
 
-Your three S&P resume bullets, told as four short spoken stories (plus three deep dives, Stories 5–7): **the problem → what we did → what changed → the lesson**. Each takes about 30–45 seconds. Use them when asked "tell me about your biggest achievement", or to expand any line of the 25.3 opening.
+Your three S&P resume bullets, told as four short spoken stories (each with a deeper "if they lean in" layer), plus two production-incident scenarios: **the problem → what we did → what changed → the lesson**. Each takes about 30–45 seconds. Use them when asked "tell me about your biggest achievement", or to expand any line of the 25.3 opening.
 
 #### Story 1: "The Platform Everyone Depended On" (scale)
 
@@ -6642,87 +6642,56 @@ Your three S&P resume bullets, told as four short spoken stories (plus three dee
 - *Rules and patterns?* **DAMP-N-COSMOS** (big 3: own your data, async, monitor) and **ACES-DCBE**. [Golden Rules](#golden-rules-of-microservices), [Design Patterns](#design-patterns)
 - *Quick recap:* [Master Summary](#master-summary-laminated-card) · [5-Phase Journey](#5-phase-journey-how-the-pieces-fit) · *Where would you start?* [90-Day Kickoff](#90-day-kickoff-checklist)
 
-#### Story 3: "The Bill Nobody Was Watching" (cost)
+#### Story 3: "The Bill Nobody Was Watching" (cost: job clusters + spot instances)
 
-> "Our cloud bill kept climbing, and when we dug in, it wasn't one big mistake. It was **one small mistake copied hundreds of times**. Our data pipelines were built from a shared template that kept clusters running and oversized even when nothing was happening. On one job that's nothing. Across 500+ jobs, it was a big number.
+**40-second version:**
+
+> "Our cloud bill kept climbing, and when we dug in, it wasn't one big mistake. It was **one small mistake copied hundreds of times**. Our 500+ data pipelines were all created from a shared template that kept clusters running and oversized even when nothing was happening. Five idle minutes on one job is nothing. Across 500+ jobs it was about **42 hours of idle compute every day**.
 >
-> So we fixed the template, not each job one by one. Clusters now start for a job and shut down when it finishes. We use cheaper spot instances where an interruption is safe, and we moved 500+ ETL jobs onto Databricks.
->
-> Databricks compute dropped **97.5%** and EC2 dropped **70%**, saving about **$180K a year**, with a projected **40–50% lower** total cost of ownership. The lesson: at scale, fix the pattern, not the instance."
+> So we fixed the template, not the jobs: **job clusters** that start for a run and shut down when it finishes, plus **spot instances** for the work that can survive a machine disappearing. Databricks compute dropped **97.5%**, EC2 dropped **70%**, saving about **$180K a year**, while we moved 500+ ETL jobs to Databricks at a projected **40–50% lower** total cost of ownership. The lesson: at scale, fix the pattern, not the instance."
 
-**Hook:** *A small waste times 500 is a big bill.* Full mechanism: [Small inefficiency at scale](#small-inefficiency-at-scale-explained-simply-with-the-math), [§4 Databricks answer](#4-cloud--infrastructure-at-scale). Deeper versions: [Story 5 (job clusters)](#story-5-the-template-that-cost-us-42-hours-a-day-job-cluster-redesign), [Story 6 (spot)](#story-6-cheap-compute-thats-allowed-to-disappear-spot-instances).
+**If they lean in, the two levers:**
+- **Lever 1, job-cluster redesign:** fix the shared template so every job gets a right-sized cluster that auto-terminates. Make cost visible with per-job cost reporting, and add an automated policy check (Databricks cluster policies) that flags an oversized cluster when it's created, not months later on the bill. Roll out in waves, with SLA-critical jobs handled separately. (That last part matters: see [Incident 1](#incident-1-the-cost-fix-that-broke-a-downstream-sla-job-cluster-cold-start).)
+- **Lever 2, spot instances:** the question isn't "should we use spot?" but "**which work can survive a machine disappearing?**" The Spark **driver** stays on-demand, because losing it kills the job. **Workers** go on spot, because Spark re-runs a reclaimed worker's tasks elsewhere and the job just slows down a little. Use **spot with fallback to on-demand** so jobs never stall waiting for capacity, add **checkpointing** on long stages, and keep **SLA-critical paths off spot entirely**. The same rule applies to interruption-tolerant EC2 workloads.
 
-#### Story 4: "Two Days to Twenty Minutes" (AI, President's Award)
-
-> "Analysts were spending **two full days** manually pulling numbers out of complex financial documents (tables, scans, mixed layouts) before they could do the actual analysis.
->
-> We built a multi-modal LLM pipeline to read those documents. The model alone wasn't good enough for ratings work, so we put a safety net around it. It auto-approves only high-confidence results, sends uncertain ones to a human, and checks everything against business rules. We also automated how new document templates get added. That used to take **24 days per template**, and across 1,000 templates it now takes **under an hour**.
->
-> Two days of work became **20 minutes (97.9% faster)**. It freed about **27 people's worth of time** every year and won the **President's Award**. The lesson: in an enterprise, AI earns trust through the system around the model, not the model alone."
-
-**Hook:** *Two days became 20 minutes, and the AI was trusted because of the safety net.* Full mechanism: [§10 GenAI](#10-genai-wildcard). Deeper version: [Story 7](#story-7-two-days-to-twenty-minutes--the-full-version-llm-extraction-presidents-award).
-
-#### Deep-Dive Stories (When They Ask "Tell Me More")
-
-Stories 3 and 4 are the 40-second versions. Use these when the interviewer leans in. Each one is about 60–90 seconds, followed by the questions most likely to come next.
-
-#### Story 5: "The Template That Cost Us 42 Hours a Day" (job-cluster redesign)
-
-> "We had 500+ ETL jobs on Databricks, and the bill kept growing faster than the work. When we dug in, no single job looked wrong. The real cause was the **shared template** every new pipeline was created from. It used always-on or oversized clusters as a 'safe' default, so each job wasted a few idle minutes. Five minutes on one job is nothing. Across 500+ jobs it was about **42 hours of idle compute every day**, and nobody owned that number.
->
-> We fixed it in three moves. First, **fix the template, not the jobs**: every job now gets a **job cluster** that starts for the run and shuts down when it finishes, sized to the job's real load. Second, **make cost visible**: per-job cost reporting plus an automated policy check (Databricks cluster policies), so an oversized cluster is flagged when it's created, not months later on the bill. Third, **roll out in waves**, with the SLA-critical jobs handled separately.
->
-> There was a catch. Job clusters have a **cold start** of a few minutes, and some pipelines fed a downstream SLA. For those we used **instance pools**, pre-warmed just before the batch window, so they kept the savings without missing deadlines.
->
-> Together with spot instances, this took Databricks compute down **97.5%**. The lesson: sharing a template was right. Sharing it **without a feedback loop** was the real mistake."
-
-**Hook:** *Fix the template, not 500 jobs.*
+**Hook:** *A small waste times 500 is a big bill. Fix the template, and put workers on spot but never the driver.*
 
 **Likely follow-ups:**
 - *Why did 500 jobs share one bad default?* Standardization was correct practice. What was missing was cost visibility and a sizing check. [Small inefficiency at scale](#small-inefficiency-at-scale-explained-simply-with-the-math)
-- *Doesn't a job cluster make every run slower?* Yes, by a few minutes. Instance pools, pre-baked images and shared multi-task clusters claw most of that back. [Job-cluster cold start](#job-cluster-cold-start--getting-the-savings-without-the-wait), [Scheduling pool warm-up](#can-instance-pool-warm-up-be-scheduled)
-- *Did anyone push back?* Two conflict versions: the platform team wanted a manual review gate ([Conflict 1](#conflict-1-change-management-between-the-microservices-team-and-the-legacy-platform-team)), and cold start broke another team's SLA ([Conflict 3](#conflict-3-a-new-teams-cost-optimization-breaks-an-sla-the-legacy-team-has-to-firefight)).
-- *Redwood bridge:* this is a scheduling-and-orchestration problem: when to start compute, how warm to keep it, and which jobs carry SLAs. It's exactly the domain RunMyJobs customers live in.
+- *What happens when AWS reclaims a spot worker mid-job?* Spark reschedules the lost tasks and checkpointing limits the rework. The job slows down but doesn't fail. [§4 Databricks answer](#4-cloud--infrastructure-at-scale)
+- *How did you decide which jobs could use spot?* By SLA tightness and restart cost: the same "what can tolerate movement" split as cloud bursting. [§14 placement answer](#14-xip-specific-technical-questions)
+- *Did anyone push back?* The platform team wanted a manual review gate for every new pipeline. [Conflict 1](#conflict-1-change-management-between-the-microservices-team-and-the-legacy-platform-team)
+- *Redwood bridge:* deciding when to start compute, how warm to keep it, and which jobs carry SLAs is exactly the scheduling and orchestration problem RunMyJobs customers live with.
+- ⚠ *Verify before saying live:* how much of the 70% EC2 cut came from spot versus right-sizing or shutting down idle capacity.
 
-#### Story 6: "Cheap Compute That's Allowed to Disappear" (spot instances)
+#### Story 4: "Two Days to Twenty Minutes" (AI, President's Award)
 
-> "After the job-cluster fix, our clusters were smaller and short-lived, but we were still paying full on-demand prices for them. Spot instances cost a fraction as much, but the cloud provider can take them back at short notice. The real question wasn't 'should we use spot?' It was '**which work can survive a machine disappearing?**'
+**40-second version:**
+
+> "Analysts were spending **two full days** manually pulling numbers out of complex financial documents (tables, scans, mixed layouts across **50 asset classes**) before they could do the actual analysis.
 >
-> So we drew a line. The **driver** of a Spark job always stays on-demand, because losing it kills the whole job. **Worker nodes** go on spot, because if one is reclaimed, Spark simply re-runs the lost tasks on another node and the job just gets a bit slower. We turned on **spot with fallback to on-demand**, so a job never stalls waiting for spot capacity, and added **checkpointing** on long stages so a lost worker doesn't restart everything. And we kept **SLA-critical paths off spot entirely**, because saving money on a job that then misses its deadline is no saving at all.
+> We built a **multi-modal LLM pipeline** that reads each page as both text and image and returns structured data. The model alone was only about **85% accurate**, not good enough for ratings, so we put a safety net around it. We also automated how new document templates get added: that used to take **24 days per template**, and across 1,000 templates it now takes **under an hour**.
 >
-> Spot on top of right-sized job clusters is what took compute cost down that steeply. We applied the same rule to interruption-tolerant EC2 workloads, which is part of the **70% EC2** reduction. Overall that's about **$180K a year**. The lesson: **classify work by how well it tolerates failure, then buy compute to match.**"
+> Two days of work became **20 minutes (97.9% faster)**, about **27 FTEs a year** of analyst time was freed for real analysis, and it won the **President's Award**. The lesson: in an enterprise, **you don't ship a model, you ship a system people can trust.**"
 
-**Hook:** *Driver on-demand, workers on spot, SLA paths off spot.*
+**If they lean in, the safety net (85% model → 99.2% system):**
+- **Confidence routing:** results above 0.9 confidence are auto-approved, 0.7–0.9 go to a reviewer, below 0.7 go to manual extraction.
+- **Business-rule validation:** amounts positive, dates valid, entities mappable, totals reconcile.
+- **Sampling audits:** a regular spot-check of auto-approved results, with an alert if accuracy dips.
+- Result: about **99.2% accuracy** end to end and roughly **60% less manual review**.
+
+**Hook:** *Two days became 20 minutes. 85% model, 99.2% system: trust is the product.*
 
 **Likely follow-ups:**
-- *What happens when AWS reclaims a spot worker mid-job?* Spark reschedules the lost tasks, and checkpointing limits the rework. The job slows down but doesn't fail. [§4 Databricks answer](#4-cloud--infrastructure-at-scale)
-- *How did you decide which jobs could use spot?* By SLA tightness and restart cost. It's the same "what can tolerate movement" split used for cloud bursting. [§14 placement answer](#14-xip-specific-technical-questions)
-- *How do you stop savings from eroding over time?* Per-job cost dashboards and policy checks at creation (Story 5), reviewed monthly.
-- ⚠ *Verify before saying live:* how much of the 70% EC2 cut came from spot versus right-sizing or shutting down idle capacity. Have your real split ready.
-
-#### Story 7: "Two Days to Twenty Minutes" — the Full Version (LLM extraction, President's Award)
-
-> "Every rating starts with numbers buried in financial documents: annual reports, statements, filings, often scanned, full of tables, in different layouts across **50 asset classes**. An analyst spent about **two working days** per complex document just pulling the data out before any real analysis began. Skilled people were spending most of their time copying.
->
-> We built a **multi-modal LLM extraction pipeline**. It reads the page as both text and image, so tables and scans work, and returns structured data. The model wasn't the hard part. **Trust** was. On its own, the model was about **85% accurate**, and that isn't acceptable for ratings. So we built a safety net around it:
-> - **Confidence routing:** results above 0.9 confidence are auto-approved, 0.7–0.9 go to a reviewer, and anything below 0.7 goes to manual extraction.
-> - **Business-rule validation:** amounts must be positive, dates valid, entities mappable, and totals must reconcile.
-> - **Sampling audits:** a regular spot-check of auto-approved results, with an alert if accuracy dips.
->
-> That took the system to about **99.2% accuracy** and cut manual review by roughly **60%**. The second bottleneck was **onboarding new document templates**, which took about **24 days each**. We automated that too, so across **1,000 templates** it now takes **under an hour**.
->
-> End result: **2 analyst-days became 20 minutes (97.9% faster)**, about **27 FTEs a year** of analyst time freed for real analysis, and the **President's Award**. The lesson: in an enterprise, **you don't ship a model, you ship a system people can trust.**"
-
-**Hook:** *85% model, 99.2% system: trust is the product.*
-
-**Likely follow-ups:**
-- *How did you handle hallucinations?* The model never gets the last word. Rules validation catches impossible values, confidence routing sends doubt to a human, and audits catch drift. [§10 GenAI](#10-genai-wildcard)
+- *How did you handle hallucinations?* The model never gets the last word. Rules catch impossible values, confidence routing sends doubt to a human, and audits catch drift. [§10 GenAI](#10-genai-wildcard)
 - *How did you measure accuracy?* Against a labeled golden set per document type, re-run on every prompt or model change, plus production sampling. It's the same golden-set eval habit as PlantGuard (25.7).
 - *How did analysts come to trust it?* Start in **assist mode**: the AI pre-fills, the analyst confirms. Widen auto-approval only where measured accuracy earned it. Reviewers' corrections fed back into prompts and rules.
 - *Cost and latency?* Route by difficulty (a cheaper model for simple pages, the strong model for complex tables), cache repeated templates, and track cost per document.
 - *Data security?* Enterprise model endpoints with no training on our data, access control per business line, and a full audit trail of what was extracted and who approved it.
-- *Redwood bridge:* AI that acts inside a governed process, with confidence thresholds, human sign-off and an audit trail, is exactly the model behind Redwood's agents and MCP server (25.7).
-- ⚠ *Verify before saying live:* how template onboarding was actually automated (for example, LLM-drafted schema mappings reviewed by a human), and the real eval set and model choices. The mechanism above comes from §10's DCP write-up. The headline numbers are from your resume.
+- *What went wrong in production?* Duplicate extractions and double billing. [Incident 2](#incident-2-documents-extracted-twice-billed-twice-non-idempotent-kafka-consumer)
+- *Redwood bridge:* AI acting inside a governed process, with confidence thresholds, human sign-off and an audit trail, is the same model as Redwood's agents and MCP server (25.7).
+- *How is it 97.9%?* 2 analyst-days ≈ 16 working hours = 960 minutes. 20 ÷ 960 ≈ 2.1% of the original time, so 97.9% faster.
+- ⚠ *Verify before saying live:* how template onboarding was actually automated (for example, LLM-drafted schema mappings reviewed by a human), and your real eval set and model choices. The safety-net mechanism comes from §10's DCP write-up. The headline numbers are from your resume.
 
 #### Tying Them Together
 
@@ -6730,6 +6699,60 @@ Stories 3 and 4 are the 40-second versions. Use these when the interviewer leans
 
 **Build → Reliable → Cheap → Smart.** That's the arc, and it also matches Redwood's pitch: reliable orchestration first, AI on top.
 
-**Defensive notes:**
-- **"How is it 97.9%?"** 2 analyst-days is about 16 working hours, or 960 minutes. 20 ÷ 960 ≈ 2.1% of the original time, which is 97.9% faster.
-- ⚠ Story 3's "template copied 500 times" and Story 4's "safety net" mechanism come from the write-ups in §4/§15 and §10. Check that they match what really happened before you tell them as fact.
+**Defensive note:** the ⚠ items inside Stories 3, 4 and Incident 1 are still yours to verify. The 97.9% calculation is in Story 4's follow-ups.
+
+#### Production Incident Scenarios
+
+For "tell me about a production issue you handled". Each follows **what happened → how we found it → root cause → fix → prevention → lesson**. Tell them as a timeline: interviewers trust a story they can picture minute by minute.
+
+#### Incident 1: "The Cost Fix That Broke a Downstream SLA" (job-cluster cold start)
+
+⚠ *Built from §17 Conflict 3 and §15's cold-start write-up. Put your real timings, team names and SLA in before using it.*
+
+> "**What happened:** a few weeks after we rolled out job clusters (Story 3), a downstream team's morning reporting process started missing its deadline. Not every day, just often enough to hurt. Nothing had failed and no alerts fired. The pipelines simply finished later than before.
+>
+> **How we found it:** we compared job timelines before and after the rollout. The actual processing time hadn't changed. What changed was the **start**: every job cluster now spent a few minutes provisioning machines and starting the Spark runtime before doing any work. For most jobs that didn't matter. But a handful of pipelines sat on the **critical path** of an SLA-bound process, and a few minutes of cold start, added up across a chain of jobs, pushed it past the window.
+>
+> **Root cause:** not the job clusters themselves, which were the right call. The real gap was **visibility**: nobody could tell which pipelines fed an SLA, so the change was rolled out the same way everywhere, and the downstream team found out by missing a deadline.
+>
+> **Fix:** we **did not roll back** the cost savings. Only the SLA-critical pipelines got **instance pools**: machines pre-warmed just before the batch window and released afterward, which removes most of the cold start. Both teams root-caused it together, so the fix was co-owned, not imposed.
+>
+> **Prevention:** every pipeline that feeds an SLA is now **tagged**, and any infrastructure change gets checked against those tags before it ships. That check caught a similar near-miss on another pipeline a few months later.
+>
+> **Lesson:** a good optimization rolled out blindly is still a production risk. **Classify the work by what it's allowed to cost in time, then optimize each class differently.**"
+
+**Hook:** *Cost win, SLA miss: pre-warm only what's critical, and tag what's critical.*
+
+**Likely follow-ups:**
+- *Why not just go back to always-on clusters for those jobs?* That brings back idle cost all day for a few minutes of need. Pools cost a little idle time only around the batch window. [Job-cluster cold start](#job-cluster-cold-start--getting-the-savings-without-the-wait)
+- *Can the warm-up be scheduled?* Not natively on the pool. You schedule its idle-instance level through the API or a priming job. [Scheduling pool warm-up](#can-instance-pool-warm-up-be-scheduled)
+- *How did you handle the blame between teams?* Separate the process gap from people and root-cause it jointly. [Conflict 3](#conflict-3-a-new-teams-cost-optimization-breaks-an-sla-the-legacy-team-has-to-firefight)
+- *Redwood bridge:* SLA-aware scheduling, knowing which jobs are on the critical path and acting before the deadline is missed, is exactly what RunMyJobs and its Operations Agent promise customers.
+
+#### Incident 2: "Documents Extracted Twice, Billed Twice" (non-idempotent Kafka consumer)
+
+*Real DCP incident, documented in [§3](#real-incident-the-non-idempotent-kafka-consumer).*
+
+> "**What happened:** shortly after the extraction pipeline went live, billing showed some documents being **charged twice**. When we looked, those documents had **two extraction records** in MongoDB.
+>
+> **How we found it:** we rebuilt the exact timeline for one duplicated document. The Extraction Service read a `DocumentSourced` event from Kafka, ran the slow LLM extraction, saved the result to MongoDB, and **only then** committed the Kafka offset. On the duplicated documents, the service had **crashed or restarted in the gap between saving and committing**.
+>
+> **Root cause:** Kafka did exactly what it promises. The offset wasn't committed, so it delivered the message again. But our consumer had **no memory** that it had already done the work, so it extracted the document a second time, and billing, which simply counted extraction records, charged twice. The bug was in **our application**, not in Kafka.
+>
+> **Fix:** an **idempotency check**. Before doing any work, the consumer checks, inside the same database transaction as the save, whether that message ID has already been processed. If it has, skip. If not, extract, save the result and record the message ID **atomically**, and commit the Kafka offset only after that transaction succeeds.
+>
+> **Prevention:** 'check before processing' became a **standard for every consumer** on the platform, and the team adopted it on its own once they'd seen the timeline. Producers use the **transactional outbox** so events and state changes can't drift apart either.
+>
+> **Result:** zero duplicate extractions after the fix, and the billing issue stopped.
+>
+> **Lesson:** with at-least-once delivery, **duplicates are guaranteed eventually. Design every consumer to expect them.**"
+
+**Hook:** *Crash between save and commit means redelivery. Check before processing.*
+
+**Likely follow-ups:**
+- *Why not just turn on Kafka's exactly-once semantics?* Exactly-once makes the **offset commit** atomic with Kafka writes. It doesn't stop your own side effects (the LLM call, the Mongo write) from running twice after a crash. The bug was at the application level, so the fix had to be too. [§3 full walkthrough](#real-incident-the-non-idempotent-kafka-consumer)
+- *Idempotent consumer vs. outbox: what's the difference?* The outbox makes the **producer** reliable (state and event saved together). Idempotency makes the **consumer** safe to retry. You need both. [Outbox](#transactional-outbox-pattern), [Idempotent consumers vs. the outbox](#idempotent-consumers-vs-the-outbox-solving-double-processing)
+- *Why at-least-once instead of at-most-once?* Losing a financial document is worse than safely detecting a duplicate. [§3](#3-distributed-systems--large-scale-compute-design)
+- *How did you teach it to the team?* As a timeline, not a lecture. [§7 mentoring version](#7-mentoring--people-development)
+- *Extra cost angle:* every duplicate was also a **paid LLM call**, so idempotency protects the cloud bill as well as the customer's.
+- *Redwood bridge:* a scheduler that runs a payment or finance-close job twice is worse than one that runs it late. Exactly-once **effects** are the core promise of orchestration.
