@@ -971,6 +971,26 @@ DEVELOPMENT SPEED: features ship faster = revenue faster
 MARKET LEADERSHIP: fast = win customers, slow = lose customers
 ```
 
+⚠ *General-framework figures (not DCP's numbers). Use them only to show how you'd build an ROI case, never as your own results:*
+
+```
+OPERATIONAL SAVINGS:
+  Infra:   $2M   → $800K  (save $1.2M/year)
+  Ops:     $1M   → $300K  (save $700K/year)
+  License: $500K → $0     (save $500K/year)
+  Subtotal: $2.4M/year saved
+
+DEVELOPMENT SPEED:
+  Features: 1/month → 3/month (200% faster)
+  Each feature ≈ $500K revenue → extra features ≈ $12M/year value
+
+MARKET LEADERSHIP:
+  Fast = win customers, slow = lose customers → +$20-30M/year
+
+TOTAL BENEFIT: $35-45M/year
+Investment: $70M over 3 years → Return: $100M+ over 3 years → ROI positive
+```
+
 🏦 **DCP:** DCP's real version of this same V-shape (without a rescaled enterprise dollar figure attached, since DCP's own material states the numbers below directly, not as an ROI %): investment phase = building the walking skeleton and first strangled slice (pure cost, no return yet); the payoff once running = **$500K+/year saved** from eliminated manual entry, **$2M+ in new Ratings products** enabled on top of the platform, and a running cost of just **$28K/year for 10K docs/day**. Same shape — spend first, break even, then harvest — DCP's own numbers instead of a rescaled guess.
 
 ---
@@ -1140,6 +1160,76 @@ DO THIS:
 3. **What:** if nothing else — own your data, use async, monitor everything. DCP does all three for real.
 4. **How:** ACES-DCBE for patterns, LMT for debugging, NAACS for security — all already real, documented DCP practice (§11).
 5. **Business case:** DCP's own numbers — $28K/year run cost unlocking $500K+/year savings and $2M+ in enabled products.
+
+#### 90-Day Kickoff Checklist
+
+⚠ *(general-framework plan; dollar figures and app counts are illustrative, not DCP's).* Use this when asked "how would you actually start?"
+
+💡 **MEMORY TRICK: "WEEK BY WEEK"**
+
+```
+WEEK 1: Get Buy-In 💰
+  ☐ Present ROI case
+  ☐ Get Year-1 budget approval
+  ☐ Appoint transformation lead
+
+WEEK 2: Plan 📋
+  ☐ Form steering committee
+  ☐ Audit the monoliths (score each with the quadrant + 5-factor score)
+  ☐ Pick ~5 pilot candidates
+
+WEEK 3: Build Team 👷
+  ☐ Hire/assign platform engineers
+  ☐ Form migration squads
+  ☐ Start training (Docker, K8s)
+
+WEEK 4-12: Setup 🛠️
+  ☐ Cloud accounts + VPC
+  ☐ Kubernetes cluster (EKS)
+  ☐ CI/CD pipeline
+  ☐ Observability stack (LMT)
+
+WEEK 13+: Launch 🚀
+  ☐ Extract first monolith slice
+  ☐ Deploy to production
+  ☐ Monitor, measure, learn
+```
+
+```
+YEAR 1: 20% migrated  | deploy time 6 months → 1 hour | team trained | ROI -60% (expected)
+YEAR 2: 70% migrated  | deploys 5×/day                  | ROI +20% (break-even)
+YEAR 3: 100% migrated | deploys 50×/day                 | ROI +200% (harvest)
+```
+
+🏦 **DCP:** the same "foundation before migration" order: CI/CD, Kubernetes and observability were in place before the first strangled slice (extraction) went live, which is why canary and rollback worked from day one (§4).
+
+#### Master Summary (Laminated Card)
+
+```
+1️⃣ WHY:   BLAST RADIUS  → monolith: one bug kills everything
+2️⃣ WHEN:  20-50-100     → Year 1: 20%, Year 2: 50-70%, Year 3: 100%
+3️⃣ WHAT:  DAMP-N-COSMOS → if you forget, THE BIG 3: own your data, use async, monitor all
+4️⃣ HOW:   ACES-DCBE     → 8 patterns (API Gateway, Circuit Breaker, ...)
+5️⃣ RISK:  NAACS         → 5-layer security (Network, AuthN, AuthZ, Crypto, Secrets)
+
+TEAM IMPACT: before = frustrated, slow, blocked → after = fast, autonomous
+REMEMBER:    marathon, not sprint. Year 1 = build (losses expected),
+             Year 2 = break even, Year 3 = harvest. Pilot, learn fast, scale smart.
+```
+
+#### 5-Phase Journey (How the Pieces Fit)
+
+Climb from the problem to the result. Each phase points to a block above.
+
+```
+🏔️ SUMMIT: VICTORY
+PHASE 5: EXECUTE & WIN  → 90-Day Kickoff → Master Summary
+PHASE 4: ARCHITECT      → Saga (transactions) → DDD (design by business)
+PHASE 3: GUARD & WATCH  → Patterns (ACES-DCBE) → Observe (LMT) → Secure (NAACS)
+PHASE 2: FOUNDATION     → Golden Rules (DAMP-N-COSMOS)
+PHASE 1: STRATEGY       → Why (BLAST RADIUS) → When (20-50-100) → Which (Quadrant) → ROI
+🏕️ BASE CAMP: THE PROBLEM
+```
 
 ### Roadmap: Legacy/Monolith to Microservices (General Version, Not DCP-Specific)
 
@@ -6541,6 +6631,16 @@ Your three S&P resume bullets, told as four short spoken stories: **the problem 
 > Incidents fell to **24 a month (60% fewer)**, and fix time went from **2 hours to 20 minutes**. The lesson: you can't fix incidents with architecture alone. You have to change the habits too."
 
 **Hook:** *60 became 24, and 2 hours became 20 minutes.* Full mechanism: [Cutting production incidents 60%](#cutting-production-incidents-60-explained-simply).
+
+**Likely follow-up: "How did you break up the monolith?"** Full answer: [Roadmap: Legacy/Monolith to Microservices](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story). Walk it with the 5-phase journey:
+- *Why break it up?* **BLAST RADIUS**: one bug took everything down. [Why Monolith → Microservices](#why-monolith--microservices)
+- *What did you move first?* High value plus high pain: extraction. [Which App to Migrate First](#which-app-to-migrate-first)
+- *How long, and how did you justify it?* **20-50-100** and the V-shaped ROI. [3-Year Roadmap](#3-year-roadmap), [ROI Validation](#roi-validation)
+- *How did you avoid a big bang?* Strangler pattern, dual-running, a numeric exit criterion per phase. [What Makes This Low-Risk](#what-makes-this-low-risk-not-a-big-bang)
+- *Transactions across services?* Saga with compensating steps, plus the outbox. [Saga](#compensating-transactions-saga), [Transactional Outbox](#transactional-outbox-pattern)
+- *How did you debug the distributed system?* **LMT**: metrics, then traces, then logs. [Observability](#observability)
+- *Rules and patterns?* **DAMP-N-COSMOS** (big 3: own your data, async, monitor) and **ACES-DCBE**. [Golden Rules](#golden-rules-of-microservices), [Design Patterns](#design-patterns)
+- *Quick recap:* [Master Summary](#master-summary-laminated-card) · [5-Phase Journey](#5-phase-journey-how-the-pieces-fit) · *Where would you start?* [90-Day Kickoff](#90-day-kickoff-checklist)
 
 #### Story 3: "The Bill Nobody Was Watching" (cost)
 
