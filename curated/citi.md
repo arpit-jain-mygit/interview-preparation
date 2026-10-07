@@ -6501,6 +6501,15 @@ A: Full answer: [ProductSquads Q12](ProductSquads-JD-Expected-Questions.md#q12-y
 **Q: How do you handle an underperformer, especially while hiring fast?**
 A: Full answer: [ProductSquads Q13](ProductSquads-JD-Expected-Questions.md#q13-how-do-you-handle-performance-issues-walk-us-through-a-specific-example-where-you-addressed-someone-who-wasnt-meeting-expectations). One-liner: be clear early about expectations, give support with a timeline, and decide. In a growing site, tolerating low performance quietly lowers the bar for every new hire.
 
+**Q: What's your leadership style, and how hands-on are you as a Director?**
+A: Hands-on in architecture and judgement, not on the critical path of the code. I review designs and key PRs, I sit in incident reviews, and I build things myself so I know what my teams are dealing with (PlantGuard is the recent proof). I don't take tickets that a team would end up waiting on. For the style itself, say it in one line: set clear outcomes, give real ownership, and stay close enough to spot problems early. Full answers: [ProductSquads Q4 (time split)](ProductSquads-JD-Expected-Questions.md#q4-this-is-explicitly-a-hands-on-leadership-role-not-pure-people-management-how-do-you-balance-writing-codearchitecture-reviews-with-managing-60-engineers-what-percentage-of-your-time-goes-to-each) and [§6 hands-on vs. ceremonies](#6-engineering-leadership--agile-execution).
+
+**Q: Tell me about a hard decision that hurt your team in the short term.**
+A: The [stack-consolidation and reskilling story in §7](#7-mentoring--people-development) ([§19 Q5](#19-behavioral-qa-index)): be honest about the impact up front, then give each person a real choice. Three PHP engineers reskilled and became lead architects. For a growing site, this also answers the unspoken question "will you make the tough calls here?"
+
+**Q: Tell me about leading a team through a really bad stretch.**
+A: The [post-outage retention story in §7](#7-mentoring--people-development) ([§19 Q1](#19-behavioral-qa-index)): fix the system first, then treat morale as work you actively do. Concrete growth for the person most likely to leave, a lighter next sprint, and velocity back by week three.
+
 ### 25.6 AI-First SDLC (Inside Engineering)
 
 **Q: How would you drive AI adoption across the engineering lifecycle here?**
@@ -6553,6 +6562,12 @@ A: Be honest: your depth is backend, distributed systems and AI. You have hands-
 **Q: How do you get to 60% fewer incidents? Would that transfer here?**
 A: Yes, it's process, not domain. [Full story](#cutting-production-incidents-60-explained-simply): pre-flight checklists, canary deploys, runbooks, blameless postmortems. 60 → 24 incidents a month, MTTR 2 hours → 20 minutes. For a scheduler customers depend on, canary-by-tenant matters even more.
 
+**Q: How do you make a contested technical decision without pulling rank?**
+A: Move it from opinion to requirements: list the hard requirements, score each option against them, and ask the skeptic which requirement would justify their option. Full story: [§6 contested tech-stack decision](#6-engineering-leadership--agile-execution). For disagreeing with your own team, see [ProductSquads Q5](ProductSquads-JD-Expected-Questions.md#q5-give-an-example-of-a-technical-decision-you-made-hands-on-where-you-disagreed-with-your-team-how-did-you-handle-it).
+
+**Q: How do you handle security and multi-tenancy in an enterprise SaaS platform?**
+A: Defense in depth, using the **NAACS** layers (network, authentication, authorization, cryptography, secrets) from [Security in Microservices](#security-in-microservices). For SaaS add three things: tenant isolation in data and compute (one tenant can never see or slow down another), audit logs customers can rely on, and security checks built into CI, not done at the end. When Security blocks a release you think is low-risk, use the [Security vs. deadline archetype in §17](#more-conflict-archetypes-worth-having-ready): agree on the real risk, offer a scoped mitigation, never override the gate.
+
 ### 25.9 Delivery, Stakeholders and Communicating Upward
 
 **Q: How do you know your teams are healthy and delivering?**
@@ -6567,6 +6582,18 @@ A: Pick by shape. Culture clash: [team dysfunction](#resolving-team-dysfunction-
 **Q: How do you communicate risk and progress to senior leadership?**
 A: Start with the decision you need from them, give status in business terms (customer impact, dates, cost), and raise risk early with options attached, never just a problem. The concrete example: you got a skeptical CFO behind a slower deploy process by translating it into incident cost, $400K/month → $100K/month ([§4](#4-cloud--infrastructure-at-scale)).
 
+**Q: Tell me about a time you had several stakeholders all saying "this is must-have".**
+A: [§19 Q7](#19-behavioral-qa-index): an impact-vs-cost matrix shared with everyone, a separate negotiation with each stakeholder (product went from 20 features to 10 high-impact ones), and a commitment of only 190 of 250 capacity points so there's a buffer for surprises.
+
+**Q: Tell me about a time you pushed back on a product or business requirement.**
+A: Full answer: [ProductSquads Q8](ProductSquads-JD-Expected-Questions.md#q8-tell-us-about-a-time-you-challenged-a-product-managers-or-business-requirement-and-proposed-a-better-alternative-what-was-the-outcome). The Redwood framing: push back with a better option and the customer impact, not just a "no".
+
+**Q: Another site or team you depend on isn't prioritizing your blocker. What do you do?**
+A: Very likely for a site lead, since Hyderabad will depend on teams in other locations. Use the [dependency-conflict archetype in §17](#more-conflict-archetypes-worth-having-ready): put a number on the blocker in terms their leadership cares about, offer to co-own the fix (send the PR yourself), and use any workaround to buy time, not as a reason to drop the real fix.
+
+**Q: Tell me about a mistake you made, or something that failed.**
+A: Use [Incident 1](#incident-1-the-cost-fix-that-broke-a-downstream-sla-job-cluster-cold-start) and own it as your call: you rolled out a cost change everywhere without knowing which pipelines fed an SLA, and a downstream team missed deadlines. Say what you changed afterwards (SLA tagging, checks before infrastructure changes). For "what would you do differently", see [§8 "rebuild from scratch"](#8-strategictechnical-vision). ⚠ If you have a real personal failure story, it will land better than an incident.
+
 ### 25.10 Motivation and Fit
 
 **Q: Why Redwood, and why this role?**
@@ -6577,6 +6604,14 @@ A: Own it confidently, no apology. "After 8 years I took a deliberate break to g
 
 **Q: Your enterprise SaaS experience is mainly an internal platform at S&P. Is that a gap?**
 A: Partly, and say so. Then reframe: ADP was a true multi-customer enterprise SaaS product (HCM, Garnishment) for 10 years. At S&P the platform served 4 business lines with external-facing SLAs (99%+, <2s), and you ran it like a product: SLOs, cost per unit, internal customers with real alternatives. What you'll ramp on is Redwood's specific customer and release motions, not how to build multi-tenant enterprise software.
+
+**Q: Where do you see yourself in 5 years?**
+A: Full answer: [ProductSquads Q24](ProductSquads-JD-Expected-Questions.md#q24-where-do-you-want-to-be-in-5-years). The Redwood version: having helped build Hyderabad into a site that owns products and Redwood's AI direction, and having grown the leaders who run it.
+
+**Logistics they may raise (have answers ready, don't improvise):**
+- **Availability:** you're available now, with no notice period to serve. That helps a site that is hiring fast, so say it plainly.
+- **Compensation expectations:** ⚠ decide your number and range before the call. If asked early, you can say you'd like to understand the scope first, but have the number ready.
+- **Work location and travel:** be ready to answer how often you'd be in the HITEC City office, and whether you're open to trips to HQ or other sites.
 
 ### 25.11 Gaps — Own These Honestly
 
