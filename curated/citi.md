@@ -6448,16 +6448,22 @@ What that means for you. A site lead who is building a 300-person centre from sc
 3. **Can you make AI real?** Both an AI-first SDLC inside engineering and agentic features in the product, with enterprise-grade governance.
 4. **Will you run a reliable enterprise SaaS?** RunMyJobs is mission-critical: customers' finance closes and SAP batch chains run on it.
 
-Expect fewer deep coding or system-design drills than in a panel round, and more "how would you…" and "tell me about a time…" questions. Keep every answer short: the punchline first, then one number, then stop and let them pull.
+**His background matters.** Before Redwood, Rajkumar was a Principal Group Engineering Manager at Microsoft ([Crunchbase](https://www.crunchbase.com/person/rajkumar-paulraj)). A third-party prep guide says he worked on Microsoft 365 Backup & Archiving and joined Redwood in mid-2025. I couldn't confirm those two details, so don't quote them to him. Someone from Microsoft-scale infrastructure is likely to push on **distributed-systems depth**: multi-tenancy, zero-downtime deploys, job queues, partitioning, failover, rate limiting and p99 latency. Short answers for those are in 25.8.
+
+Expect fewer coding drills than in a panel round, but don't expect zero design depth. Most questions will still be "how would you…" and "tell me about a time…". Keep every answer short: the punchline first, then one number, then stop and let them pull.
 
 ### 25.2 Redwood in One Minute (Public Info)
 
 - **What they sell:** workload automation and **service orchestration** (SOAP). That means scheduling and orchestrating business-critical jobs and process chains across ERP (SAP especially), cloud, mainframe and data tools. Flagship SaaS: **RunMyJobs by Redwood**. Also **ActiveBatch** and **Tidal** (both acquired, both historically on-prem-heavy) and **Finance Automation** (record-to-report, financial close).
 - **Where they are now:** named a Leader in the **2026 Gartner Magic Quadrant for Service Orchestration and Automation Platforms**, the third year in a row. Positioning: "orchestrate the enterprise from hybrid cloud to agentic AI."
 - **AI direction (RunMyJobs 2026.3):** a **Redwood MCP server** that gives AI models governed access to 50+ tools across nine AWS regions with full auditability, validated with Microsoft Copilot, SAP Joule and Claude Code. **MCP + Agent2Agent (A2A)** support, so AI agents can trigger workflows. An **Operations Agent** that detects failures and SLA risks in real time and gives operators enriched context.
+- **RangerAI (launched November 2025):** Redwood's name for the generative and agentic AI built across its products. It includes an Automation Co-pilot in RunMyJobs that writes job scripts from plain-English prompts and generates documentation for jobs and workflows. Redwood says it only sends the minimal, task-specific data a request needs.
+- **Owners:** private equity. **Vista Equity Partners and Warburg Pincus** agreed to buy Redwood from Turn/River Capital in September 2024 (the sale process was reported at about $2.5B). PE owners mean pressure to grow fast. Expect "how do you ship fast without breaking enterprise customers?" (25.8).
+- **SAP is the core market:** RunMyJobs is the first fully SaaS job scheduler with SAP Certified Integration with RISE with SAP S/4HANA Cloud. It holds SAP Endorsed App status and is part of the RISE reference architecture.
+- **Main competitor:** BMC **Control-M**. See 25.10 for how to talk about it.
 - **Why that matters to you:** their AI story is "agents act, but through governed, auditable orchestration." That is the same design philosophy as PlantGuard (agents recommend, a human signs off on the action, every step is traced). Lead with that bridge.
 
-Sources: [Redwood opens tech hub in Hyderabad (Deccan Chronicle)](https://deccanchronicle.com/business/redwood-software-opens-tech-hub-in-hyderabad-1952278) · [Redwood global centre, AI-led innovation (UNI)](https://www.uniindia.com/redwood-software-opens-global-centre-in-hyderabad-bets-big-on-ai-led-innovation/business-economy/news/3818765.html) · [India technology center (VARINDIA)](https://varindia.com/news/redwood-software-sets-up-india-technology-center-in-hyderabad) · [Gartner SOAP MQ 2026 (Redwood)](https://www.redwood.com/press-releases/gartner-soaps-mq-2026/) · [Agentic orchestration at SAP Sapphire (Redwood)](https://www.redwood.com/press-releases/redwood-software-to-showcase-agentic-orchestration-platform-at-sap-sapphire/)
+Sources: [Redwood opens tech hub in Hyderabad (Deccan Chronicle)](https://deccanchronicle.com/business/redwood-software-opens-tech-hub-in-hyderabad-1952278) · [Redwood global centre, AI-led innovation (UNI)](https://www.uniindia.com/redwood-software-opens-global-centre-in-hyderabad-bets-big-on-ai-led-innovation/business-economy/news/3818765.html) · [India technology center (VARINDIA)](https://varindia.com/news/redwood-software-sets-up-india-technology-center-in-hyderabad) · [Gartner SOAP MQ 2026 (Redwood)](https://www.redwood.com/press-releases/gartner-soaps-mq-2026/) · [Agentic orchestration at SAP Sapphire (Redwood)](https://www.redwood.com/press-releases/redwood-software-to-showcase-agentic-orchestration-platform-at-sap-sapphire/) · [RangerAI launch (Redwood)](https://www.redwood.com/press-releases/redwood-software-unveils-redwood-rangerai-ushering-in-a-new-era-of-autonomous-operations-for-the-enterprise/) · [Vista and Warburg Pincus acquisition (Vista)](https://www.vistaequitypartners.com/news/redwood-to-be-acquired-by-vista-equity-partners-and-warburg-pincus/) · [RISE with SAP certification (Redwood)](https://www.redwood.com/press-releases/certified-integration-with-rise-with-s-4hana-cloud) · [Redwood for SAP (Redwood)](https://www.redwood.com/solutions/sap)
 
 ### 25.3 Your 60-Second Opening ("Walk Me Through Your Background")
 
@@ -6568,19 +6574,59 @@ A: Move it from opinion to requirements: list the hard requirements, score each 
 **Q: How do you handle security and multi-tenancy in an enterprise SaaS platform?**
 A: Defense in depth, using the **NAACS** layers (network, authentication, authorization, cryptography, secrets) from [Security in Microservices](#security-in-microservices). For SaaS add three things: tenant isolation in data and compute (one tenant can never see or slow down another), audit logs customers can rely on, and security checks built into CI, not done at the end. When Security blocks a release you think is low-risk, use the [Security vs. deadline archetype in §17](#more-conflict-archetypes-worth-having-ready): agree on the real risk, offer a scoped mitigation, never override the gate.
 
+**Q: Our enterprise customers expect 99.95%+ uptime, and our owners want features shipped fast. How do you do both?**
+A: Make releases small and reversible, so speed and safety stop fighting each other. Three habits: **automated tests as a gate** (nothing merges without them), **canary releases** checked automatically against error rate and latency before the rollout continues, and **feature flags** so code can ship "off" and be turned on per tenant, then turned off in seconds without a redeploy. Add an **error budget**: 99.95% allows about 22 minutes of downtime a month. When a team uses up its budget, it pauses features and works on reliability until it's back in budget. That turns the speed-vs-stability argument into a number both sides agreed to in advance. Background: [ProductSquads Q16 (ship fast vs. quality)](ProductSquads-JD-Expected-Questions.md#q16-productsquads-describes-a-ship-fast-environment-how-do-you-balance-this-with-your-track-record-of-strict-quality-discipline-and-risk-management-could-that-slow-things-down), [Q17 (shipping faster than ideal)](ProductSquads-JD-Expected-Questions.md#q17-tell-us-about-a-time-you-had-to-ship-faster-than-ideal-how-did-you-manage-risk), [Cutting incidents 60%](#cutting-production-incidents-60-explained-simply).
+
+**Q: How do you deploy microservices with zero downtime?**
+A: Blue-green or rolling deploys behind a load balancer, with canary steps (10% → 50% → 100%) and instant rollback. The two things people forget: **database changes must be backward compatible** (expand first, migrate, then contract in a later release, so old and new code both work during the switch), and **connections must drain gracefully** before old pods stop. Full mechanics: [Blue-Green & Canary](#blue-green--canary-how-the-traffic-switch-actually-works).
+
+**Q: How would you design a high-throughput distributed job queue?**
+A: Start from the scheduler answer above: the promise is *exactly-once effects, on time*. Partition the work (by tenant or job key) so many workers can run in parallel without stepping on each other, give each job a **lease** (a worker claims it for a time limit, and if the worker dies the lease expires and another worker picks it up), make every job **idempotent** so a retry is safe, send repeated failures to a **dead-letter queue** instead of retrying forever, and give each tenant a fair share so one customer's flood can't delay another's SLA. Scale workers on **queue lag**, not CPU. Your evidence: Kafka with 48 partitions at 1,000 events/sec and lag-based autoscaling from 5 to 50 pods ([§3](#3-distributed-systems--large-scale-compute-design)), plus the [non-idempotent consumer incident](#incident-2-documents-extracted-twice-billed-twice-non-idempotent-kafka-consumer).
+
+**Q: How do you handle rate limiting in a multi-tenant SaaS?**
+A: Limit **per tenant** (and per API key), at the API gateway, so one customer can't use up capacity everyone shares. Know the main algorithms in one line each:
+- **Token bucket** (the usual default): tokens refill at a steady rate, and each request spends one. Short bursts are allowed up to the bucket size.
+- **Leaky bucket:** requests leave at a fixed rate, which smooths traffic but doesn't allow bursts.
+- **Fixed window:** count requests per minute. Simple, but a client can send double the limit across a window boundary.
+- **Sliding window:** fixes the boundary problem by counting over a rolling time window.
+
+In a distributed system, keep the counters in a shared store such as Redis so every gateway node sees the same count. Return HTTP 429 with a `Retry-After` header so clients back off politely. Your evidence: rate limiting at the Spring Cloud Gateway layer, with a 1,000 req/min cap on the entity-mapping API ([§1](#1-role-snapshot--fit), [§12](#12-key-numbers-cheat-sheet)).
+
+**Q: How do you think about latency? Why p99 and not the average?**
+A: The average hides the slowest users. p99 is the time that 99% of requests beat, so it shows what your unluckiest 1% experience, and in enterprise SaaS that's often your biggest customer running the biggest workload. Set SLOs on p99, alert on it, and find out what drives it (usually slow dependencies, cache misses, GC pauses or noisy neighbours). Your number: p99 went from 3.5s to 1.8s on the extraction path, alongside uptime moving from 99.0% to 99.9% ([Architect guide: key metrics](Java-And-MyProfessional-Projects-Interviews/ARCHITECT_INTERVIEW_GUIDE.md#key-metrics-mentioned)).
+
+**Q: How do you scale the database, and how do you handle failover?**
+A: Scale reads first (replicas, caching), then partition writes only when you have to, because sharding is expensive to run. Choose the shard key from how the data is accessed. For SaaS that's usually the tenant. Failover: automated multi-AZ failover is the default, and multi-region is a separate, deliberate decision with real costs. Links: [Sharding Postgres](#is-shardingpartitioning-applicable-to-an-rdbms-like-postgres), [Data Partitioning](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Caching-Partitioning.md#data-partitioning), [Why SQL horizontal scaling is costly](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Databases.md#why-and-how-scaling-out-sql-dbs-horizontally-is-costly), [Multi-region vs. multi-AZ](#multi-region-vs-multi-az-why-the-jump-is-harder-than-it-looks). Your evidence: MongoDB 3-node replica set and PostgreSQL HA with under-30-second failover, 4-hour RTO and 1-hour RPO ([§5](#5-data--storage)).
+
+**Q: How would you think about integrating with SAP S/4HANA?**
+A: ⚠ You haven't built SAP integrations, so don't pretend to. Show you understand the customer's problem. SAP customers moving to **RISE with SAP** want a **"clean core"**: no custom code inside SAP, so integration has to go through SAP's standard, supported interfaces and pre-built connectors. That is exactly Redwood's pitch (certified RISE integration, SAP Endorsed App). The engineering problems you *can* speak to:
+- **Long-running batch chains:** a finance close is a chain of dependent jobs, so dependency tracking, restart-from-failure and SLA prediction matter more than raw speed.
+- **Exactly-once effects:** posting a ledger entry twice is worse than posting it late. This is your [idempotency incident](#incident-2-documents-extracted-twice-billed-twice-non-idempotent-kafka-consumer).
+- **Versions and upgrades:** SAP releases on its own schedule, so connectors need contract tests that run against each new SAP version.
+
+Bridge: at S&P you were a heavy *user* of orchestration across ERP-like financial data flows, so you know where it hurts.
+
 ### 25.9 Delivery, Stakeholders and Communicating Upward
 
 **Q: How do you know your teams are healthy and delivering?**
 A: Three lenses, reviewed monthly: **delivery** (predictability: committed vs. delivered, plus DORA lead time), **quality** (change failure rate, escaped defects, incidents and MTTR) and **people** (attrition, engagement, hiring funnel health). One rule: don't commit 100% of capacity. The [§19 Q7 note](#19-behavioral-qa-index) commits 190 of 250 points, leaving a buffer for unknowns.
 
 **Q: How do you balance roadmap features against tech debt and reliability work?**
-A: [Tech-debt coalition story in §6](#6-engineering-leadership--agile-execution) (50/50 split, monthly dashboards, 2M-LOC monolith shrunk 40%). For when leadership won't rank priorities, see [Conflict 2](#conflict-2-feature-delivery-vs-keeping-the-lights-on-when-leadership-wont-rank-them).
+A: Two parts. **Day to day:** a standing allocation of about **20% of each team's capacity** for tech debt and reliability, tied to protecting the SLA (see the error budget in 25.8), so it never needs a fresh argument every sprint. **For a big modernization:** a temporary larger split, as in the [tech-debt coalition story in §6](#6-engineering-leadership--agile-execution) (50/50 split, monthly dashboards, 2M-LOC monolith shrunk 40%). For when leadership won't rank priorities, see [Conflict 2](#conflict-2-feature-delivery-vs-keeping-the-lights-on-when-leadership-wont-rank-them).
 
 **Q: Tell me about a conflict with another team or leader.**
 A: Pick by shape. Culture clash: [team dysfunction](#resolving-team-dysfunction-explained-simply). Cross-team cost impact: [Conflict 1](#conflict-1-change-management-between-the-microservices-team-and-the-legacy-platform-team). Peer with no shared manager, or Security vs. deadline: [archetypes in §17](#17-conflict-scenarios-for-behavioral-questions). For a site lead, the most relevant is **India site vs. HQ disagreement**. Use the peer-disagreement shape: move it from opinion to requirements and agree up front on who breaks the tie.
 
 **Q: How do you communicate risk and progress to senior leadership?**
 A: Start with the decision you need from them, give status in business terms (customer impact, dates, cost), and raise risk early with options attached, never just a problem. The concrete example: you got a skeptical CFO behind a slower deploy process by translating it into incident cost, $400K/month → $100K/month ([§4](#4-cloud--infrastructure-at-scale)).
+
+**Q: How do you keep delivery quality high when work is handed between Hyderabad and other sites?**
+A: Avoid hand-offs where you can: give each site **whole features or services**, so most work never crosses a timezone (25.5). Where a hand-off can't be avoided:
+- **One shared Definition of Done** for every site: tests passing, docs updated, observability (dashboards and alerts) in place, a runbook written, and the feature flag ready. "Done" means it can run in production, not just that the code is merged.
+- **Written hand-off notes** at the end of the day (what changed, what's blocked, what's next), so the next site starts immediately instead of waiting a day for answers.
+- **Local leads with real decision rights**, so small decisions don't wait overnight for HQ.
+
+This builds on the [Madrid/NY/Singapore story in §7](#7-mentoring--people-development) (public decision log, async-first).
 
 **Q: Tell me about a time you had several stakeholders all saying "this is must-have".**
 A: [§19 Q7](#19-behavioral-qa-index): an impact-vs-cost matrix shared with everyone, a separate negotiation with each stakeholder (product went from 20 features to 10 high-impact ones), and a commitment of only 190 of 250 capacity points so there's a buffer for surprises.
@@ -6604,6 +6650,9 @@ A: Own it confidently, no apology. "After 8 years I took a deliberate break to g
 
 **Q: Your enterprise SaaS experience is mainly an internal platform at S&P. Is that a gap?**
 A: Partly, and say so. Then reframe: ADP was a true multi-customer enterprise SaaS product (HCM, Garnishment) for 10 years. At S&P the platform served 4 business lines with external-facing SLAs (99%+, <2s), and you ran it like a product: SLOs, cost per unit, internal customers with real alternatives. What you'll ramp on is Redwood's specific customer and release motions, not how to build multi-tenant enterprise software.
+
+**Q: Why do customers choose Redwood over Control-M?**
+A: Speak only from what's verified, and frame it as what you'd want to learn more about. Redwood's public pitch: RunMyJobs was **built as SaaS from the start**, not an on-prem product moved to the cloud, so there are no scheduler servers for the customer to run or upgrade. It has the **deepest SAP integration** (the only SAP Endorsed App, Premium-certified job scheduler, part of the RISE reference architecture). And it now has **agentic AI on top** (RangerAI, the MCP server, the Operations Agent). Control-M is strong and widely used, especially on-prem and in hybrid setups. Don't run it down. ⚠ The prep guide says Redwood has an "agentless architecture". Check that in Redwood's own docs before saying it. Many SaaS schedulers still use small agents to reach on-prem servers. Sources: [Redwood for SAP](https://www.redwood.com/solutions/sap), [RISE certification](https://www.redwood.com/press-releases/certified-integration-with-rise-with-s-4hana-cloud).
 
 **Q: Where do you see yourself in 5 years?**
 A: Full answer: [ProductSquads Q24](ProductSquads-JD-Expected-Questions.md#q24-where-do-you-want-to-be-in-5-years). The Redwood version: having helped build Hyderabad into a site that owns products and Redwood's AI direction, and having grown the leaders who run it.
@@ -6630,6 +6679,7 @@ A: Full answer: [ProductSquads Q24](ProductSquads-JD-Expected-Questions.md#q24-w
 - How far along is AI adoption inside Redwood's own engineering, and what would you want this role to change in the first 6 months?
 - What does success look like for this role at 6 and 12 months, from your point of view as site lead?
 - What is the hardest part of building the centre so far: hiring, ramp-up speed, or getting HQ to trust the site with ownership?
+- You came from large-scale infrastructure at Microsoft. Which engineering practices are you most focused on bringing into Redwood's SaaS culture right now?
 
 ### 25.13 Numbers to Say Without Thinking
 
@@ -6641,6 +6691,9 @@ $180K/yr cloud cost cut, ~27 FTEs/yr     EC2 -70%, Databricks -97.5%
 2 analyst-days → 20 min (President's)     1,000 templates: 24 days → <1 hour
 500+ ETL jobs migrated to Databricks     85% model → 99.2% system accuracy
 Redwood: 300+ hires by end-2027, Gartner SOAP MQ Leader 3 yrs running
+Redwood: Vista + Warburg Pincus (Sep 2024), RangerAI (Nov 2025)
+Your p99: 3.5s → 1.8s; uptime 99.0% → 99.9%; DB failover <30s
+99.95% uptime = ~22 min downtime/month
 ```
 
 ### 25.14 Resume Highlights as Stories
