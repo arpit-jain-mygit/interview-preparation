@@ -52,6 +52,17 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 25. [Redwood — Director of Engineering (AI & Full-Stack SaaS), Site-Lead Round](#25-redwood--director-of-engineering-ai--full-stack-saas-site-lead-round)
 26. [My Resume](#26-my-resume)
     - [26.1 "Delivered 99%+ availability and 95% accuracy under 2s latency processing 10K+ documents/day" (DCP)](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)
+    - [26.2 "Architecting the platform across 4 business lines and 50 asset classes, leading a 70-engineer global organization"](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization)
+    - [26.3 "Cut production incidents 60% and MTTR 6× by re-architecting legacy monoliths into event-driven microservices"](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices)
+    - [26.4 "Cut cloud costs ~$180K/year: AWS EC2 compute down 70%, Databricks compute down 97.5% (spot instances, job-cluster redesign)"](#264-cut-cloud-costs-180kyear-aws-ec2-compute-down-70-databricks-compute-down-975-spot-instances-job-cluster-redesign)
+    - [26.5 "Migrated 500+ ETL jobs to Databricks (40–50% projected TCO reduction)"](#265-migrated-500-etl-jobs-to-databricks-4050-projected-tco-reduction)
+    - [26.6 "Multi-modal LLM extraction pipeline: 2 analyst-days → 20 minutes (97.9% faster, President's Award)"](#266-multi-modal-llm-extraction-pipeline-2-analyst-days--20-minutes-979-faster-presidents-award)
+    - [26.7 "Automated template onboarding across 1,000 templates (24 days → under 1 hour)"](#267-automated-template-onboarding-across-1000-templates-24-days--under-1-hour)
+    - [26.8 ADP (Application Architect, 10 years): microservices and containerization shift, HCM and Garnishment platforms, 200+ engineer community](#268-adp-application-architect-10-years-microservices-and-containerization-shift-hcm-and-garnishment-platforms-200-engineer-community)
+    - [26.9 TRDDC (TCS Research): "platform- and language-independent static program analysis"](#269-trddc-tcs-research-platform--and-language-independent-static-program-analysis)
+    - [26.10 PlantGuard (IIT Hyderabad capstone): multi-agent predictive-maintenance copilot](#2610-plantguard-iit-hyderabad-capstone-multi-agent-predictive-maintenance-copilot)
+    - [26.11 PaperMind and VoxAlchemy.ai](#2611-papermind-and-voxalchemyai)
+    - [26.12 The Threads That Run Through Your Whole Resume](#2612-the-threads-that-run-through-your-whole-resume)
 
 ---
 
@@ -7780,3 +7791,366 @@ Accuracy in a distributed system has two halves. **Data integrity**: no document
 - RTO/RPO: the requirements doc says 1 hour / 15 minutes, while the cheat sheet says 4 hours / 1 hour. The DR table above reconciles them by failure type (database restore vs whole-cluster loss).
 - Autoscaling range: 5→20 pods in the deployment doc, 5→50 in §4. Pick one.
 - Kafka durability settings and pre-signed upload URLs are standard design, not documented in the repo.
+
+### 26.2 "Architecting the platform across 4 business lines and 50 asset classes, leading a 70-engineer global organization"
+
+#### What the claim really is
+
+This is a **platform** claim, not a project claim. Before DCP, each business line had grown its own way of getting financial documents into the rating process. The architectural achievement is that **one platform serves all of them without becoming 4 forks or 50 special cases**. The interviewer's real question is: *"How do you build one system for many different customers without it turning into a tangle of if-statements?"*
+
+#### The architecture idea: put the variation in data, not in code
+
+| What varies by business line or asset class | Where it lives | Pattern |
+|---|---|---|
+| Which fields to extract, and in what shape | **Templates** (versioned) | Configuration as data |
+| How external labels map to internal concepts | **Taxonomy mappings** | Canonical data model |
+| Which checks a value must pass | **Rules and validation config** | Rules engine + Chain of Responsibility |
+| Where finished data goes, when, in what format | **Dissemination config** | Publish/subscribe + Adapter per destination |
+| Where documents come from (S3, email, Outlook, APIs, Delta Sharing, databases) | **Connector framework** | Adapter + plugin interface |
+| Which extraction engine handles a document | **Engine selection** | Factory + Strategy |
+
+The core services (sourcing, extraction, rules, workflow, approval, dissemination) are **the same code for every business line**. Adding asset class number 51 should mean adding configuration, not deploying new code. This is also what made the [template-onboarding automation (26.7)](#267-automated-template-onboarding-across-1000-templates-24-days--under-1-hour) possible: once variation is data, you can generate the data.
+
+#### The distributed-systems concepts underneath
+
+1. **Canonical data model.** Every source format is converted into one internal model at the edge (in the connectors). Everything downstream only knows the canonical model, so N sources × M destinations becomes N + M adapters, not N × M integrations.
+2. **Multi-tenancy with isolation.** Each business line is a tenant. Data is tagged with the business line, access is enforced with RBAC (L1 and L2 users only see their assigned items), and ⚠ work can be isolated by business line (separate Kafka consumer quotas or priority) so a quarter-end flood from one line doesn't delay another's SLA. Confirm how DCP actually isolated tenants.
+3. **Bounded contexts and team ownership (Conway's law).** 6 services, each owned end to end by one team, including on-call. With 70 engineers across locations, the architecture *is* the org chart: teams can ship without waiting on each other because the service boundaries and event contracts separate them.
+4. **Contract-first integration.** Teams talk through versioned event schemas and APIs. A schema registry (⚠ confirm if DCP used one) stops one team's change from silently breaking another's consumer.
+5. **Platform-as-a-product.** Business lines are internal customers with SLOs (99%+, <2s), a roadmap and a request intake, not a ticket queue. That's how one platform earns the trust to replace 4 local solutions.
+
+#### 60-second answer
+
+> "Four business lines had each built their own way to get financial documents into ratings, so there was no single trustworthy pipeline. The key architecture decision was to **keep the variation in data, not code**: templates, taxonomy mappings, validation rules and dissemination targets are all versioned configuration, while the six core services are identical for every business line. Sources plug in through adapters into one canonical model, so every new source or destination is one adapter, not a new integration with everything. Each business line is a tenant with its own access control and its own SLA, and each of the six services is owned end to end by one team, which is how 70 engineers across locations could ship independently. Adding a new asset class became a configuration change, not a release."
+
+#### Likely follow-ups
+
+- **"How do you stop the config from becoming its own mess?"** Version it, validate it in CI like code (golden documents per template), and give each config item an owner. Configuration is code without a compiler, so it needs tests.
+- **"What did you standardize and what did you leave flexible?"** Standardize the pipeline, contracts, observability and security. Leave flexible what genuinely differs by asset class: fields, rules, review thresholds.
+- **"How did you get 4 business lines to give up their own tools?"** Migrate one line at a time, prove SLOs on the first, then use that as the case for the next. Same approach as the [CI/CD pilot](#6-engineering-leadership--agile-execution).
+
+---
+
+### 26.3 "Cut production incidents 60% and MTTR 6× by re-architecting legacy monoliths into event-driven microservices"
+
+**Already covered in depth:** the spoken story is [Story 2](#story-2-from-firefighting-to-calm-reliability), the process side is [Cutting production incidents 60%](#cutting-production-incidents-60-explained-simply), and the full migration plan is the [Monolith → microservices roadmap](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story). This subsection gives only the **architecture reasoning**: *why* does event-driven microservices reduce incidents and MTTR, when microservices also add new ways to fail?
+
+#### Why the architecture reduced incident *count* (60 → 24 a month)
+
+1. **Smaller blast radius.** In the monolith, a bug in one module (or one memory leak) took down everything. With services split along bounded contexts, a failure is contained to one service, and the event log buffers its inputs until it recovers.
+2. **Smaller, more frequent deployments.** A monolith release bundles weeks of changes from many teams, so each release is risky and hard to roll back. Independent services ship small changes, and **small changes fail less and are easier to undo**.
+3. **Asynchronous decoupling.** Services that talk through Kafka don't need each other to be up at the same moment. A slow downstream becomes **lag**, not an error cascade.
+4. **Built-in resilience patterns** that the monolith never had: circuit breakers, bulkheads, timeouts, retries with jitter, dead-letter queues ([26.1 A](#a-availability-99-no-single-failure-takes-the-platform-down)).
+5. **Safe-change mechanics:** canary releases (5% → 25% → 50% → 100% with automatic rollback), feature flags, and expand-then-contract database changes.
+
+#### Why it reduced *MTTR* (2 hours → 20 minutes)
+
+1. **Observability by design:** correlation IDs across all services, distributed tracing (Jaeger), metrics before logs. In the monolith, finding the failing component was most of the 2 hours.
+2. **Clear ownership:** an alert goes to the team that owns that service, not to a general firefighting call.
+3. **Fast, safe rollback:** a bad canary rolls back automatically, often before most users notice.
+4. **Runbooks** for known failure modes, and **blameless postmortems** that turn each incident into a fix in the process or the platform.
+
+#### The honest part (say it, it's what an architect sounds like)
+
+Microservices **add** failure modes: network calls, partial failures, distributed transactions, eventual consistency. You only come out ahead if you also invest in the patterns that handle them: **database per service**, the **transactional outbox**, **sagas** instead of cross-service transactions, **idempotent consumers**, and observability. The 60% came from architecture **and** habits together. Neither alone would have done it.
+
+#### Key concepts to name
+
+Strangler fig pattern · bounded contexts (DDD) · anti-corruption layer · database per service · transactional outbox / change data capture · saga (orchestration vs choreography) · API gateway · service mesh (Istio: mTLS, retries, circuit breaking) · blast radius · DORA metrics (deployment frequency, lead time, change failure rate, MTTR).
+
+---
+
+### 26.4 "Cut cloud costs ~$180K/year: AWS EC2 compute down 70%, Databricks compute down 97.5% (spot instances, job-cluster redesign)"
+
+**Already covered as a story:** [Story 3](#story-3-the-bill-nobody-was-watching-cost-job-clusters--spot-instances), plus [Job-cluster cold start](#job-cluster-cold-start--getting-the-savings-without-the-wait) and [Incident 1](#incident-1-the-cost-fix-that-broke-a-downstream-sla-job-cluster-cold-start). This subsection is the **architecture view**: cost is a non-functional requirement like latency, and you design for it.
+
+#### The architecture principles behind the numbers
+
+1. **Elasticity: compute should exist only while there's work.** All-purpose clusters stayed up between runs. **Job clusters** start for a run and terminate when it ends. Same idea as serverless: pay per job, not per hour of idle time.
+2. **Classify workloads by what they can tolerate**, then optimize each class differently. This is the single most important architecture idea in the story:
+
+    | Workload class | Example | Compute choice |
+    |---|---|---|
+    | SLA-critical, on the critical path | Morning reporting feed | On-demand, pre-warmed **instance pools** before the batch window |
+    | Batch, interruption-tolerant | Most of the 500+ ETL jobs | **Spot** workers with fallback to on-demand, driver always on-demand |
+    | Ad hoc / development | Notebooks, exploration | Small all-purpose clusters with **auto-terminate** |
+
+3. **Design for interruption, so cheap capacity is safe.** Spot machines can be taken back at any time. Spark re-runs a lost worker's tasks on another node, checkpointing limits rework, and the driver is never on spot because losing it kills the job. Cheap infrastructure is only cheap if the software tolerates it disappearing.
+4. **Right-sizing from measurement, not guesses.** Clusters were sized for peak "just in case." Right-size from actual utilization metrics, and let **autoscaling** handle the peaks.
+5. **Fix the template, not the instance.** All 500+ jobs inherited one default. Changing the shared template fixed all of them at once. Then **cluster policies** (guardrails as code) stop an oversized cluster from being created in the first place.
+6. **Cost visibility (FinOps).** Tag every job and cluster with an owner and cost center, and show cost per job and cost per document. Teams optimize what they can see.
+
+#### The math check (do it live if asked)
+
+97.5% means the new compute is **1/40th** of the old. That's only plausible because two levers compound: removing idle time (most of the hours were idle) **and** paying spot prices for what remains (often 60–90% cheaper). For example, if 90% of hours were idle, job clusters alone leave 10%, and spot at about 25% of the on-demand price leaves about 2.5%. ⚠ Use your real ratios.
+
+#### ⚠ Verify before saying live
+
+- How much of the EC2 70% came from spot, from right-sizing, or from shutting down idle capacity.
+- What the **~27 FTEs/year** refers to. It sits in the same resume bullet but most likely comes from the AI pipeline and template automation (26.6, 26.7), not from cloud cost. Be ready to say which.
+
+---
+
+### 26.5 "Migrated 500+ ETL jobs to Databricks (40–50% projected TCO reduction)"
+
+#### What the claim really is
+
+A **migration at scale** without breaking the downstream consumers who depend on those 500+ jobs every day. The architecture question is: *how do you move 500 production pipelines safely, and what do you move them onto?*
+
+#### Target architecture: the lakehouse
+
+- **Medallion layers:** Bronze (raw, as received) → Silver (cleaned, deduplicated, conformed to the canonical model) → Gold (aggregates ready for analytics and downstream systems). Each layer can be rebuilt from the one before it.
+- **Delta Lake tables:** ACID transactions on object storage, so a failed job never leaves half-written data. `MERGE` gives **idempotent upserts**, so a re-run produces the same result instead of duplicates. **Time travel** lets you compare with or roll back to an earlier version during migration.
+- **Separation of storage and compute:** data lives once in cheap object storage, and any number of short-lived job clusters read it. This is what made the job-cluster cost redesign in 26.4 possible.
+- **Orchestration:** jobs run as DAGs (dependent tasks) with retries, alerts and SLAs per pipeline.
+- ⚠ **Incremental processing** (Auto Loader or change data capture) instead of full reloads, and **governance** (Unity Catalog for access and lineage). Confirm which of these DCP used.
+
+#### Migration architecture: how to move 500 jobs safely
+
+1. **Inventory and classify** every job: source, owner, schedule, SLA, downstream consumers, complexity. This becomes the migration backlog and the SLA tags used later in 26.4.
+2. **Metadata-driven framework, not 500 hand-written jobs.** Build one parameterized ingestion/transformation framework and express each job as configuration. Migration becomes translating config, and every job gets the same logging, retries and data-quality checks for free.
+3. **Waves:** start with simple, low-risk jobs to prove the framework, then move to complex and SLA-critical ones.
+4. **Parallel run and reconciliation:** old and new pipelines run side by side, and outputs are compared automatically (row counts, checksums, column-level aggregates) until they match for an agreed number of runs. That's the exit criterion to switch over.
+5. **Cut over consumers, then decommission** the old job. A migration isn't done until the old system is turned off; otherwise you pay for both.
+
+#### Where the 40–50% TCO comes from
+
+TCO is not just compute: legacy ETL tool **licences**, on-prem or always-on **infrastructure**, and the **operations effort** to keep 500 jobs alive. ⚠ Know which legacy platform the jobs came from and the split of the saving between those three.
+
+#### 60-second answer
+
+> "We moved 500+ ETL jobs onto a Databricks lakehouse: Bronze, Silver and Gold layers on Delta tables, which gave us ACID writes and idempotent MERGEs, so a failed or repeated run never corrupts data. The key decision was **not to hand-migrate 500 jobs**. We built one metadata-driven framework and expressed each job as configuration, so every job got the same retries, logging and quality checks. We migrated in waves, ran old and new in parallel with automated reconciliation until outputs matched, then switched consumers and turned the old job off. Because storage and compute are separate, each job now runs on its own short-lived cluster, which is what later let us cut Databricks compute by 97.5%."
+
+---
+
+### 26.6 "Multi-modal LLM extraction pipeline: 2 analyst-days → 20 minutes (97.9% faster, President's Award)"
+
+**Already covered as a story:** [Story 4](#story-4-two-days-to-twenty-minutes-ai-presidents-award) (the safety net: 85% model → trustworthy system) and [§10](#10-genai-wildcard). This subsection is the **pipeline architecture**: how an LLM becomes a production system.
+
+#### The pipeline
+
+```
+Document in (S3)
+  │
+  ▼
+1. Classify      document type + template (which fields do we expect?)
+  │
+  ▼
+2. Prepare       split into pages; render each page as an IMAGE and extract its TEXT layer
+  │              (multi-modal: tables and scans need the image, the text layer helps accuracy)
+  ▼
+3. Fan-out       one extraction task per page/section, run IN PARALLEL  ◄── this is where
+  │              (bounded concurrency, per-provider rate limits)            2 days → 20 min comes from
+  ▼
+4. Extract       LLM call with the template's JSON schema → structured fields + confidence
+  │              via an LLM gateway: retries, timeouts, model routing, caching, cost tracking
+  ▼
+5. Fan-in        merge page results; reconcile values that appear on several pages
+  │
+  ▼
+6. Validate      business rules (amounts > 0, dates valid, totals reconcile, entity resolvable)
+  │
+  ▼
+7. Route         >0.9 auto-approve │ 0.7–0.9 L2 review │ <0.7 manual
+  │
+  ▼
+8. Learn         reviewer corrections feed back into prompts, rules and the golden set
+```
+
+#### The architecture concepts in it
+
+1. **Fan-out / fan-in (map-reduce over pages).** A 200-page document done page by page in sequence is slow. Split into independent tasks, run them in parallel, merge the results. Most of the speed-up comes from **parallelism**, not from a faster model.
+2. **An LLM gateway as a shared platform component.** One place for provider rate limits, retries with backoff, timeouts, fallback to another model, prompt caching, and cost per document. Product code never calls the model API directly.
+3. **Structured output against a schema.** The template defines a JSON schema, and the response is validated against it. Free text never flows downstream.
+4. **Model routing by difficulty.** A cheaper, faster model for simple pages; the strong multi-modal model for complex tables and scans.
+5. **Idempotency.** Every LLM call costs money, so a retried message must not pay twice. Same check-before-processing pattern as the [non-idempotent consumer incident](#real-incident-the-non-idempotent-kafka-consumer).
+6. **Human in the loop by confidence**, and **evals as tests**: a golden set per document type re-run on every prompt or model change, plus production sampling audits.
+7. **Prompt and model versioning.** Every extracted value records which template, prompt version and model produced it. That's the audit trail regulators expect, and it lets you re-run a document when a model improves.
+8. **Data security:** enterprise model endpoints with no training on your data, access control by business line, and nothing sensitive in logs.
+
+#### The math (if asked)
+
+2 analyst-days ≈ 16 working hours = 960 minutes. 20 ÷ 960 ≈ 2.1% of the original time, so 97.9% faster.
+
+#### ⚠ Verify before saying live
+
+Which models you used, whether pages were processed in parallel the way described, the real eval set, and how reviewer corrections fed back. The stage design above is how such a pipeline *should* be built; make sure every stage you describe is one you actually had.
+
+---
+
+### 26.7 "Automated template onboarding across 1,000 templates (24 days → under 1 hour)"
+
+⚠ *The repo has no detail on how this was built (see the note in [§8](#8-strategictechnical-vision)). Below is how it **should** be designed to get from 24 days to under an hour. Replace it with your real mechanism before using it.*
+
+#### Why it took 24 days
+
+A new template (a new document layout and the fields to pull from it) needed: someone to study sample documents, hand-write the field definitions and mappings to the internal taxonomy, write validation rules, test against samples, and get sign-off from business and compliance. Mostly **manual work plus waiting** between people.
+
+#### The architecture that removes the 24 days
+
+1. **Template as versioned data** (from [26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization)). A template is a configuration record, not code, so it can be generated, reviewed and deployed without a release.
+2. **LLM-drafted template.** Given a few sample documents and the taxonomy, an LLM drafts the field list, locations, types and taxonomy mappings. A human **reviews and corrects** the draft instead of writing it from scratch. This is where days become minutes.
+3. **Auto-generated validation.** Field types and the taxonomy imply many rules (dates must be dates, amounts must be positive, totals must reconcile). Generate them, and let the reviewer add the business-specific ones.
+4. **Template CI.** Every new or changed template is automatically run against its sample documents and must reach an accuracy threshold before it can be published. This replaces most of the manual sign-off, because reviewers trust a measured result.
+5. **Self-service authoring UI** so business users onboard templates without an engineering ticket.
+6. **Safe rollout:** publish the new template version behind a flag, run it in shadow mode on live documents, then switch over. Every template version is kept, so you can roll back.
+7. **Template registry** with version history, owner and audit trail.
+
+#### The architecture lesson to state
+
+The win isn't "we used AI." It's that **variation was already modeled as data**, so once that data could be generated and tested automatically, onboarding stopped being an engineering project. The people part matters just as much: the sign-off owners had to trust the automated checks enough to step off the critical path.
+
+---
+
+### 26.8 ADP (Application Architect, 10 years): microservices and containerization shift, HCM and Garnishment platforms, 200+ engineer community
+
+⚠ *The repo has little detail on ADP. Below is the architecture shape of these systems and how to talk about them. Fill in your real specifics.*
+
+#### Garnishment Services: what makes it architecturally interesting
+
+Wage garnishment means deducting money from an employee's pay because of a legal order (child support, tax levies, creditor judgments, student loans) and sending it to the right agency. For a payroll provider serving many enterprise clients, that is:
+
+- **Rules-heavy and regulated.** Limits on how much can be deducted depend on the order type and the jurisdiction (in the US, federal limits plus state rules), and multiple orders for one employee have a **priority order**. ⚠ Verify the exact legal details before quoting any.
+- **Exactly-once money movement.** Deducting twice, or paying the wrong agency, is a real legal and financial error. Same lesson as idempotency in DCP.
+- **Auditable.** Every calculation must be explainable later to the employee, the employer and the court.
+
+**Architecture patterns that fit:**
+
+1. **Rules engine with effective-dated rules.** Rules are data, versioned by **effective date** and jurisdiction, so a law change on 1 January is a configuration release, and a payroll run for last month uses last month's rules.
+2. **Separation of calculation from integration:** a pure calculation service (inputs → deduction amounts, no side effects, easy to test with thousands of cases) separate from the services that talk to payroll and pay agencies.
+3. **Idempotent batch integration** with payroll runs: each run has an ID, each deduction a unique key, so a re-run can't double-deduct.
+4. **Audit trail:** store the inputs, the rule versions and the result for every calculation.
+5. **Multi-tenant SaaS:** many employer clients on shared infrastructure, with data isolation per client.
+
+#### HCM platform
+
+Human Capital Management (employee records, payroll-adjacent data) for global enterprise customers: **multi-tenant** data isolation, **PII protection** (encryption, access control, masking), high availability during payroll windows, and integration with many client systems through stable, versioned APIs.
+
+#### The microservices and containerization shift
+
+- **From what to what:** Java/J2EE applications → Spring Boot microservices in Docker containers with CI/CD pipelines. Apply the **12-factor app** principles: configuration from the environment, stateless processes, logs as streams, disposable instances.
+- **How you led it without a big bang:** a reference architecture and starter templates (a "paved road"), one pilot service end to end, then a migration playbook teams could follow on their own. Same strangler-fig approach as [26.3](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices).
+- **The 200+ engineer community:** **architecture governance without becoming a bottleneck**. Architecture Decision Records (ADRs), shared reference implementations, design reviews for cross-cutting changes only, and guilds or communities of practice that spread the standards. See [Governance without becoming a bottleneck](ProductSquads-JD-Expected-Questions.md#q19-how-do-you-establish-architecture-governance-without-becoming-a-bottleneck-in-a-fast-moving-team).
+
+---
+
+### 26.9 TRDDC (TCS Research): "platform- and language-independent static program analysis"
+
+⚠ *No detail in the repo. This is the standard architecture for language-independent analysis tools. Check it against what you actually built.*
+
+#### What it is
+
+Static program analysis means examining source code **without running it**, to find bugs, security holes, dead code or dependencies, or to understand a legacy system before modernizing it. "Language-independent" means **one analysis engine for many programming languages** (for enterprise customers, often COBOL, PL/I, Java, C and others).
+
+#### The architecture: the compiler's three-part split
+
+```
+COBOL ─► front-end ─┐
+Java  ─► front-end ─┼─► Common Intermediate Representation (IR) ─► Analyses ─► Reports / rules
+C     ─► front-end ─┘    (language-neutral model of the program)     (written ONCE)
+```
+
+1. **Front-ends** (one per language): parse source into an abstract syntax tree, then translate it into a **common intermediate representation**. Adding a language means writing one front-end.
+2. **The IR**: control-flow graphs, call graphs, data-flow information. Every analysis is written once against the IR, not once per language. N languages × M analyses becomes N + M pieces of work. This is the same idea as the canonical data model in [26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization), and as LLVM in modern compilers.
+3. **Pluggable analyses and rules:** a plugin interface so new checks can be added without changing the engine.
+
+#### "Scalable": how analysis handles millions of lines
+
+- **Parallelism:** parse and analyze modules or files independently and in parallel, then combine the results (a map-reduce shape).
+- **Incremental analysis:** cache results per module and re-analyze only what changed.
+- **Summaries:** analyze each function once into a summary, and reuse the summary at every call site instead of re-analyzing.
+
+#### Why it's still relevant to say
+
+It's the **earliest example of the pattern you keep using**: find the right common abstraction, and the many-to-many problem becomes many-plus-many. It also connects to modernization work: you can't safely migrate a legacy system you can't analyze.
+
+---
+
+### 26.10 PlantGuard (IIT Hyderabad capstone): multi-agent predictive-maintenance copilot
+
+**Source:** the project's own code and docs (`ARCHITECTURE.md`, `eval-results.md` in the PlantGuard repo). These are real facts, not constructed.
+
+#### What it does
+
+Triages factory maintenance events (alarms, operator reports, shift logs, inspections): works out priority, probable fault, safety and permit needs, missing readings, parts and technicians, then routes each event to `auto` or `human_review`. Every recommendation is **grounded in the plant's own manuals and SOPs** through RAG. It also answers free-text maintenance questions the same way.
+
+#### The architecture
+
+```
+Event ─► 1 Intake (LLM parses raw text → structured event)
+       ─► 2 Facts (deterministic, from JSON data only: assets, telemetry, work orders, inventory)
+       ─► 3 Memory recall (past cases for this equipment, Qdrant)
+       ─► 4 Retrieve (hybrid RAG over manuals)
+       ─► 5 LLM recommendation ─► 6 citation guard ─► 7 groundedness judge
+       ─► 8–12 Decide: triage, parts, technicians, guards, ROUTE (auto | human_review)
+       ─► Orchestration: LangGraph (checkpointed, pauses for human approval)
+                     or 5-agent team: Log Intake → Manual/SOP RAG → Maintenance
+                        Recommendation → Safety Reviewer → Procurement
+       ─► Procurement via MCP server (check_stock, raise_purchase_order), ONLY if route == auto
+       ─► Memory write (remember this case)
+Cross-cutting: LangFuse tracing · retries + circuit breakers · golden-set evals · FastAPI
+```
+
+#### The architecture decisions worth explaining
+
+1. **Deterministic where possible, LLM only where needed.** Facts that exist in structured data (asset details, inventory, telemetry) are computed by plain code. Reading and applying manuals is the LLM's job. That keeps the system testable and the LLM's job narrow.
+2. **Hybrid retrieval: dense + keyword + rerank.** Dense vectors find meaning but blur near-identical codes (`VPW-P-00043` vs `VPW-P-00034`). A **BM25 keyword index** makes exact tags, part numbers and fault codes match. The two lists are merged with **Reciprocal Rank Fusion (RRF)**, then **one LLM call reranks** the candidates, because similarity is not relevance. Retrieval keeps a split between the machine's own manual and plant-wide documents, so plant-wide rules are never crowded out.
+3. **Two layers of hallucination control.** A **citation guard** checks that every citation points to a chunk that was actually retrieved. A **groundedness judge** (LLM as judge) checks that what the answer *says* is supported by those chunks.
+4. **Risk-tiered autonomy with a human gate.** Low-risk events can be handled automatically. Anything safety-critical, needing a permit, or uncertain goes to `human_review`. In LangGraph this is a real **interrupt**: the run pauses, its state is **checkpointed** to SQLite, and resumes on `--approve` or `--reject`. **Purchase orders are only raised when the route is `auto`.**
+5. **Tools through MCP, with idempotency.** Agents never touch the ERP directly. They call an **MCP server** whose `raise_purchase_order` is **idempotent**, so a retried agent step can't order parts twice. Same principle as DCP's idempotent consumers.
+6. **Resilience around every external call.** Retries with jittered backoff, and a **circuit breaker** per dependency (opens after 3 consecutive failures, 30-second cooldown, then half-open: the next call is a probe).
+7. **Provider abstraction.** LiteLLM in front of Gemini, so the model can change through configuration.
+8. **Observability and evals.** LangFuse traces every step. A **golden set of 20 cases** checks route, required citations and forbidden content. Results went from **11/20 (55%) → 15/20 (75%)**, with **factual questions 10/10**. Fixes were deliberately **general, not per-case**, to avoid overfitting the eval. Multi-hop questions (1/5) are the known weak spot: say so, it shows you read your own evals.
+9. **Served by FastAPI:** `POST /triage/{id}`, `POST /ask`, `GET /status` (Qdrant health, memory count, purchase orders, circuit-breaker state).
+
+#### 60-second answer
+
+> "PlantGuard triages factory alarms and recommends repairs grounded in the plant's manuals. Architecturally, three decisions matter. First, **deterministic code for anything in structured data, the LLM only for reading documents**, which keeps it testable. Second, **hybrid retrieval**: dense search for meaning, BM25 so exact part and fault codes match, merged with reciprocal rank fusion and reranked by the LLM, then a citation guard and a groundedness judge on the answer. Third, **governed actions**: agents act only through an MCP server with idempotent tools, anything risky pauses in LangGraph for human approval with the state checkpointed, and purchase orders are only raised on the auto route. Around that: circuit breakers, LangFuse tracing, and a golden-set eval that went from 55% to 75%, with factual questions at 100%."
+
+---
+
+### 26.11 PaperMind and VoxAlchemy.ai
+
+#### VoxAlchemy.ai (voice/OCR-to-data, 95% less manual entry)
+
+**Source:** [VoxAlchemy project guide](transcription-project-interview.md), written from the code.
+
+- **Three tiers, split by workload shape:** a static frontend, a stateless **FastAPI** API (auth, upload, quotas, cost estimate, job status), and a long-running **worker** that does the slow, expensive LLM work. The API stays fast because it never does the work itself. Same sync/async split as DCP ([26.1](#step-3-the-architecture-in-one-picture)).
+- **Queue-based processing:** jobs go onto a **Redis queue** (optionally split into separate OCR and transcription queues so one kind of work can't starve the other). Files and outputs live in **Google Cloud Storage**. Job status in Redis with TTLs, and the UI polls it.
+- **Gemini 2.5 Flash via Vertex AI** for both OCR (vision) and transcription (audio), so one provider covers both.
+- **Chunking for resilience:** PDFs are processed **page by page**, audio in **time chunks**. If page 47 fails, only page 47 is retried; repeated failures go to a **dead-letter queue**. Resubmitting the same job is idempotent (same job ID).
+- **Three layers of rate limiting:** per-user quotas (jobs per day and concurrent jobs), a **cost guardrail** that estimates cost before processing, and **backoff** against the provider's own limits. Each layer protects a different party: the system, the user's wallet, and the provider relationship.
+- **Quality scoring:** each segment gets a quality score, and anything below 0.70 is flagged as low confidence for a human to check.
+- **Known gap an architect should name:** Redis holds both the queue and job state, so it's a single point of failure. The next step is Redis Sentinel or moving durable state to PostgreSQL.
+
+⚠ **Fix a conflict in this doc:** [§10](#10-genai-wildcard) describes VoxAlchemy with PostgreSQL and Kafka publishing to a billing service. The code-based guide shows Redis + GCS. Use the version that matches what you actually built.
+
+#### PaperMind (RAG over personal documents)
+
+⚠ *Not documented in this repo. Below is its intended design; confirm what is actually built.*
+
+- **Goal:** ask questions across your own documents ("When does my driving licence expire?", "Can I travel to the US next week?", which needs passport *and* visa validity together).
+- **Privacy-first architecture:** OCR runs **in the browser** (Tesseract.js) and files are **encrypted on the client** before upload, so stored documents are never readable by the server.
+- **RAG:** chunks embedded into **Qdrant**, retrieved per question, and Claude reasons across them and answers **with citations**.
+- **Stack:** Angular frontend, FastAPI backend, Supabase PostgreSQL, Qdrant Cloud, almost entirely free tiers (cost is mostly per-token model usage).
+
+**The trade-off an architect must be ready to discuss:** "zero-knowledge" and server-side RAG pull against each other. To search and answer, *something* has to see readable text: the embeddings in Qdrant and the text sent to the model. Be precise about what's protected: **documents at rest are encrypted end to end; text is only decrypted for retrieval and answering, and only the minimal chunks go to the model.** Claiming more than that is the kind of thing a security-minded interviewer will catch.
+
+---
+
+### 26.12 The Threads That Run Through Your Whole Resume
+
+If an interviewer asks *"What's your architecture philosophy?"*, these patterns appear in almost every role. Each one has proof from at least two places on your resume:
+
+| Principle | Where it shows up |
+|---|---|
+| **Find the common model, turn N × M into N + M** | TRDDC (common IR), DCP (canonical data model, config-driven templates), ADP (shared reference architecture) |
+| **Put slow or unreliable work behind a queue** | DCP (Kafka), VoxAlchemy (Redis queue + worker), PlantGuard (governed tool calls) |
+| **Make everything safe to retry (idempotency)** | DCP consumers, LLM calls, Garnishment deductions, PlantGuard purchase orders, Delta MERGE |
+| **Variation belongs in data, not code** | DCP templates and rules, Garnishment effective-dated rules, metadata-driven ETL framework |
+| **Classify work by what it can tolerate, then optimize each class** | Spot vs on-demand, SLA-tagged pipelines, confidence routing, PlantGuard auto vs human review |
+| **The model isn't the product; the system around it is** | LLM extraction (85% → trustworthy), PlantGuard (guards, judge, evals), VoxAlchemy (quality scores) |
+| **Fix the pattern, not the instance** | 500-job template fix, paved roads at ADP, consumer pattern adopted platform-wide |
+| **Measure it or you can't claim it** | SLOs and p95, sampling audits, golden-set evals, cost per job and per document |
+
+**One line to end on:** *"Across 22 years the technology changed from static analysis to microservices to agents, but the architecture moves stayed the same: find the common model, isolate the unreliable parts, make everything safe to retry, and measure what you promise."*
