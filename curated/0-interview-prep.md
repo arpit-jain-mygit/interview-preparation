@@ -7585,12 +7585,12 @@ This one line actually makes four separate promises (NFRs). Each one is met by a
 
 | Promise | What it really means in DCP | Where it's measured |
 |---|---|---|
-| **10K+ documents/day** | Throughput. 10,000 financial documents a day, about **100 MB each on average** (PDFs, Excel, scans), so roughly **1 TB/day** of raw input. Validated at 12K/day, designed to reach 20K/day without a redesign. | Docs completed per day, Kafka consumer lag |
+| **10K+ documents/day** | Throughput. 10,000 financial documents a day, about **10 MB each on average** (PDFs, Excel, scans), so roughly **100 GB/day** of raw input. Validated at 12K/day, designed to reach 20K/day without a redesign. | Docs completed per day, Kafka consumer lag |
 | **Under 2s latency** | **The user-facing (synchronous) path**: UI and API responses for 500+ concurrent analysts (search, open a document, review, approve). Measured **p95 = 1.5s**, approval action p95 ≈ 800ms, cached entity lookup ≈ 50ms. | p95/p99 at the API gateway |
 | **95% accuracy** | **Correctly extracted fields**, measured against reviewed ground truth. This is a property of the whole pipeline (model + validation + routing), not of the AI model alone. The model on its own was only about 85% accurate. | Golden-set evals + hourly sampling audits |
 | **99%+ availability** | The platform accepts documents and serves analysts at least 99% of the time. That allows about **7.3 hours of downtime a month** (99.5% would allow about 3.6 hours, 99.9% about 44 minutes). | Uptime SLI from synthetic checks and gateway success rate |
 
-**The most important clarification to make out loud:** the 2 seconds is **not** "a 100 MB PDF goes in and structured data comes out in 2 seconds." Extraction is **asynchronous** and takes about **3 minutes on average (SLA: under 5 minutes)**. The user gets an answer in under 2 seconds because the design never makes them wait for the slow part. If you say this before they ask, it signals you understand your own system. If you let them assume otherwise, it's the first thing a sharp interviewer will poke at.
+**The most important clarification to make out loud:** the 2 seconds is **not** "a 10 MB PDF goes in and structured data comes out in 2 seconds." Extraction is **asynchronous** and takes about **3 minutes on average (SLA: under 5 minutes)**. The user gets an answer in under 2 seconds because the design never makes them wait for the slow part. If you say this before they ask, it signals you understand your own system. If you let them assume otherwise, it's the first thing a sharp interviewer will poke at.
 
 #### Step 2: Back-of-envelope (do this live, it shows you reasoned about scale)
 
@@ -7609,7 +7609,7 @@ Concurrency (Little's Law: in-flight = arrival rate × time each item takes)
     run several at once, capped by a bulkhead)
 
 Storage
-  10,000 × 100 MB                      ≈ 1 TB/day of raw documents
+  10,000 × 10 MB                       ≈ 100 GB/day of raw documents
   → raw files go to object storage (S3/Blob), never through Kafka or a DB
 
 Availability budget
@@ -7683,7 +7683,7 @@ The single most important design decision is **splitting the system into a fast 
 ##### B. Latency (under 2s): "never make the user wait for the slow part"
 
 1. **Async request-reply.** Upload returns **202 Accepted** with a `documentId` in milliseconds. The UI then shows status by polling a cheap status endpoint, or by a push notification (WebSocket / server-sent events) when extraction finishes. The 3-minute extraction never sits on the user's request.
-2. **⚠ Upload bytes straight to object storage.** A 100 MB file shouldn't stream through a microservice. The standard design gives the client a **pre-signed S3/Blob URL**, so the file goes directly to storage and the service only handles small metadata. Confirm whether DCP did this or streamed through the sourcing service.
+2. **⚠ Upload bytes straight to object storage.** 10K files a day at about 10 MB each (about 100 GB) shouldn't stream through a microservice. The standard design gives the client a **pre-signed S3/Blob URL**, so the file goes directly to storage and the service only handles small metadata. Confirm whether DCP did this or streamed through the sourcing service.
 3. **CQRS: separate read models shaped for the screens.** Writes go to the event log and PostgreSQL. Reads are served from models built for the query: MongoDB for the document view, Elasticsearch for full-text entity search, PostgreSQL **read replicas** for reporting. Reads never compete with writes for the same database.
 4. **Multi-layer caching, with a TTL chosen per kind of data:**
 
@@ -7708,7 +7708,7 @@ The single most important design decision is **splitting the system into a fast 
 3. **Consumer groups + horizontal autoscaling on lag, not CPU.** Extraction workers mostly *wait* on the AI API, so CPU stays low even when they're overloaded. The HPA scales on **Kafka consumer lag** (from 5 up to 20 pods, and up to 50 in the later design). Scale down slowly to avoid constant consumer-group rebalances.
 4. **Stateless workers + work split by document.** Any worker can process any document, so adding pods adds throughput almost linearly until the next limit (partitions, AI API quota, database connections).
 5. **Find and remove the real bottleneck.** In DCP it was entity mapping: 50K entities/day against a Soniq API capped at 1,000 requests/minute. Fixed with Redis cache (85% hit rate) → batching 10 per call → circuit breaker with fuzzy-match fallback → async retry queue. Result: 92% mapping success and 40% higher extraction throughput. See [The entity-mapping bottleneck](#the-entity-mapping-bottleneck-explained-simply).
-6. **Streaming parsers for big files.** 100 MB PDFs are parsed as a stream, page by page, not loaded fully into memory, so a pod's memory stays flat and many documents fit per node.
+6. **Streaming parsers for big files.** PDFs (10 MB on average, some much larger) are parsed as a stream, page by page, not loaded fully into memory, so a pod's memory stays flat and many documents fit per node.
 7. **Spark for the batch side.** Heavy batch work (data-lake Bronze → Silver → Gold, deduplication, reprocessing) runs on Spark executors, separate from the online extraction path, so a big batch job never slows down analysts.
 
 ##### D. Accuracy (95%): "correct data, exactly once, with proof"
@@ -7752,7 +7752,7 @@ Accuracy in a distributed system has two halves. **Data integrity**: no document
 
 #### Step 6: The 60-second spoken answer
 
-> "That line is really four promises, and each one is met by a different part of the design. DCP takes in about 10,000 financial documents a day, around 100 MB each. AI extraction takes about three minutes per document, so the key decision was to **split the system into a fast synchronous path and a slow asynchronous path**.
+> "That line is really four promises, and each one is met by a different part of the design. DCP takes in about 10,000 financial documents a day, around 10 MB each. AI extraction takes about three minutes per document, so the key decision was to **split the system into a fast synchronous path and a slow asynchronous path**.
 >
 > **Latency:** analysts never wait for extraction. Upload returns immediately with an ID, and the screens read from CQRS read models and Redis caches. p95 was 1.5 seconds against a 2-second target.
 >
