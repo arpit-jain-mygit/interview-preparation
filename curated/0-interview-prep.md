@@ -50,6 +50,8 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
 23. [Advanced Java](#23-advanced-java)
 24. [Citi Karat Screening Round](#24-citi-karat-screening-round)
 25. [Redwood — Director of Engineering (AI & Full-Stack SaaS), Site-Lead Round](#25-redwood--director-of-engineering-ai--full-stack-saas-site-lead-round)
+26. [My Resume](#26-my-resume)
+    - [26.1 "Delivered 99%+ availability and 95% accuracy under 2s latency processing 10K+ documents/day" (DCP)](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)
 
 ---
 
@@ -7567,3 +7569,214 @@ In the first 30 days, my priority is absolute alignment—auditing our current S
 By day 60, we will begin standardizing our processes: introducing strict pre-flight checklists to safeguard our 99.95% enterprise SLA, launching practical boot camps to upskill our traditional Java engineers into AI platform orchestrators, and embedding automated evaluation pipelines directly into our CI/CD workflow.
 By day 90, we will shift toward scaling innovation—executing cloud cost engineering patterns like cluster redesigns and spot instance tracking to lower TCO, deploying a secure, zero-trust Model Context Protocol layer, and fully empowering our local squads with end-to-end product module ownership.
 This structured playbook ensures that we don't just ship cutting-edge AI features fast—we ship them with the enterprise security, cost-efficiency, and reliability that Redwood's global clients expect."*
+
+
+---
+
+## 26. My Resume
+
+**What this is:** one subsection per resume bullet. Each one decodes what the bullet actually claims and explains the distributed-system design that makes it true. Then it gives you a 60-second spoken answer and the follow-ups an interviewer is likely to ask. Facts come from the DCP project docs in this repo ([requirements](Java-And-MyProfessional-Projects-Interviews/data-collection-platform/DATA_COLLECTION_PLATFORM_REQUIREMENTS.md), [deployment and DR](Java-And-MyProfessional-Projects-Interviews/data-collection-platform/DEPLOYMENT_AND_SUMMARY.md), [technical deep dives](Java-And-MyProfessional-Projects-Interviews/data-collection-platform/TECHNICAL_DEEP_DIVES.md), [cheat sheet](Java-And-MyProfessional-Projects-Interviews/data-collection-platform/INTERVIEW_CHEAT_SHEET.md)). Where the repo is silent, the answer describes how the system *should* be designed to hit the number, and is marked ⚠ so you can confirm or personalize it before saying it live.
+
+### 26.1 "Delivered 99%+ availability and 95% accuracy under 2s latency processing 10K+ documents/day" (DCP)
+
+#### Step 1: Decode the claim before you defend it
+
+This one line actually makes four separate promises (NFRs). Each one is met by a different part of the system, and a good interviewer will check that you know which part:
+
+| Promise | What it really means in DCP | Where it's measured |
+|---|---|---|
+| **10K+ documents/day** | Throughput. 10,000 financial documents a day, about **100 MB each on average** (PDFs, Excel, scans), so roughly **1 TB/day** of raw input. Validated at 12K/day, designed to reach 20K/day without a redesign. | Docs completed per day, Kafka consumer lag |
+| **Under 2s latency** | **The user-facing (synchronous) path**: UI and API responses for 500+ concurrent analysts (search, open a document, review, approve). Measured **p95 = 1.5s**, approval action p95 ≈ 800ms, cached entity lookup ≈ 50ms. | p95/p99 at the API gateway |
+| **95% accuracy** | **Correctly extracted fields**, measured against reviewed ground truth. This is a property of the whole pipeline (model + validation + routing), not of the AI model alone. The model on its own was only about 85% accurate. | Golden-set evals + hourly sampling audits |
+| **99%+ availability** | The platform accepts documents and serves analysts at least 99% of the time. That allows about **7.3 hours of downtime a month** (99.5% would allow about 3.6 hours, 99.9% about 44 minutes). | Uptime SLI from synthetic checks and gateway success rate |
+
+**The most important clarification to make out loud:** the 2 seconds is **not** "a 100 MB PDF goes in and structured data comes out in 2 seconds." Extraction is **asynchronous** and takes about **3 minutes on average (SLA: under 5 minutes)**. The user gets an answer in under 2 seconds because the design never makes them wait for the slow part. If you say this before they ask, it signals you understand your own system. If you let them assume otherwise, it's the first thing a sharp interviewer will poke at.
+
+#### Step 2: Back-of-envelope (do this live, it shows you reasoned about scale)
+
+```
+Throughput
+  10,000 docs/day ÷ 86,400 s           ≈ 0.12 docs/s average
+  Real arrivals are bursty (business hours, month/quarter-end filings)
+  → design for a peak of ~100 docs/s at ingestion (sizing exercise in §3)
+
+Concurrency (Little's Law: in-flight = arrival rate × time each item takes)
+  Spread over ~8 working hours: 10,000 ÷ 28,800 s ≈ 0.35 docs/s
+  × ~180 s per extraction              ≈ 63 documents in flight on average
+  × ~3 for peaks                       ≈ 190 in flight
+  → 20 extraction pods × ~10 concurrent extractions each
+    (extraction is I/O-bound, mostly waiting on the AI API, so one pod can
+    run several at once, capped by a bulkhead)
+
+Storage
+  10,000 × 100 MB                      ≈ 1 TB/day of raw documents
+  → raw files go to object storage (S3/Blob), never through Kafka or a DB
+
+Availability budget
+  99%   → ~7.3 h/month downtime allowed
+  99.5% → ~3.6 h/month
+  99.9% → ~44 min/month
+```
+
+⚠ The "8 working hours" and "×3 peak" factors are assumptions to show the method. Put in DCP's real arrival pattern if you know it.
+
+#### Step 3: The architecture in one picture
+
+The single most important design decision is **splitting the system into a fast synchronous path and a slow asynchronous path**. Almost every NFR follows from that split.
+
+```
+ FAST PATH (synchronous, p95 1.5s)              SLOW PATH (asynchronous, ~3 min/doc)
+ ─────────────────────────────────              ─────────────────────────────────────
+ Analyst UI                                      Kafka topic: document-sourced
+   │                                             (partitioned by documentId)
+   ▼                                                  │
+ API Gateway / Istio ingress                          ▼
+ (TLS, auth, RBAC, per-user rate limit)          Extraction workers ×5–20 (HPA on lag)
+   │                                               ├─ SparkAir (GenAI)  ── circuit breaker
+   ▼                                               ├─ fallback: Cognize / Deepmine
+ Sourcing / Workflow / Approval services           └─ last resort: manual-extraction queue
+ (stateless, ×2–3 replicas each)                      │
+   │        │                                         ▼
+   │        └─ upload: store file in S3,         Rules engine (validation + entity mapping
+   │           write metadata + outbox row,       via Soniq: Redis cache → batch → fallback)
+   │           return 202 Accepted + docId            │
+   ▼                                                  ▼
+ Read models (CQRS):                             Confidence routing
+   Redis cache (sessions, templates,               >0.9 auto-approve │ 0.7–0.9 L2 review │ <0.7 manual
+     permissions, entity mappings)                    │
+   MongoDB (document view / event log)                ▼
+   Elasticsearch (search)                        Camunda approval workflow (L1 → L2)
+   PostgreSQL read replicas (metadata)                │
+                                                      ▼
+                                                 Dissemination service → downstream systems
+
+ Everything runs on Kubernetes, multi-AZ. Kafka 3 brokers, PostgreSQL primary + 2 standbys,
+ MongoDB 3-node replica set, Redis Sentinel. Observability: Prometheus, Grafana, Jaeger, Splunk.
+```
+
+#### Step 4: Every distributed-systems concept, mapped to the NFR it protects
+
+##### A. Availability (99%+): "no single failure takes the platform down"
+
+1. **Redundancy everywhere, so there's no single point of failure.** Every stateless service runs at least 2–3 replicas. Every stateful component is replicated: PostgreSQL with 1 primary and 2 standbys and automatic failover, MongoDB as a 3-node replica set, Redis with Sentinel, Kafka with 3 brokers. Pods are spread across **availability zones** (anti-affinity), so a zone outage costs about 5 minutes, not hours.
+2. **Stateless services + self-healing.** Services keep no state in memory (sessions live in Redis, data in the databases), so any replica can serve any request and Kubernetes can kill and restart pods freely. **Liveness probes** restart a stuck pod (about 30 seconds to recover). **Readiness probes** take a pod out of the load balancer until it can really serve. A **PodDisruptionBudget** stops node maintenance from draining all replicas at once.
+3. **Asynchronous decoupling breaks the "availability multiplication" problem.** This is the strongest point you can make. When services call each other synchronously in a chain, their availabilities **multiply**: five dependencies at 99.9% each give about 99.5%. Add an external AI API at 99% and the chain drops to about 98.5%, which already misses the target. In DCP the upload path only depends on gateway → sourcing → PostgreSQL/S3 → Kafka. Extraction, rules, SparkAir and Soniq sit **behind Kafka**. If SparkAir is down for an hour, analysts can still upload, search and approve, and documents simply **wait in the queue** and get processed when it comes back. The outage becomes a **delay**, not **downtime**.
+4. **Circuit breaker + fallback chain (graceful degradation).** Resilience4j circuit breaker on SparkAir: when the failure rate crosses its threshold, the breaker opens and calls fail fast instead of piling up. Fallback order: SparkAir → Cognize/Deepmine (same interface, via the Factory/Strategy pattern) → manual-extraction queue with the L1 user notified. Same idea for Soniq: Redis cache → fuzzy match → retry every 5 minutes. The platform gets worse gracefully; it doesn't fall over.
+5. **Bulkheads.** A separate thread pool and concurrency limit per external engine, so a slow SparkAir can't use up the threads the approval APIs need. Kubernetes resource requests and limits do the same at the pod level.
+6. **Timeouts, retries with exponential backoff and jitter.** Every remote call has a timeout (Istio: 30s overall, 10s per try). Retries back off exponentially with random jitter, so a recovering service isn't hit by a synchronized "retry storm". Retries are only safe because consumers are **idempotent** (see D).
+7. **Dead-letter queue (DLQ).** A "poison" document that fails repeatedly goes to a DLQ for investigation instead of blocking its partition forever. One bad document never stalls the other 9,999.
+8. **Kafka durability settings.** ⚠ Standard for this kind of system, so confirm DCP's actual values: replication factor 3, `min.insync.replicas=2`, producer `acks=all` plus idempotent producer. Losing one broker loses no data and stops nothing.
+9. **Zero-downtime deployments.** Most real-world downtime comes from releases, not hardware. Rolling or blue-green deploys with **canary steps** (10% → 50% → 100%) and automatic rollback on error rate. Database changes use **expand → migrate → contract**, so old and new code both work during the switch. Graceful connection draining before a pod stops. Full mechanics: [Blue-Green & Canary](#blue-green--canary-how-the-traffic-switch-actually-works).
+10. **Disaster recovery with explicit RTO/RPO per failure type:**
+
+    | Failure | RTO | RPO | How |
+    |---|---|---|---|
+    | Pod crash | 30s | 0 | Kubernetes restart |
+    | Node failure | 2 min | 0 | Pods rescheduled on another node |
+    | Zone outage | 5 min | 0 | Multi-AZ deployment |
+    | Database corruption | 1 hour | 15 min | Point-in-time restore (WAL archived to S3) |
+    | Whole-cluster outage | 4 hours | 1 hour | Restore to a secondary cluster |
+
+    Backups are **restore-tested weekly**. A backup you've never restored is a hope, not a plan.
+11. **Process, not just architecture.** Pre-flight checklists, runbooks and blameless postmortems took incidents from 60 to 24 a month and MTTR from 2 hours to 20 minutes. At 99%, MTTR is where availability is won or lost. See [Cutting production incidents 60%](#cutting-production-incidents-60-explained-simply).
+
+##### B. Latency (under 2s): "never make the user wait for the slow part"
+
+1. **Async request-reply.** Upload returns **202 Accepted** with a `documentId` in milliseconds. The UI then shows status by polling a cheap status endpoint, or by a push notification (WebSocket / server-sent events) when extraction finishes. The 3-minute extraction never sits on the user's request.
+2. **⚠ Upload bytes straight to object storage.** A 100 MB file shouldn't stream through a microservice. The standard design gives the client a **pre-signed S3/Blob URL**, so the file goes directly to storage and the service only handles small metadata. Confirm whether DCP did this or streamed through the sourcing service.
+3. **CQRS: separate read models shaped for the screens.** Writes go to the event log and PostgreSQL. Reads are served from models built for the query: MongoDB for the document view, Elasticsearch for full-text entity search, PostgreSQL **read replicas** for reporting. Reads never compete with writes for the same database.
+4. **Multi-layer caching, with a TTL chosen per kind of data:**
+
+    | Data | Cached? | TTL | Why |
+    |---|---|---|---|
+    | User permissions | Yes | 5 min | Checked on every API call |
+    | User session | Yes | 1 hour | Frequent access |
+    | Entity mapping (Soniq) | Yes | 1 hour | Expensive external call; 85% hit rate, ~50ms |
+    | Templates, quality rules | Yes | 12–24 hours | Rarely change |
+    | Extraction result | Yes | 24 hours | Immutable once extracted |
+    | **Document status** | **No** | n/a | Changes constantly and drives approvals; stale status would be a correctness bug |
+
+    Knowing **what not to cache** (document status) is as important as what to cache.
+5. **Connection pooling, indexes and pagination.** HikariCP pools so no request pays connection setup. Indexes on the columns the review screens filter by. Paginated lists so a queue of 10K documents never loads in one response.
+6. **A latency budget per hop.** If the gateway, auth, service and database each take a share, you know which hop broke the 2 seconds. Distributed tracing (Jaeger) shows that per request.
+7. **Measure p95/p99, not the average.** The average hides the unlucky users. Target p95 under 2s, achieved **1.5s**. See [Why p99 and not the average](#258-enterprise-saas-engineering-architecture-and-modernization).
+
+##### C. Throughput (10K+/day, headroom to 20K): "scale out, never up"
+
+1. **Kafka as a buffer (load leveling).** Bursts (quarter-end filings) land in Kafka. Workers drain the backlog at their own pace instead of being overwhelmed. This is also **backpressure**: when workers are slow, the queue grows; nothing crashes and nothing is lost.
+2. **Partitioning by `documentId`.** All events for one document go to the same partition, so they're processed **in order** (sourced → extracted → validated → approved). Different documents are processed **in parallel** across partitions. 48 partitions were provisioned so the consumer group can grow without a repartitioning migration (sizing math in [§3](#3-distributed-systems--large-scale-compute-design)).
+3. **Consumer groups + horizontal autoscaling on lag, not CPU.** Extraction workers mostly *wait* on the AI API, so CPU stays low even when they're overloaded. The HPA scales on **Kafka consumer lag** (from 5 up to 20 pods, and up to 50 in the later design). Scale down slowly to avoid constant consumer-group rebalances.
+4. **Stateless workers + work split by document.** Any worker can process any document, so adding pods adds throughput almost linearly until the next limit (partitions, AI API quota, database connections).
+5. **Find and remove the real bottleneck.** In DCP it was entity mapping: 50K entities/day against a Soniq API capped at 1,000 requests/minute. Fixed with Redis cache (85% hit rate) → batching 10 per call → circuit breaker with fuzzy-match fallback → async retry queue. Result: 92% mapping success and 40% higher extraction throughput. See [The entity-mapping bottleneck](#the-entity-mapping-bottleneck-explained-simply).
+6. **Streaming parsers for big files.** 100 MB PDFs are parsed as a stream, page by page, not loaded fully into memory, so a pod's memory stays flat and many documents fit per node.
+7. **Spark for the batch side.** Heavy batch work (data-lake Bronze → Silver → Gold, deduplication, reprocessing) runs on Spark executors, separate from the online extraction path, so a big batch job never slows down analysts.
+
+##### D. Accuracy (95%): "correct data, exactly once, with proof"
+
+Accuracy in a distributed system has two halves. **Data integrity**: no document lost, duplicated or applied out of order. **Extraction quality**: the extracted fields are right.
+
+*Data integrity:*
+
+1. **At-least-once delivery + idempotent consumers = exactly-once effects.** Kafka may deliver a message twice after a crash. Every consumer checks "have I already processed this message ID?" **inside the same database transaction** as its write, and commits the Kafka offset only after that transaction succeeds. This came from a real incident where documents were extracted and **billed twice**. See [The non-idempotent Kafka consumer](#real-incident-the-non-idempotent-kafka-consumer).
+2. **Transactional outbox.** The state change and the "event to publish" are written in one local transaction, and a separate relay publishes the event to Kafka. The database and Kafka can never disagree, with no distributed lock and no two-phase commit. See [Transactional Outbox](#transactional-outbox-pattern).
+3. **Saga with compensating actions** for multi-service workflows (sourcing → extraction → approval → dissemination). If a later step fails, earlier steps are undone by compensations instead of a cross-service transaction. Approval uses **orchestration** (Camunda). Extraction uses **choreography** (services react to Kafka events).
+4. **Event sourcing.** Every state change is an immutable event. That gives a full **audit trail** for regulators, lets you **replay** events to rebuild a read model after a bug, and removed race conditions between L1 edits and L2 reviews (approval-workflow conflicts down 99%).
+5. **Consistency chosen per data type (CAP / PACELC).** Metadata, approval rules and document status use PostgreSQL: **strong consistency**, because a wrong status is a wrong decision. Search and dashboards use **eventual consistency** (read models that lag by seconds), trading freshness for speed and availability. During a network partition, approvals favour consistency (refuse rather than double-approve) and search favours availability (show slightly stale results).
+
+*Extraction quality (the 85% model → trustworthy system story):*
+
+6. **Confidence-based routing (human in the loop).** Above 0.9 → auto-approved and logged. 0.7–0.9 → L2 reviewer. Below 0.7 → manual extraction. Humans spend their time only where the model is unsure.
+7. **Multi-layer validation (Chain of Responsibility).** Format checks (is the PDF intact?) → business rules (amounts positive, dates valid, totals reconcile, entity resolvable) → quality checks. Impossible values never reach downstream systems.
+8. **Continuous measurement.** A golden set per document type, re-run on every prompt or model change. Plus **hourly sampling audits** of 100 auto-approved documents, with an alert if accuracy drops below threshold. Accuracy is monitored like latency, not checked once at launch.
+
+⚠ **Reconcile two numbers before you say them:** the resume says **95%**, while the DCP write-up says **99.2% end-to-end** (after human review). A consistent way to tell it: about **95% of fields come out right straight through the automated pipeline**, and human review of the low-confidence slice takes the delivered data to about **99%**. Pick the definition that's true for you and stick to it.
+
+##### E. Observability: you can't claim a number you don't measure
+
+1. **SLIs and SLOs per promise:** availability (successful requests ÷ total), latency (p95 at the gateway), freshness (age of the oldest unprocessed document), accuracy (sampling-audit score).
+2. **The three signals, used in order (LMT):** metrics first (Prometheus/Grafana: *is* something wrong?), then traces (Jaeger: *where*?), then logs (Splunk with **correlation IDs** across all 6 services: *why*?).
+3. **Alert before the SLA breaks, not after.** Extraction alert at 4.5 minutes against a 5-minute SLA. Lag-growth alerts before the backlog becomes a missed day.
+4. **Error budget.** At a 99% target, the monthly downtime budget decides when the team pauses features for reliability work. See [Error budget](#258-enterprise-saas-engineering-architecture-and-modernization).
+
+#### Step 5: Summary table (the whole answer on one screen)
+
+| NFR | Concepts that deliver it | DCP proof |
+|---|---|---|
+| **99%+ availability** | Replication, multi-AZ, stateless pods, probes, async decoupling, circuit breaker + fallback, bulkhead, timeouts/retries/jitter, DLQ, canary/blue-green, DR with RTO/RPO | SparkAir outage = delay, not downtime; MTTR 2h → 20 min |
+| **<2s latency** | Sync/async split, 202 + status, CQRS read models, multi-layer cache, read replicas, connection pooling, p95 SLOs | p95 1.5s, approval 800ms, entity lookup 50ms |
+| **10K+/day** | Kafka buffering + backpressure, partition by documentId, consumer groups, HPA on lag, bottleneck removal, streaming parse, Spark for batch | 12K/day validated, 20K path designed, 1,000 events/s |
+| **95% accuracy** | Idempotent consumers, outbox, saga, event sourcing, consistency per data type, confidence routing, validation chain, golden set + sampling audits | 85% model → 95% straight-through → ~99% delivered |
+| **Proving it** | SLIs/SLOs, metrics → traces → logs, correlation IDs, early alerts, error budget | Alerts at 4.5 min against a 5 min SLA |
+
+**Golden rule:** *Put the slow, unreliable work behind a queue, and make everything that touches it safe to retry.* That one sentence explains most of how DCP met all four numbers.
+
+#### Step 6: The 60-second spoken answer
+
+> "That line is really four promises, and each one is met by a different part of the design. DCP takes in about 10,000 financial documents a day, around 100 MB each. AI extraction takes about three minutes per document, so the key decision was to **split the system into a fast synchronous path and a slow asynchronous path**.
+>
+> **Latency:** analysts never wait for extraction. Upload returns immediately with an ID, and the screens read from CQRS read models and Redis caches. p95 was 1.5 seconds against a 2-second target.
+>
+> **Throughput:** documents go into Kafka, partitioned by document ID, so each document stays in order while different documents run in parallel. Extraction workers autoscale on consumer lag, not CPU, from 5 to 20 pods. The real bottleneck was a rate-limited entity-mapping API, which we fixed with caching, batching and a fallback.
+>
+> **Availability:** every component is replicated across zones, and because the AI vendors sit behind Kafka with circuit breakers and fallback engines, a vendor outage becomes a delay, not downtime.
+>
+> **Accuracy:** consumers are idempotent and producers use an outbox, so nothing is lost or processed twice. On top of that, the model alone was only 85% accurate, so confidence routing, rule validation and sampling audits got us to 95% straight through, with humans reviewing only the uncertain cases."
+
+#### Step 7: Likely follow-ups
+
+- **"Is the 2 seconds end-to-end?"** No, it's the user-facing path, at p95. Extraction is async, about 3 minutes average against a 5-minute SLA. Say it before they ask.
+- **"How did you calculate 99%? What counts as down?"** Down means analysts can't upload or review, measured by synthetic checks and gateway success rate. Slower extraction during a vendor outage counts against the freshness SLO, not availability. ⚠ Confirm how DCP actually measured it.
+- **"Why only 99% and not 99.9%?"** It's an internal platform used mostly in business hours, so 99% matched the business need. Going higher needs multi-region, which roughly doubles cost and complexity. The requirement was 99.5%, and the remaining gap was in releases, which canary and blue-green deploys address. See [Multi-region vs. multi-AZ](#multi-region-vs-multi-az-why-the-jump-is-harder-than-it-looks).
+- **"What happens if Kafka itself goes down?"** It's replicated (3 brokers, RF 3), so one broker loss is invisible. If the whole cluster is down, the outbox keeps events safely in the database until Kafka is back, so nothing is lost; the relay just catches up.
+- **"How do you keep order and still run in parallel?"** Partition key = documentId: ordered per document, parallel across documents.
+- **"Why not Kafka exactly-once?"** It only makes the offset commit atomic. It doesn't stop your own side effects (the AI call, the Mongo write) from running twice. The fix has to be in the application: an idempotency check.
+- **"What breaks first at 10× (100K/day)?"** Probably the AI API quota and cost, then entity mapping, then database connections. Scale by adding partitions and workers, negotiating vendor quotas, routing easy pages to a cheaper model, and adding PgBouncer before scaling the app tier.
+- **"How do you know accuracy is still 95% today?"** Hourly sampling audits plus the golden set on every model or prompt change. Accuracy drift alerts like a latency alert.
+
+#### ⚠ Verify before using live
+
+- The 95% vs 99.2% definition (see D above).
+- Availability: the requirements doc says a 99.5% target, the deployment doc says 99.0% achieved, and the [architect guide](Java-And-MyProfessional-Projects-Interviews/ARCHITECT_INTERVIEW_GUIDE.md#key-metrics-mentioned) says 99.0% → 99.9%. The resume says 99%+. Know which one you'll defend.
+- RTO/RPO: the requirements doc says 1 hour / 15 minutes, while the cheat sheet says 4 hours / 1 hour. The DR table above reconciles them by failure type (database restore vs whole-cluster loss).
+- Autoscaling range: 5→20 pods in the deployment doc, 5→50 in §4. Pick one.
+- Kafka durability settings and pre-signed upload URLs are standard design, not documented in the repo.
