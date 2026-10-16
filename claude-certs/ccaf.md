@@ -13,6 +13,13 @@ Study notes from Ankit Mistry's Udemy course slides, one section per exam domain
   - [1.6 Task decomposition](#16-task-decomposition)
   - [1.7 Session state](#17-session-state)
   - [Domain 1 exam decision reflexes](#domain-1-exam-decision-reflexes)
+- [Domain 2: Tool Design & MCP Integration](#domain-2-tool-design--mcp-integration)
+  - [2.1 Designing tool interfaces](#21-designing-tool-interfaces)
+  - [2.2 Structured error responses](#22-structured-error-responses)
+  - [2.3 Tool distribution and tool_choice](#23-tool-distribution-and-tool_choice)
+  - [2.4 MCP server integration](#24-mcp-server-integration)
+  - [2.5 Built-in tools (Claude Code)](#25-built-in-tools-claude-code)
+  - [Domain 2 exam decision reflexes](#domain-2-exam-decision-reflexes)
 
 ---
 
@@ -107,3 +114,118 @@ Study notes from Ankit Mistry's Udemy course slides, one section per exam domain
 | Loop control | `tool_use` → continue, `end_turn` → stop |
 
 Domain 1 rests on the agentic loop. Orchestration, spawning, hooks, decomposition and sessions are all things you build around it.
+
+---
+
+## Domain 2: Tool Design & MCP Integration
+
+### 2.1 Designing tool interfaces
+
+- **Tools are Claude's hands.** A tool is a function Claude can call to do something: look up an order, send an email, query a database.
+- **The description is how Claude chooses.** Claude can't see your code, only the tool's name and description. A vague description leads to the wrong tool or no tool at all. Write descriptions for Claude, not for yourself.
+- **A strong description covers four things:**
+  - what the tool does, in one line
+  - when to use it, and when not to (the part people skip, and the one that prevents wrong-tool picks)
+  - each parameter, in plain words
+  - a short example call
+- **Distinct names:** names like `getData` vs. `fetchData` invite confusion. Prefer clear ones like `get_order_by_id` and `search_orders_by_customer`. Overlapping names and descriptions are a top cause of wrong-tool errors.
+- **Split vs. consolidate:** size tools around the choices Claude has to make.
+  - Split when jobs are distinct, so the choice is clear.
+  - Combine steps that always happen together, so there are fewer round-trips.
+  - Avoid both extremes: too many tiny tools overwhelm the choice, and one do-everything tool is too vague to describe.
+- **Travel booking example:** a single `handle_travel(action, …)` forces Claude to guess the action string. `search_flights`, `book_flight` and `cancel_booking` each do one job and are easy to choose between.
+- **Vague interfaces fail quietly.** There's no crash; Claude picks the wrong tool, fills in wrong parameters, or gives up and answers in text. Get the interface right before the logic.
+
+### 2.2 Structured error responses
+
+- **The error message is Claude's only clue.** "Booking failed." gives it nothing to act on. "Payment failed: insufficient balance. Try another method." lets it recover.
+- **`isError: true`:** return the failure inside a normal response so Claude sees it and can react. Don't throw a raw exception; it becomes a low-level protocol error that Claude handles poorly.
+- **Error categories (tag each error with an `errorCategory`):**
+  - `validation`: bad input; fix it and retry.
+  - `auth` / `permission`: not allowed; escalate.
+  - `not_found`: nothing there to return.
+  - `rate_limit` / `transient`: service is busy; wait, then retry.
+- **`isRetryable`, the most useful field:**
+  - `true` for transient and rate-limit errors.
+  - `false` for validation, auth and business-rule errors (for example, a refund over the limit), because retrying always gets the same "no".
+  - It stops blind retry loops that waste calls and time.
+- **Empty result vs. real failure (the classic Domain 2 trap):**
+  - "No orders found" is a success: `isError: false`, `resultCount: 0`.
+  - "Couldn't reach the database" is a failure: `isError: true`, retryable.
+  - Never retry an empty result as if it were a failure.
+- **Write useful errors:** say what was attempted, what failed and what to do next, for example "Couldn't fetch order #4471: DB timed out after 5s. Transient - safe to retry."
+- **Sanitize:** never return raw stack traces, which leak your internals. Wrap "no such table: users_v2" as "The requested resource could not be accessed."
+
+### 2.3 Tool distribution and tool_choice
+
+- **Too many tools hurts.** With around 60 tools, selection gets slower and less accurate. A handful of well-chosen tools works better.
+- **Scope tools to each role** (the same idea as 1.3). A read-only reporter gets only read tools and a refund agent gets refund tools. A subagent's `allowedTools` lists only what its role needs.
+- **Scoping vs. `tool_choice`:** scoping decides which tools exist. `tool_choice` decides whether a tool must be called right now, and which one.
+- **The four `tool_choice` modes:**
+
+| Mode | Meaning | Use when |
+|---|---|---|
+| `auto` (default) | Claude decides | Ordinary chat assistants |
+| `any` | Must call some tool; Claude picks which | It must act, but may choose how |
+| `tool` | Must call this named tool | A step is non-negotiable or you need guaranteed structured output |
+| `none` | No tools this turn | Ask without acting, or a text-only turn |
+
+- `any` and `tool` (forced tool use) **cannot be combined with extended thinking**.
+- **Example:** with `auto`, a research agent sometimes replies in text and the findings are lost. `tool_choice: { type: 'tool', name: 'save_report' }` makes it save on every run. Forcing a specific tool is the standard way to guarantee structured output (it comes up again in Domain 4).
+
+### 2.4 MCP server integration
+
+- **MCP (Model Context Protocol)** is one standard way to connect Claude to external systems, like USB-C for AI tools. Instead of a custom connector per tool, you build a server once and any MCP client can plug into it.
+- **Tools vs. resources:**
+  - Tools are verbs: actions Claude calls, such as `create_issue` and `run_query`.
+  - Resources are nouns: read-only data or context, such as a file, a doc or a schema. In Claude Code you pull one in with `@`.
+- **Connecting a server:** add one entry under `mcpServers`.
+  - `stdio`: a local program Claude launches (`command` + `args`).
+  - `http`: a remote server (`url`).
+  - The transport is how Claude talks to the server. It's separate from where the config file lives.
+- **Keep secrets out of the config:** use `${VAR}` expansion, for example `"env": { "API_TOKEN": "${GITHUB_TOKEN}" }`. `${VAR:-default}` gives a fallback value. Expansion works in `command`, `args`, `env`, `url` and `headers`. A key hard-coded in a shared `.mcp.json` gets committed to git and leaks.
+- **The three scopes:**
+
+| Scope | Where it lives | Who it's for |
+|---|---|---|
+| local (default) | `~/.claude.json` | Only you, this project |
+| project | `.mcp.json` (committed) | The whole team |
+| user | `~/.claude.json` | You, across all projects |
+
+- Picking the wrong scope is the #1 MCP mistake. A personal token in **project** scope leaks to the whole team.
+- **Precedence:** local > project > user. If the same server name exists in two scopes, the higher one wins, so your local override beats the team's. Running from a sub-folder also merges in parent `.mcp.json` files.
+- **Multiple servers:** you can run several at once (GitHub, a database, browser automation). Check their status with `/mcp`, and give them clear names such as `github` or `stripe-prod`, not `server1`.
+
+### 2.5 Built-in tools (Claude Code)
+
+- **The six built-in tools:**
+  - **Read:** view a file.
+  - **Write:** create or overwrite a file.
+  - **Edit:** change part of a file.
+  - **Bash:** run shell commands.
+  - **Grep:** search inside files.
+  - **Glob:** find files by name.
+- **Grep vs. Glob (the #1 confusion, tested directly):** Grep searches file contents (for example, where `processOrder` is called). Glob matches file names (for example, every `*.test.js`).
+- **Edit vs. Write:** use Edit for small changes because it's an exact string replacement with a clean diff. Write rewrites the whole file.
+- **Read before Edit:**
+  - Edit requires an earlier Read of the file.
+  - The target text must match exactly and appear only once.
+  - If it isn't unique, include more surrounding text or use `replace_all`.
+  - Read + Write is the last-resort fallback, not the default.
+- **Prefer built-ins over Bash:** Read instead of `cat`, Grep instead of `grep`, Glob instead of `find`, Edit instead of `sed`. Built-ins give better permission handling, a clearer trail and caching. Keep Bash for actually running things, such as tests or builds.
+- **Explore incrementally:** use Grep and Glob to find the few files that matter, then Read only those. Reading everything up front wastes your context budget (covered in Domain 5).
+
+### Domain 2 exam decision reflexes
+
+| Scenario | Answer |
+|---|---|
+| Claude picks the wrong tool | Improve the description (what/when/params/example) and give tools distinct names |
+| One tool with an `action` string | Split it into one tool per distinct action |
+| Tool fails | Return `isError: true` with a category and `isRetryable`; don't throw |
+| Query returns nothing | Success with `resultCount: 0`, not an error and not retryable |
+| Business-rule or validation error | `isRetryable: false` |
+| Agent has too many tools | Scope each role to only the tools it needs |
+| A step must always happen | `tool_choice: { type: 'tool', name: ... }` |
+| Personal API key in MCP config | `${VAR}` expansion, and local or user scope, never project |
+| Same MCP server defined twice | local > project > user |
+| Search contents vs. find files | Grep for contents, Glob for file names |
