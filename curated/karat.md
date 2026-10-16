@@ -113,7 +113,7 @@ Spring scans your classpath for classes annotated `@Component` (and its speciali
 `@Transactional` (like `@Async`, `@Cacheable`) is implemented via an **AOP proxy** — Spring wraps the real bean in a proxy object, and the proxy is what actually starts/commits/rolls back the transaction before and after the real method runs.
 
 Two ways this silently breaks:
-1. **Object built with `new`** instead of obtained from the Spring container — there's no proxy at all, so the annotation is just inert text with zero effect. (This is exactly the bug in [citi.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug).)
+1. **Object built with `new`** instead of obtained from the Spring container — there's no proxy at all, so the annotation is just inert text with zero effect. (This is exactly the bug in [0-interview-prep.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/0-interview-prep.md#project-scenario-rating-microservice-transaction-bug).)
 2. **Self-invocation** — calling `this.someTransactionalMethod()` from inside the same class. Even though the object *is* a real Spring bean, that particular call never goes through the external proxy (it's a plain internal Java call on `this`), so the proxy never gets a chance to intercept it.
 
 **Fix for both:** make sure the object is a real Spring-managed bean, and call the `@Transactional` method from a *different* bean (through the proxy), never via `new` or via `this` inside the same class.
@@ -439,7 +439,7 @@ Answers are kept separately in the [MCQ Answer Key](#mcq-answer-key) below — e
 Practice spotting and fixing these bug *shapes* fast (confirmed pattern: a failing test, find root cause, fix):
 - `equals()`/`hashCode()` using only a partial set of fields → distinct objects collapse in a `HashSet`/`HashMap` (the real Trade reconciliation bug)
 - `String` → numeric parsing bug (timestamp as `String` needed as `float`/`double`; `NumberFormatException` handling)
-- `@Transactional(REQUIRES_NEW)` silently ignored because the object was built with `new` instead of being a Spring bean (see [citi.md §23 → PROJECT SCENARIO: Rating Microservice Transaction Bug](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug))
+- `@Transactional(REQUIRES_NEW)` silently ignored because the object was built with `new` instead of being a Spring bean (see [0-interview-prep.md §23 → PROJECT SCENARIO: Rating Microservice Transaction Bug](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/0-interview-prep.md#project-scenario-rating-microservice-transaction-bug))
 - `==` used instead of `.equals()` for `String`/boxed `Integer` comparison
 - A mutable object used as a `HashMap` key, then mutated after insertion → lookup silently fails
 - Wrong `Comparator`/`Comparable` implementation → incorrect sort order
@@ -904,7 +904,7 @@ public class Solution {
 
 ##### Solution 3: Transactional Ignored Because Built with new
 
-See the full walkthrough in [citi.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/citi.md#project-scenario-rating-microservice-transaction-bug).
+See the full walkthrough in [0-interview-prep.md §23's Rating Microservice scenario](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/0-interview-prep.md#project-scenario-rating-microservice-transaction-bug).
 
 ```java
 import org.springframework.stereotype.Component;

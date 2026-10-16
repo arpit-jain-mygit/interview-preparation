@@ -2,7 +2,7 @@
 
 *For Technology Architect interviews: Focus on design principles, scalability implications, and real-world trade-offs.*
 
-*The 4 core pillars (Encapsulation, Inheritance, Polymorphism, Abstraction) now live in citi.md §22 as a single unified worked example — see that doc instead of looking for them here.*
+*The 4 core pillars (Encapsulation, Inheritance, Polymorphism, Abstraction) now live in 0-interview-prep.md §22 as a single unified worked example — see that doc instead of looking for them here.*
 
 ## Table of Contents
 - [SOLID Principles](#solid-principles)
@@ -147,7 +147,7 @@
 
 ### Dependency Inversion Principle (DIP)
 
-*(Not the same as Dependency Injection — see citi.md §22.1 for the distinction, with a counter-example.)*
+*(Not the same as Dependency Injection — see 0-interview-prep.md §22.1 for the distinction, with a counter-example.)*
 
 **Definition:** Depend on abstractions, not concrete implementations. High-level modules shouldn't depend on low-level details.
 
@@ -214,7 +214,7 @@
 
 ### Q2: When would you use inheritance vs composition?
 
-*(See citi.md §22 "The 4 Pillars, Unified" for the litmus test in one worked example.)*
+*(See 0-interview-prep.md §22 "The 4 Pillars, Unified" for the litmus test in one worked example.)*
 
 **Short Answer:** Use inheritance for IS-A relationships with shared implementation. Use composition for everything else. Default to composition.
 
@@ -412,7 +412,7 @@ Microservices are SOLID principles applied to systems architecture. If your micr
 
 ### Q5: Explain the difference between Abstraction and Encapsulation
 
-*(See citi.md §22 "The 4 Pillars, Unified" for the WHAT-vs-HOW litmus test in one worked example.)*
+*(See 0-interview-prep.md §22 "The 4 Pillars, Unified" for the WHAT-vs-HOW litmus test in one worked example.)*
 
 **Short Answer:**
 - **Encapsulation:** Hiding implementation details (HOW)
