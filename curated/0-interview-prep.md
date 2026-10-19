@@ -8381,23 +8381,23 @@ The test: can each service be deployed alone, on any day, without coordinating w
 
 #### Q0. JD requirement vs your evidence
 
-| JD asks for | Your evidence | Strength |
-|---|---|---|
-| Multi-tenant SaaS design | ADP HCM and Garnishment for global enterprise customers; S&P internal platform served 4 business lines ([§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization)) | Strong on design, partial on true multi-customer SaaS |
-| OCI (preferred) | AWS Solutions Architect cert, GCP, Kubernetes (CKAD). No OCI experience on your resume | **Gap**, name it and give a ramp-up plan |
-| Containers, Kubernetes, HA, DR, capacity planning | DCP: HPA on lag, multi-AZ, DR table with RTO/RPO ([§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)) | Strong |
-| Java, J2EE/Servlet, Spring Boot, Tomcat | ADP J2EE and Spring Boot platforms; DCP Spring Boot microservices. Tomcat specifically is ⚠ not on the resume | Strong (confirm Tomcat) |
-| Patterns: DDD, SOLID, 12-factor, Saga, distributed transactions | Saga and outbox in DCP; [design patterns](design_patterns.md); [§3](#3-distributed-systems--large-scale-compute-design) | Strong |
-| Oracle DB modelling and tuning | Oracle listed in your skills; PostgreSQL and MongoDB in production. Oracle DB depth is ⚠ not clear on the resume | **Partial**, confirm your depth |
-| REST, OpenAPI, SOAP/XML, gRPC | REST and OpenAPI-style contracts in DCP. SOAP and gRPC are not on the resume | Partial / **Gap** |
-| Kafka, tenant-aware topics, schema evolution, DLQ, lag | DCP Kafka: partitioning, consumer lag, DLQ, idempotent consumers | Strong |
-| Apache Flink | Not in your work. Spark and Kafka consumers are adjacent | **Gap**, name it |
-| CAS, OAuth2, OIDC, SSO, JWT, RBAC/ABAC | Design-level knowledge; JWT and OAuth2 in DCP security NFRs. CAS not hands-on. Service-to-API flow with Okta: [§29](#29-oauth-20-and-jwt-service-to-api-story) | Partial |
-| Observability, incidents | Prometheus, Grafana, Jaeger, Splunk; incidents 60 → 24 per month | Strong |
-| AI tooling, agents | PlantGuard (LangGraph, MCP, evals), Claude developer certification | Strong, a differentiator |
-| Accessibility, localization | Designed for in principle; no hands-on depth on your resume | Gap, be honest |
-| Leadership and mentoring | 70-engineer org at S&P, 200+ community at ADP ([§7](#7-mentoring--people-development)) | Strong |
-| 12–15 years | About 22 years of Java and architecture | Strong |
+| JD asks for | Your evidence | Strength | Read more |
+|---|---|---|---|
+| Multi-tenant SaaS design | ADP HCM and Garnishment for global enterprise customers; S&P internal platform served 4 business lines ([§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization)) | Strong on design, partial on true multi-customer SaaS | [§28 Q4](#q4-compare-tenant-isolation-models-which-would-you-choose-for-wfs), [Q5](#q5-how-do-you-stop-one-tenants-load-from-slowing-down-the-others), [§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization) |
+| OCI (preferred) | AWS Solutions Architect cert, GCP, Kubernetes (CKAD). No OCI experience on your resume | **Gap**, name it and give a ramp-up plan | [§28 Q6](#q6-what-does-oci-change-in-the-design-and-how-would-you-ramp-up) |
+| Containers, Kubernetes, HA, DR, capacity planning | DCP: HPA on lag, multi-AZ, DR table with RTO/RPO ([§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)) | Strong | [§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp), [§28 Q7](#q7-design-disaster-recovery-for-wfs-with-different-targets-per-module), [§28 Q8](#q8-how-do-you-handle-the-7-am-clock-in-spike) |
+| Java, J2EE/Servlet, Spring Boot, Tomcat | ADP J2EE and Spring Boot platforms; DCP Spring Boot microservices. Tomcat specifically is ⚠ not on the resume | Strong (confirm Tomcat) | [§28 Q26](#q26-tomcat-or-embedded-spring-boot-what-are-your-12-factor-rules-for-services), [§26.8](#268-adp-application-architect-10-years-microservices-and-containerization-shift-hcm-and-garnishment-platforms-200-engineer-community) |
+| Patterns: DDD, SOLID, 12-factor, Saga, distributed transactions | Saga and outbox in DCP; [design patterns](design_patterns.md); [§3](#3-distributed-systems--large-scale-compute-design) | Strong | [§28 Q27](#q27-how-do-you-apply-ddd-and-solid-to-a-workforce-domain), [§27.12 Saga](#2712-two-services-must-update-data-together-with-no-distributed-transaction), [Saga (MicroServices-Questions)](Java-And-MyProfessional-Projects-Interviews/MicroServices-Questions.md#2-what-is-the-saga-pattern), [Design patterns](design_patterns.md) |
+| Oracle DB modelling and tuning | Oracle listed in your skills; PostgreSQL and MongoDB in production. Oracle DB depth is ⚠ not clear on the resume | **Partial**, confirm your depth | [§28 Q23](#q23-design-the-time-punch-table-for-volume-and-retention), [§28 Q24](#q24-a-query-is-slow-in-production-how-do-you-troubleshoot-it-on-oracle-or-any-rdbms), [§5](#5-data--storage) |
+| REST, OpenAPI, SOAP/XML, gRPC | REST and OpenAPI-style contracts in DCP. SOAP and gRPC are not on the resume | Partial / **Gap** | [§28 Q14](#q14-how-do-you-govern-contracts-across-rest-soap-grpc-and-files), [§28 Q16](#q16-what-is-your-standard-for-idempotency-errors-and-retries-across-integrations) |
+| Kafka, tenant-aware topics, schema evolution, DLQ, lag | DCP Kafka: partitioning, consumer lag, DLQ, idempotent consumers | Strong | [§28 Q17](#q17-how-would-you-design-kafka-topics-for-many-tenants), [§28 Q18](#q18-how-do-you-manage-schema-evolution-for-events), [Kafka-Questions](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md) |
+| Apache Flink | Not in your work. Spark and Kafka consumers are adjacent | **Gap**, name it | [§28 Q19](#q19-flink-kafka-consumers-or-batch-when-do-you-use-each) |
+| CAS, OAuth2, OIDC, SSO, JWT, RBAC/ABAC | Design-level knowledge; JWT and OAuth2 in DCP security NFRs. CAS not hands-on. Service-to-API flow with Okta: [§29](#29-oauth-20-and-jwt-service-to-api-story) | Partial | [§28 Q20](#q20-walk-through-an-oauth2oidc-login-where-does-cas-fit), [§28 Q21](#q21-what-is-rbac-vs-abac-in-a-workforce-product-give-an-example), [§28 Q22](#q22-how-do-you-protect-employee-pii-and-keep-an-audit-trail), [§29](#29-oauth-20-and-jwt-service-to-api-story) |
+| Observability, incidents | Prometheus, Grafana, Jaeger, Splunk; incidents 60 → 24 per month | Strong | [§27.14](#2714-is-production-latency-coming-from-java-code-the-database-the-network-or-an-external-service), [§27.9](#279-database-cpu-hits-100-right-after-a-deployment), [§26.3](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices) |
+| AI tooling, agents | PlantGuard (LangGraph, MCP, evals), Claude developer certification | Strong, a differentiator | [§28 Q28](#q28-where-would-you-use-ai-and-agents-in-wfs-and-where-would-you-not), [§28 Q29](#q29-what-does-aidlc-mean-to-you-and-how-would-you-use-it), [§26.10](#2610-plantguard-iit-hyderabad-capstone-multi-agent-predictive-maintenance-copilot) |
+| Accessibility, localization | Designed for in principle; no hands-on depth on your resume | Gap, be honest | [§28 Q30](#q30-how-do-localization-and-accessibility-affect-the-architecture) |
+| Leadership and mentoring | 70-engineer org at S&P, 200+ community at ADP ([§7](#7-mentoring--people-development)) | Strong | [§28 Q1](#q1-how-do-you-lead-architecture-across-product-enterprise-architecture-ux-sre-and-security-when-you-dont-manage-them), [§28 Q3](#q3-what-do-you-standardize-across-modules-and-what-do-you-leave-alone), [§28 Q33](#q33-how-do-you-grow-architects-and-senior-devs), [§7](#7-mentoring--people-development) |
+| 12–15 years | About 22 years of Java and architecture | Strong | [§9](#9-motivation--fit), [§28 Q31](#q31-why-wfs-and-why-now) |
 
 #### Q0b. The gaps to own out loud
 
