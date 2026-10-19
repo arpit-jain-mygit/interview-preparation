@@ -64,6 +64,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [26.11 PaperMind and VoxAlchemy.ai](#2611-papermind-and-voxalchemyai)
     - [26.12 The Threads That Run Through Your Whole Resume](#2612-the-threads-that-run-through-your-whole-resume)
     - [26.13 DCP as a multi-tenant SaaS: each sector is a tenant](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant)
+    - [26.14 How a tenant reaches the database: UI to DB in DCP](#2614-how-a-tenant-reaches-the-database-ui-to-db-in-dcp)
 27. [Java Scenario Q&A](#27-java-scenario-qa)
     - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
     - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
@@ -8263,6 +8264,77 @@ Shared code means one bug can reach every sector at once. Roll out changes one t
 - Whether your 4 business lines map onto your 5 sectors.
 - Whether the production schema was per sector, or whether it stayed a planned design.
 - Per-sector numbers and quotas.
+
+### 26.14 How a tenant reaches the database: UI to DB in DCP
+
+**The story in one line:** one common UI serves every sector. The user signs in once, picks the sector when they ingest a document, and the server checks that choice before the document is stored in that sector's schema.
+
+#### The steps
+
+**1. Login is common.** Every user signs in once through Okta, with the same UI for all sectors. The token doesn't name one tenant. It lists the tenants the user belongs to:
+
+```json
+{
+  "sub": "user-42",
+  "tenants": ["uspf", "corp"],
+  "scp": ["documents:write", "documents:read"],
+  "aud": "api://dcp",
+  "exp": 1760003600
+}
+```
+
+Okta builds the `tenants` list from group memberships, such as `uspf-ingest` and `corp-ingest`.
+
+**2. The user picks the sector at ingestion.** The UI shows only the sectors in the token's list. The user chooses "USPF" and uploads a file. The UI sends the choice with the request:
+
+```
+POST /documents
+Authorization: Bearer <token>
+{ "tenant": "uspf", "fileName": "filing-2026-10.pdf" }
+```
+
+**3. The API checks the choice.** The UI's choice is treated as a request, not a fact. The server checks:
+
+- Is `uspf` in the token's `tenants` list? If not, the answer is `403`, whatever the UI sent.
+- Does the token allow `documents:write`? If not, `403`.
+
+**4. The service picks the schema.** Once the check passes, the service maps the tenant to its schema through a whitelist, sets the request's tenant context, and switches the database connection to that schema, as described in [§26.13](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant). The document is written to `uspf.document`.
+
+**5. The tenant is fixed for the document.** The tenant is stored with the document and never chosen again. Later reads, approvals and exports use the document's own tenant, not the user's current selection. A user who switches sectors in the UI doesn't move documents between sectors.
+
+**6. Storage and events carry the tenant.** The file is stored under a tenant prefix, for example `uspf/<documentId>.pdf`. The Kafka event carries the tenant in its key and headers, so downstream processing uses that sector's rules and schema.
+
+```
+UI (common, one login)
+  │  token: tenants = [uspf, corp]
+  │  user picks "USPF" at ingestion
+  ▼
+API gateway ──> Ingestion service
+                  1. "uspf" in token tenants? no → 403
+                  2. documents:write scope?   no → 403
+                  3. tenant → schema (whitelist) = uspf
+                  4. SET search_path TO uspf; INSERT document
+                  5. store file under uspf/…, publish Kafka event (key: uspf + documentId)
+```
+
+#### Reads and approvals
+
+Every later request checks the user's access against the document's tenant. A user who is in USPF but not in CORP can't see a CORP document, even if they open it by ID. The check is "is this user in the document's tenant?", not "which tenant is selected in the UI?"
+
+#### Optional: a tenant-scoped token
+
+For stricter control, the API can exchange the common token for a token limited to the chosen sector (token exchange, RFC 8693). Downstream services then see only `tenant: uspf`. Use it where the stricter boundary is needed, since it adds one more token exchange per request.
+
+#### Pitfalls
+
+- **Trusting the UI's choice.** The check against the token is always on the server.
+- **Letting the selection change a document's tenant.** The tenant is set once, at ingestion.
+- **Missing checks on reads.** Opening a document by ID must be checked against its tenant too.
+- **Stale context in background jobs.** Kafka consumers set the tenant from the message and clear it afterwards, as in [§26.13](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant).
+
+#### 60-second answer
+
+> "The UI is common to all sectors. The user signs in once, and the token lists the sectors they belong to. At ingestion, the user picks a sector, and the UI sends that choice with the upload. The server checks the choice against the token and the user's write permission, then maps the sector to its schema and writes the document there. The sector is stored with the document, so every later read and approval checks the document's own tenant. The file and the Kafka event carry the tenant too, so downstream processing uses that sector's rules and schema."
 
 ---
 
