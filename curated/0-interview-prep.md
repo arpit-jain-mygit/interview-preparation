@@ -92,6 +92,10 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [28.J Localization, accessibility and time zones](#28j-localization-accessibility-and-time-zones)
     - [28.K Leadership, behaviour and "why this role"](#28k-leadership-behaviour-and-why-this-role)
     - [28.L Quick reference: 60-second answer for the architecture question](#28l-quick-reference-60-second-answer-for-the-architecture-question)
+29. [OAuth 2.0 and JWT: Service-to-API Story](#29-oauth-20-and-jwt-service-to-api-story)
+    - [29.A The story: the Report API asks the Billing API for prices](#29a-the-story-the-report-api-asks-the-billing-api-for-prices)
+    - [29.B JWT: concept and example values](#29b-jwt-concept-and-example-values)
+    - [29.C Interview version (about 60 seconds)](#29c-interview-version-about-60-seconds)
 
 ---
 
@@ -8653,3 +8657,110 @@ Use the [mentoring stories](#7-mentoring--people-development): skeptic turned ch
 ### 28.L Quick reference: 60-second answer for the architecture question
 
 > "For WFS I'd start by mapping the operational loop, from HR import and time capture through policy calculation, approvals and payroll export, and finding where it's weakest. Architecturally, three things matter most. First, a **shared-schema, row-level-secured** tenant model, with the largest tenants isolated when needed. Second, **policies as versioned, effective-dated data**, so every calculation is deterministic, explainable and recomputable, scoped to the assignment. Third, **contract-governed integrations** with idempotent writes, staged validation and reconciled payroll exports. Around that: DR tiered by module, an append-only ledger for balances, and clear rules for where AI helps and where it must never touch pay. I haven't run OCI or Flink in production, and I'd ramp up on those first, but the design principles carry over directly."
+
+
+---
+
+## 29. OAuth 2.0 and JWT: Service-to-API Story
+
+**What this is:** one end-to-end story, told simply, of how a service gets permission to call another service. It's the client credentials flow, so no person is involved. It covers keys, JWTs and the checks the receiving API runs. The user-login side of OAuth (redirects, PKCE, ID tokens) is separate and is covered in [§28 Q20](#q20-walk-through-an-oauth2oidc-login-where-does-cas-fit).
+
+**What is OAuth, and what is not in this story:** OAuth 2.0 is the rulebook for getting permission. JWT is the format of the token. Public and private key signing is how the token is protected. This story uses all three. The user-login parts (redirect, PKCE, ID token) belong to OpenID Connect and are not in this story.
+
+### 29.A The story: the Report API asks the Billing API for prices
+
+The **Report API** needs the price list from the **Billing API**. No person is involved. The Report API proves who it is with a **key**, not a password. **Okta** checks that proof and issues a pass, called an access token.
+
+**Step 0: Setup (done once).**
+An admin registers the **Report API** in **Okta** as a service application. There are two key pairs in the story:
+- The **Report API** creates its own key pair. It keeps the **private key** locked in a secrets manager and gives the **public key** to Okta.
+- **Okta** has its own signing key pair. Its private key signs every pass. Its public key is published on Okta's key list, so anyone can check passes.
+
+Okta gives the Report API a **client ID**, its public name. The admin grants the app the `read:billing` scope. The **Billing API** is set up with its own name, so passes meant for it can be recognized. It needs no key pair for this story, only Okta's public key.
+
+**Step 1: The Report API gets a pass.**
+When it needs prices, the Report API writes a short note: "I'm the Report API, asking for `read:billing`, sent now." It **signs** the note with its **private key** and sends it to Okta. Okta checks the signature with the Report API's **public key**, which it already has. Without the private key, no one can produce a valid signature, so no password is needed and no one else can get a pass.
+
+Okta replies with an access token that expires in about an hour. Okta **signs** the token with its **private key**.
+
+**Step 2: The Report API shows the pass to the Billing API.**
+It asks for prices and attaches the token.
+
+**Step 3: The Billing API checks the pass.**
+It doesn't call Okta. It finds Okta's public key using the key ID in the token, and downloads it over HTTPS (the HTTPS certificate confirms the server really is Okta). Then it asks three questions:
+
+1. **Is it genuine?** Does the signature check out with that public key? Any change to the token breaks it.
+2. **Is it valid for me, right now?** Is the issuer Okta, is the audience the Billing API, and is the expiry in the future?
+3. **Is it allowed to do this?** Does the token include `read:billing`?
+
+If the first two fail, the answer is `401`: "I can't trust this pass." If the third fails, the answer is `403`: "I trust it, but it doesn't allow this." If all three pass, the Billing API returns the prices.
+
+```
+Setup:  Report API keeps private key; gives public key to Okta; gets client ID
+        Okta keeps its signing private key; publishes its public key
+Step 1: Report API signs a note with its private key ──> Okta checks with the public key
+        Report API <── access token, signed by Okta's private key ── Okta
+Step 2: Report API ──(token)──> Billing API
+Step 3: Billing API finds Okta's public key by key ID, then checks:
+          1. genuine? (signature)                          no → 401
+          2. valid for me? (issuer, audience, expiry)      no → 401
+          3. allowed? (scope includes read:billing)        no → 403
+          all good → prices
+```
+
+### 29.B JWT: concept and example values
+
+**What a JWT is.** A JWT (JSON Web Token) is the standard format of the access token. It's three parts separated by dots:
+
+```
+header.payload.signature
+```
+
+- **Header:** how the token was signed, and the key ID (`kid`) of the key used.
+- **Payload:** the facts, called **claims**: who issued it, who it's for, when it expires, and what it allows.
+- **Signature:** proof that Okta created the token and nobody changed it. It's made with Okta's private key.
+
+The header and payload are encoded text that anyone can read. The signature is what makes them trustworthy.
+
+**Header:**
+```json
+{
+  "alg": "RS256",
+  "kid": "2026-10-okta-key"
+}
+```
+- `alg`: the signing method (RSA with SHA-256).
+- `kid`: the label of the Okta key that signed it.
+
+**Payload:**
+```json
+{
+  "iss": "https://your-org.okta.com/oauth2/default",
+  "aud": "api://billing",
+  "sub": "0oa1rep2example",
+  "cid": "0oa1rep2example",
+  "scp": ["read:billing"],
+  "iat": 1760000000,
+  "exp": 1760003600
+}
+```
+- `iss` (issuer): Okta issued it.
+- `aud` (audience): meant for the Billing API.
+- `sub` and `cid`: the Report API's client ID, since no person is involved.
+- `scp` (scope): the allowed actions, here `read:billing`.
+- `iat` (issued at) and `exp` (expires): Unix timestamps. This token lasts one hour.
+
+**Signature:**
+```
+kR3x...long random-looking string...Qz9A
+```
+Okta calculates it from the header and payload, using its private key. Changing any character in the header or payload makes the check fail.
+
+**How the Billing API uses each part:**
+- The **signature** answers "Is it genuine?"
+- The **payload** (`iss`, `aud`, `exp`) answers "Is it valid for me, right now?"
+- The **payload** (`scp`) answers "Is it allowed to do this?"
+
+### 29.C Interview version (about 60 seconds)
+
+> "The Report API is a service, so it has its own identity in Okta. It proves itself with a private key, not a password: it signs a request and Okta checks it with the public key registered during setup. Okta returns an access token, a JWT, signed with Okta's private key. The token has three parts: a header with the key ID, a payload with issuer, audience, expiry and scope, and the signature. The Billing API finds Okta's public key by the key ID, checks the signature, then checks issuer, audience and expiry, then checks the scope. A bad signature or wrong audience or expiry gives 401, and a missing scope gives 403."
