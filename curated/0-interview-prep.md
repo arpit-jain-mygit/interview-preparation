@@ -8392,7 +8392,7 @@ The test: can each service be deployed alone, on any day, without coordinating w
 | REST, OpenAPI, SOAP/XML, gRPC | REST and OpenAPI-style contracts in DCP. SOAP and gRPC are not on the resume | Partial / **Gap** |
 | Kafka, tenant-aware topics, schema evolution, DLQ, lag | DCP Kafka: partitioning, consumer lag, DLQ, idempotent consumers | Strong |
 | Apache Flink | Not in your work. Spark and Kafka consumers are adjacent | **Gap**, name it |
-| CAS, OAuth2, OIDC, SSO, JWT, RBAC/ABAC | Design-level knowledge; JWT and OAuth2 in DCP security NFRs. CAS not hands-on | Partial |
+| CAS, OAuth2, OIDC, SSO, JWT, RBAC/ABAC | Design-level knowledge; JWT and OAuth2 in DCP security NFRs. CAS not hands-on. Service-to-API flow with Okta: [§29](#29-oauth-20-and-jwt-service-to-api-story) | Partial |
 | Observability, incidents | Prometheus, Grafana, Jaeger, Splunk; incidents 60 → 24 per month | Strong |
 | AI tooling, agents | PlantGuard (LangGraph, MCP, evals), Claude developer certification | Strong, a differentiator |
 | Accessibility, localization | Designed for in principle; no hands-on depth on your resume | Gap, be honest |
