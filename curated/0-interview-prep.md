@@ -63,6 +63,22 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [26.10 PlantGuard (IIT Hyderabad capstone): multi-agent predictive-maintenance copilot](#2610-plantguard-iit-hyderabad-capstone-multi-agent-predictive-maintenance-copilot)
     - [26.11 PaperMind and VoxAlchemy.ai](#2611-papermind-and-voxalchemyai)
     - [26.12 The Threads That Run Through Your Whole Resume](#2612-the-threads-that-run-through-your-whole-resume)
+27. [Java Scenario Q&A](#27-java-scenario-qa)
+    - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
+    - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
+    - [27.3 200 threads, but throughput is still low](#273-200-threads-but-throughput-is-still-low)
+    - [27.4 OutOfMemoryError after running for hours](#274-outofmemoryerror-after-running-for-hours)
+    - [27.5 Two requests update the same row at the same time](#275-two-requests-update-the-same-row-at-the-same-time)
+    - [27.6 One of three downstream services is slow and drags the whole API down](#276-one-of-three-downstream-services-is-slow-and-drags-the-whole-api-down)
+    - [27.7 Kafka consumer lag keeps growing, but the consumers look healthy](#277-kafka-consumer-lag-keeps-growing-but-the-consumers-look-healthy)
+    - [27.8 A client retries after a timeout and creates duplicate data](#278-a-client-retries-after-a-timeout-and-creates-duplicate-data)
+    - [27.9 Database CPU hits 100% right after a deployment](#279-database-cpu-hits-100-right-after-a-deployment)
+    - [27.10 Designing retries for a failing downstream without a retry storm](#2710-designing-retries-for-a-failing-downstream-without-a-retry-storm)
+    - [27.11 High GC activity, but traffic is low](#2711-high-gc-activity-but-traffic-is-low)
+    - [27.12 Two services must update data together, with no distributed transaction](#2712-two-services-must-update-data-together-with-no-distributed-transaction)
+    - [27.13 Works with 10 users, unstable at 1,000 concurrent requests](#2713-works-with-10-users-unstable-at-1000-concurrent-requests)
+    - [27.14 Is production latency coming from Java code, the database, the network or an external service?](#2714-is-production-latency-coming-from-java-code-the-database-the-network-or-an-external-service)
+    - [27.15 The microservices have become a distributed monolith](#2715-the-microservices-have-become-a-distributed-monolith)
 
 ---
 
@@ -8154,3 +8170,181 @@ If an interviewer asks *"What's your architecture philosophy?"*, these patterns 
 | **Measure it or you can't claim it** | SLOs and p95, sampling audits, golden-set evals, cost per job and per document |
 
 **One line to end on:** *"Across 22 years the technology changed from static analysis to microservices to agents, but the architecture moves stayed the same: find the common model, isolate the unreliable parts, make everything safe to retry, and measure what you promise."*
+
+
+---
+
+## 27. Java Scenario Q&A
+
+**What this is:** 15 short production scenarios from senior Java and architect interviews. Each answer gives the first thing to check, then the fix. Where this guide already covers the idea in depth, there's a link.
+
+### 27.1 Spring Boot API suddenly takes 5–6 seconds in production
+
+Don't guess. Find the slow hop first.
+
+- Check the endpoint's latency metric (Micrometer and Actuator) to confirm it's this endpoint, not everything.
+- Open a trace (OpenTelemetry with Jaeger or Zipkin). The longest span is the suspect: a database query, an outbound HTTP call, or your own code.
+- Take 2–3 thread dumps (`jcmd <pid> Thread.print`), a few seconds apart. Threads stuck in the same place point to the bottleneck.
+- Check HikariCP metrics. Many pending connections means the pool is the problem, not the query.
+
+Fix the hop you found, then confirm with the same metric.
+
+### 27.2 HashMap works in tests but breaks under concurrent access
+
+`HashMap` is not thread-safe. Two threads calling `put` at the same time can overwrite each other's entries, lose data, or leave the internal table inconsistent, and readers can see partial results. Old Java (7 and earlier) could even loop forever during a resize.
+
+Tests pass because they usually use one thread, which never triggers the race. Iterating while another thread changes the map can also throw `ConcurrentModificationException`.
+
+Fix: use `ConcurrentHashMap` for shared data, with atomic methods like `merge` and `computeIfAbsent`. Wrap access in `synchronized` only when you need several steps to stay consistent together.
+
+### 27.3 200 threads, but throughput is still low
+
+Threads that are waiting don't add work. Take a thread dump and count threads by state.
+
+- Many `BLOCKED` threads on the same lock: a `synchronized` block around shared work.
+- Many `WAITING` threads for a database connection: the pool is too small for 200 threads.
+- Many threads blocked on one slow downstream call.
+- CPU-heavy work on far more threads than cores: the CPU spends its time switching between threads.
+
+Throughput is roughly concurrency ÷ latency (Little's Law). To go faster, either reduce the time each request takes or remove the resource that limits concurrency. Fix the bottleneck, not the thread count.
+
+### 27.4 OutOfMemoryError after running for hours
+
+Read the message first:
+- `Java heap space`: objects are piling up in the heap.
+- `Metaspace`: too many classes loaded, often a classloader leak on redeploy.
+- `unable to create native thread`: too many threads, not too much heap.
+
+For a heap problem, start the JVM with `-XX:+HeapDumpOnOutOfMemoryError` to capture the state at the moment of failure. Open the dump in Eclipse MAT and read the "Leak Suspects" report, which shows what holds the memory.
+
+Check GC logs too. If memory after each full GC keeps climbing, it's a leak. Common causes: a static or unbounded cache with no eviction, listeners that are never removed, `ThreadLocal` values not cleared in a thread pool, or an unbounded queue in an executor.
+
+### 27.5 Two requests update the same row at the same time
+
+This is a lost update: both read the same balance, both write, and one change disappears. Three options:
+
+- **Optimistic locking (usual default):** add a `version` column (JPA `@Version`). An update that finds a different version fails, and you retry. Works well when conflicts are rare.
+- **Pessimistic locking:** `SELECT ... FOR UPDATE` (JPA `@Lock(PESSIMISTIC_WRITE)`) locks the row until the transaction ends. Use it when conflicts are frequent and retries would be costly.
+- **One atomic statement:** `UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?`, then check the row count. Simplest when the change is a single arithmetic update.
+
+### 27.6 One of three downstream services is slow and drags the whole API down
+
+A slow dependency is worse than a dead one, because its callers' threads stay blocked. Protect each downstream:
+
+- **Timeouts:** every outbound call has one, so no thread waits forever.
+- **Bulkhead:** a separate thread or connection pool per downstream, so the slow one can only use its own share.
+- **Circuit breaker (Resilience4j):** after repeated failures, stop calling it for a while and fail fast.
+- **Fallback:** return cached, default or partial data when the optional part fails.
+- Call independent services in parallel with `CompletableFuture`, each with its own timeout, so one slow call doesn't hold up the others.
+
+### 27.7 Kafka consumer lag keeps growing, but the consumers look healthy
+
+"Healthy" means running, not keeping up. Check in this order:
+
+- **Rates:** is the producer faster than the consumer? Look at processing time per record.
+- **Partition count:** consumers beyond the number of partitions sit idle, so partitions cap parallelism.
+- **Slow work inside the consumer:** a database or HTTP call for every message.
+- **Hot partition:** one key sends most of the traffic. Lag sits on one partition while the rest are fine.
+- **Rebalancing:** if a batch takes longer than `max.poll.interval.ms`, the consumer is removed from the group and the group keeps rebalancing. Lower `max.poll.records` or raise the interval.
+
+To see lag per partition, run `kafka-consumer-groups.sh --describe --group <group>`.
+
+### 27.8 A client retries after a timeout and creates duplicate data
+
+Make the operation idempotent, so a repeat does no harm:
+
+- The client sends an `Idempotency-Key` header: one UUID per business operation, reused on every retry.
+- The server stores the key with its result, in the same transaction as the write. A repeat with the same key returns the stored response instead of writing again.
+- Add a unique constraint on the business key as a safety net, so two concurrent duplicates fail at the database.
+- Expire old keys after a set period, such as 24 hours.
+
+The check and the write must be atomic, which is why the key and the data go in one transaction. The messaging version of the same idea is [idempotent consumers](#idempotent-consumers-vs-the-outbox-solving-double-processing).
+
+### 27.9 Database CPU hits 100% right after a deployment
+
+Start with what the release changed:
+
+1. **Top queries by total time:** `pg_stat_statements` (PostgreSQL), Performance Insights, or the slow-query log. Compare with the numbers from before the deploy.
+2. **Query plans:** run `EXPLAIN ANALYZE` on the new or slowest queries. A missing index, or a switch to a full table scan, is the most common cause.
+3. **ORM patterns:** an N+1 query (one query per row in a loop), or a relation that now loads far more rows.
+4. **Connection count:** a pool change can flood the database with connections.
+
+If you find a clear regression, roll back first to stop the damage. Then fix the query and redeploy.
+
+### 27.10 Designing retries for a failing downstream without a retry storm
+
+A retry storm happens when every caller retries at once, adding load to a service that's already struggling. To avoid it:
+
+- **Few retries:** 2–3 attempts, never unlimited.
+- **Exponential backoff with jitter:** wait about 1s, 2s, 4s, with random spread so clients don't retry in sync.
+- **Retry only transient failures** (timeouts, 503, 429 with `Retry-After`), and only on idempotent operations. Never retry a 400 or a 404.
+- **Circuit breaker:** stop retrying altogether while the downstream is down.
+- **Retry at one layer only.** Retries at the gateway, the service and the client multiply: 3 × 3 × 3 is 27 attempts for one click.
+
+### 27.11 High GC activity, but traffic is low
+
+Low traffic with heavy GC usually means memory is being held, not churned.
+
+- **Memory leak:** after each full GC, the old generation stays high and keeps growing. Confirm with GC logs (`-Xlog:gc*`) and a class histogram (`jcmd <pid> GC.class_histogram`). See [GC - Garbage Collection](#gc---garbage-collection).
+- **Large objects per request:** reading a whole file or a big JSON into memory, even at low traffic.
+- **A scheduled job** loading a large dataset.
+- **Heap sized wrongly for the container:** in Docker or Kubernetes, size the heap against the container's memory limit (for example `-XX:MaxRAMPercentage`). A heap that is too small causes constant GC.
+
+Find the memory cause before you tune GC settings.
+
+### 27.12 Two services must update data together, with no distributed transaction
+
+Use a **saga**: a sequence of local transactions, one per service, where each step has a **compensating action** that undoes it if a later step fails.
+
+Example: the Order service creates an order, Payment charges the card, and Inventory reserves stock. If the stock reservation fails, the payment is refunded and the order is cancelled.
+
+To make it reliable:
+
+- Each step writes its state change and its event in one local transaction, using the [transactional outbox](#transactional-outbox-pattern). An event is never lost, and never sent without its change.
+- Each consumer is idempotent, because events can be delivered more than once.
+- Pick **orchestration** (one coordinator tracks the steps, easier to debug) or **choreography** (services react to each other's events, looser coupling, harder to follow).
+
+### 27.13 Works with 10 users, unstable at 1,000 concurrent requests
+
+Load doesn't slow the system down evenly. It hits a limit, and queues grow fast. The approach:
+
+1. **Reproduce it with a load test** (k6, Gatling or JMeter), using realistic data and think time. Increase the load in steps.
+2. **Watch the saturation signals:** CPU, heap, thread count, connection pool usage, database CPU, p99 latency and error rate.
+3. **Find the first resource that saturates.** That's the bottleneck. It's often a connection pool, a thread pool or one lock. Also look for missing timeouts, where requests pile up with no end.
+4. **Fix it, then re-test** to find the next bottleneck.
+
+Little's Law explains the cliff: as utilization nears 100%, waiting time rises sharply.
+
+### 27.14 Is production latency coming from Java code, the database, the network or an external service?
+
+Measure each hop instead of guessing:
+
+- **Distributed tracing** (OpenTelemetry with Jaeger or Zipkin) shows each span: the inbound request, each DB query, each outbound call. The largest span is the first suspect.
+- **Connection pool wait** (HikariCP metrics): time spent waiting for a connection is a pool-sizing problem, not a database problem.
+- **Database time:** the slow-query log or `pg_stat_statements` shows query time on the database side.
+- **External call time:** client-side metrics for each outbound call, with its timeout and status code.
+- **Java code time:** if the spans are short but the request is still slow, use a profiler (Java Flight Recorder or async-profiler) to see where the CPU goes, and thread dumps to see blocked threads.
+- **Network:** compare caller and callee timings, and check DNS and TLS setup time in client metrics.
+
+Add up the spans. The biggest share is where to look.
+
+### 27.15 The microservices have become a distributed monolith
+
+A distributed monolith has the costs of microservices and the coupling of a monolith. Signs:
+
+- Services must be deployed together.
+- Services share a database or a schema.
+- Long synchronous chains: A calls B, B calls C, C calls D, so one failure breaks the whole chain.
+- One feature change touches several services at once.
+
+To detect it, map the call graph from your traces, and measure how often one change spans several services.
+
+To prevent it:
+
+- **Database per service:** each service owns its data and shares it only through APIs or events.
+- **Async events** for work that doesn't need an immediate answer.
+- **Short sync chains:** one or two hops at most.
+- **Contract tests** (consumer-driven, for example Pact), so a service can change without breaking its callers.
+- **Bounded contexts:** draw service boundaries around business capabilities, not technical layers. See [microservices pitfalls](#16-microservices-when-pitfalls-culture-patterns).
+
+The test: can each service be deployed alone, on any day, without coordinating with other teams? If not, it's still a monolith.
