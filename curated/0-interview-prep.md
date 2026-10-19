@@ -63,6 +63,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [26.10 PlantGuard (IIT Hyderabad capstone): multi-agent predictive-maintenance copilot](#2610-plantguard-iit-hyderabad-capstone-multi-agent-predictive-maintenance-copilot)
     - [26.11 PaperMind and VoxAlchemy.ai](#2611-papermind-and-voxalchemyai)
     - [26.12 The Threads That Run Through Your Whole Resume](#2612-the-threads-that-run-through-your-whole-resume)
+    - [26.13 DCP as a multi-tenant SaaS: each sector is a tenant](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant)
 27. [Java Scenario Q&A](#27-java-scenario-qa)
     - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
     - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
@@ -8188,6 +8189,80 @@ If an interviewer asks *"What's your architecture philosophy?"*, these patterns 
 
 **One line to end on:** *"Across 22 years the technology changed from static analysis to microservices to agents, but the architecture moves stayed the same: find the common model, isolate the unreliable parts, make everything safe to retry, and measure what you promise."*
 
+
+
+### 26.13 DCP as a multi-tenant SaaS: each sector is a tenant
+
+**The story in one line:** one DCP platform serves several financial sectors (USPF, Corporate, Governance, SF and others). Each sector is a tenant with its own data, rules, users and limits. The code and the infrastructure are shared.
+
+⚠ *The repo names USPF, Corporate and Governance. "SF" is taken from your notes, probably Structured Finance. Replace this list with your real sectors before you use it.*
+
+#### Why a sector is the right tenant
+
+Sectors differ in almost everything that matters to the business: source channels, document templates, taxonomy, validation rules, approval chains, dissemination targets, regulatory audit needs, and who is allowed to see the data. A tenant is exactly that kind of boundary.
+
+The 50 asset classes and the 4 business lines are not separate tenants. They become **configuration and roles inside a tenant**. That keeps the number of tenants small (about five) and makes each one a real business boundary. ⚠ Check whether your 4 business lines map onto your 5 sectors. If they do, say so; it simplifies the story.
+
+#### Shared platform vs per tenant
+
+| Shared (platform) | Per tenant (sector) |
+|---|---|
+| Kafka, extraction services, workflow engine, rules engine code | Templates and extraction schemas ([§26.7](#267-automated-template-onboarding-across-1000-templates-24-days--under-1-hour)) |
+| Kubernetes, CI/CD, observability, AI model gateway | Taxonomy mappings to the internal model |
+| The UI code | Validation rules and confidence thresholds (>0.9 / 0.7–0.9 / <0.7) |
+| Security controls and the tenant-aware APIs | Dissemination targets and schedules |
+| | Users, roles and approval chains (L1, L2) |
+| | Data: documents, extraction results, events |
+| | Audit trail, encryption key, quotas (documents per day) |
+
+#### How one document flows through the tenant
+
+1. **Tenant is set at the door.** A document arrives through its sector's source (an S3 bucket, an email inbox, Delta Sharing). The sourcing service maps that source to a tenant ID. The tenant is never guessed later.
+2. **Tenant travels with every event.** Kafka messages carry the tenant ID in their headers. The key is `tenantId + documentId`, so ordering holds per document, and sectors share partitions fairly.
+3. **Extraction loads the tenant's settings.** The worker uses that sector's template, schema and model configuration.
+4. **Routing uses the tenant's thresholds.** Auto-approve, L2 review or manual extraction follows that sector's rules.
+5. **Access is scoped.** Approvers see only their own sector's documents. Every query is filtered by tenant.
+6. **Dissemination goes to that sector's targets only.**
+
+#### Isolation choices
+
+- **Data:** one PostgreSQL schema per sector. The DCP deployment plan already says "isolate data per tenant (different PostgreSQL schemas)." MongoDB and Elasticsearch use a `tenantId` on every document or index, with a tenant filter on every query. Governance data can get its own database if its regulator requires it. ⚠ Confirm what was built, versus what was planned.
+- **Access:** the tenant is a claim in the access token ([§29](#29-oauth-20-and-jwt-service-to-api-story)). Each service checks it against the resource being requested, not just against the login.
+- **Keys:** one encryption key per sector, so one sector's data can be deleted or cut off without touching the others.
+
+#### Fairness and limits
+
+A quarter-end filing burst in one sector must not delay another sector's SLA. The same bulkhead idea as [§26.1](#a-availability-99-no-single-failure-takes-the-platform-down), applied per tenant:
+
+- Quotas per sector: documents per day and concurrent extractions.
+- Separate processing lanes or Kafka consumer groups for SLA-critical sectors.
+- Latency and throughput dashboards per tenant, so a noisy neighbour shows up before a customer complains.
+
+#### Adding a new sector
+
+A new sector is **configuration, not code**: create the tenant, load its templates (AI-drafted and human-reviewed, as in [§26.7](#267-automated-template-onboarding-across-1000-templates-24-days--under-1-hour)), set its rules and thresholds, create its users and roles, and set its quotas. This is what makes onboarding scale.
+
+#### Releases per tenant
+
+Shared code means one bug can reach every sector at once. Roll out changes one tenant at a time: a feature flag per tenant, then a canary on one sector, then the rest. A rollback can also be applied to one tenant only.
+
+#### 60-second answer
+
+> "DCP is a multi-tenant platform. Each financial sector is a tenant: USPF, Corporate, Governance, SF and the others. The code and infrastructure are shared, so one release serves every sector. What belongs to a sector is everything that describes its business: templates, taxonomy, validation thresholds, dissemination targets, users, quotas, audit trail and encryption key. The tenant is set when a document enters through its source, and it travels in the Kafka key and headers, so ordering holds per document and no event crosses sectors. Isolation is a schema per sector in PostgreSQL, a tenant filter on every query, and a key per sector. For fairness, each sector has quotas and its own processing lanes, so a quarter-end burst in one sector doesn't break another's SLA. A new sector is configuration, not code."
+
+#### Likely follow-ups
+
+- **"How do you stop data leaking between sectors?"** The tenant is set once, at ingestion. Every query is filtered by it. Access is checked against the token's tenant claim. Cross-tenant tests run in CI, and every access is audited.
+- **"Why not one database per sector?"** For a handful of tenants, that multiplies cost and operations. Use stronger isolation only where a regulator requires it.
+- **"How do you release a change to one sector first?"** A feature flag per tenant, then a canary on that sector, with rollback applied to that tenant only.
+- **"Can a sector use a different AI model?"** Yes. Model choice is per-tenant configuration behind the LLM gateway ([§26.6](#266-multi-modal-llm-extraction-pipeline-2-analyst-days--20-minutes-979-faster-presidents-award)).
+
+#### ⚠ Confirm before using
+
+- The full list of sectors, and what SF stands for.
+- Whether your 4 business lines map onto your 5 sectors.
+- Whether the production schema was per sector, or whether it stayed a planned design.
+- Per-sector numbers and quotas.
 
 ---
 
