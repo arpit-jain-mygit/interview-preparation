@@ -8458,7 +8458,7 @@ The test: can each service be deployed alone, on any day, without coordinating w
 
 | JD asks for | Your evidence | Strength | Read more |
 |---|---|---|---|
-| Multi-tenant SaaS design | ADP HCM and Garnishment for global enterprise customers; S&P internal platform served 4 business lines ([§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization)) | Strong on design, partial on true multi-customer SaaS | [§28 Q4](#q4-compare-tenant-isolation-models-which-would-you-choose-for-wfs), [Q5](#q5-how-do-you-stop-one-tenants-load-from-slowing-down-the-others), [§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization) |
+| Multi-tenant SaaS design | ADP HCM and Garnishment for global enterprise customers; S&P internal platform served 4 business lines ([§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization)) | Strong on design, partial on true multi-customer SaaS | [§28 Q4](#q4-compare-tenant-isolation-models-which-would-you-choose-for-wfs), [Q5](#q5-how-do-you-stop-one-tenants-load-from-slowing-down-the-others), [§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization), [§26.13 DCP as sectors-as-tenants](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
 | OCI (preferred) | AWS Solutions Architect cert, GCP, Kubernetes (CKAD). No OCI experience on your resume | **Gap**, name it and give a ramp-up plan | [§28 Q6](#q6-what-does-oci-change-in-the-design-and-how-would-you-ramp-up) |
 | Containers, Kubernetes, HA, DR, capacity planning | DCP: HPA on lag, multi-AZ, DR table with RTO/RPO ([§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)) | Strong | [§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp), [§28 Q7](#q7-design-disaster-recovery-for-wfs-with-different-targets-per-module), [§28 Q8](#q8-how-do-you-handle-the-7-am-clock-in-spike) |
 | Java, J2EE/Servlet, Spring Boot, Tomcat | ADP J2EE and Spring Boot platforms; DCP Spring Boot microservices. Tomcat specifically is ⚠ not on the resume | Strong (confirm Tomcat) | [§28 Q26](#q26-tomcat-or-embedded-spring-boot-what-are-your-12-factor-rules-for-services), [§26.8](#268-adp-application-architect-10-years-microservices-and-containerization-shift-hcm-and-garnishment-platforms-200-engineer-community) |
@@ -8511,11 +8511,11 @@ Three models:
 2. **Schema per tenant.** Stronger separation, but migrations must run across hundreds of schemas.
 3. **Database per tenant.** Strongest isolation and protection from noisy neighbours, but the highest cost.
 
-For a platform with many mid-size customers, I'd choose **shared schema with row-level security**, and move the largest or regulated tenants to a dedicated schema or database. That hybrid is common because it keeps most tenants cheap and gives the big ones isolation they can justify.
+For a platform with many mid-size customers, I'd choose **shared schema with row-level security**, and move the largest or regulated tenants to a dedicated schema or database. That hybrid is common because it keeps most tenants cheap and gives the big ones isolation they can justify. In DCP, this is the sector-as-tenant model: [§26.13](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant).
 
 #### Q5. How do you stop one tenant's load from slowing down the others?
 
-Apply limits per tenant at the gateway (requests per second) and in the workers (concurrent jobs). Give large tenants their own queues or Kafka partitions. Use priority for payroll-critical work so a bulk analytics job cannot delay an export. Track latency and throughput **per tenant**, so you see a noisy neighbour before the customer calls. This is the same bulkhead idea as [§26.1](#a-availability-99-no-single-failure-takes-the-platform-down), applied per tenant.
+Apply limits per tenant at the gateway (requests per second) and in the workers (concurrent jobs). Give large tenants their own queues or Kafka partitions. Use priority for payroll-critical work so a bulk analytics job cannot delay an export. Track latency and throughput **per tenant**, so you see a noisy neighbour before the customer calls. This is the same bulkhead idea as [§26.1](#a-availability-99-no-single-failure-takes-the-platform-down), applied per tenant. The DCP version of this is per-sector quotas and lanes: [§26.13](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant).
 
 #### Q6. What does OCI change in the design, and how would you ramp up?
 
@@ -8606,7 +8606,7 @@ Every write endpoint and every consumer accepts an **idempotency key**. Errors u
 
 #### Q17. How would you design Kafka topics for many tenants?
 
-Two options. **One topic per event type**, with tenant ID in the key, is the common choice: many tenants share the partitions, and ordering holds per key. **One topic per tenant** gives strong isolation but creates a topic explosion across hundreds of tenants. I'd use shared topics keyed by tenant plus assignment, enforce per-tenant quotas, and give the largest or most regulated tenants their own topics. The partition key determines the ordering guarantee, so choose it from the ordering need ([Kafka partition key](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md#8-how-should-dcp-choose-a-partition-key)).
+Two options. **One topic per event type**, with tenant ID in the key, is the common choice: many tenants share the partitions, and ordering holds per key. **One topic per tenant** gives strong isolation but creates a topic explosion across hundreds of tenants. I'd use shared topics keyed by tenant plus assignment, enforce per-tenant quotas, and give the largest or most regulated tenants their own topics. The partition key determines the ordering guarantee, so choose it from the ordering need ([Kafka partition key](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md#8-how-should-dcp-choose-a-partition-key)). In DCP, the tenant is the sector, and it is part of the Kafka key: [§26.13](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant).
 
 #### Q18. How do you manage schema evolution for events?
 
