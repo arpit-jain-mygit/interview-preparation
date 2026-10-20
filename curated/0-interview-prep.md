@@ -71,6 +71,7 @@
     - [28.K Leadership, behaviour and "why this role"](#28k-leadership-behaviour-and-why-this-role)
     - [28.L Quick reference: 60-second answer for the architecture question](#28l-quick-reference-60-second-answer-for-the-architecture-question)
 29. [OAuth 2.0 and JWT: Service-to-API Story](#29-oauth-20-and-jwt-service-to-api-story)
+30. [Spark Structured Streaming: Simple Explanation](#30-spark-structured-streaming-simple-explanation)
     - [29.A The story: the Report API asks the Billing API for prices](#29a-the-story-the-report-api-asks-the-billing-api-for-prices)
     - [29.B JWT: concept and example values](#29b-jwt-concept-and-example-values)
     - [29.C Interview version (about 60 seconds)](#29c-interview-version-about-60-seconds)
@@ -8978,6 +8979,121 @@ Okta calculates it from the header and payload, using its private key. Changing 
 ### 29.C Interview version (about 60 seconds)
 
 > "The Report API is a service, so it has its own identity in Okta. It proves itself with a private key, not a password: it signs a request and Okta checks it with the public key registered during setup. Okta returns an access token, a JWT, signed with Okta's private key. The token has three parts: a header with the key ID, a payload with issuer, audience, expiry and scope, and the signature. The Billing API finds Okta's public key by the key ID, checks the signature, then checks issuer, audience and expiry, then checks the scope. A bad signature or wrong audience or expiry gives 401, and a missing scope gives 403."
+
+
+---
+
+## 30. Spark Structured Streaming: Simple Explanation
+
+**What this is:** a plain-language guide to Spark Structured Streaming, with a worked example. Use it to explain the idea first, then the details.
+
+### 30.1 The idea
+
+Structured Streaming treats a live stream of data as a table that keeps growing. New events are new rows added at the bottom. You write the same query you'd write for a batch job, and Spark keeps running it on new data as it arrives.
+
+Three steps:
+
+1. **The stream is a table.** New events are rows added to the bottom. Your query is a normal SQL-style query over that table.
+2. **Spark runs it in small batches.** Every few seconds, it takes the new rows, runs your query on them, and updates the result. These small batches are called micro-batches.
+3. **Spark remembers where it stopped.** A checkpoint records how far it got. If the job crashes, it restarts from that point instead of from the beginning.
+
+### 30.2 The query
+
+```python
+from pyspark.sql import functions as F
+
+events = spark.readStream.format("kafka") \
+    .option("subscribe", "document-sourced") \
+    .load()
+
+counts = events.groupBy("sector").count()
+
+counts.writeStream \
+    .outputMode("complete") \
+    .option("checkpointLocation", "/checkpoints/sector-counts") \
+    .format("console") \
+    .start()
+```
+
+Read it as: read from Kafka, count by sector, write the running totals, and checkpoint progress.
+
+The example assumes each message has already been parsed so that `sector` is a column. In a real job, you first decode the message's JSON value, which Kafka delivers as raw bytes.
+
+### 30.3 A worked example
+
+**The incoming events**
+
+```
+Batch 1 (t = 0s):   USPF, CORP, USPF
+Batch 2 (t = 5s):   GOV, USPF
+Batch 3 (t = 10s):  CORP, CORP
+```
+
+**What Spark does with each batch:** it adds the new rows to the stream, reruns the count over everything seen so far, and writes the result. With `outputMode("complete")`, the whole table is written each time.
+
+**Output after batch 1**
+
+```
++------+-----+
+|sector|count|
++------+-----+
+|  USPF|    2|
+|  CORP|    1|
++------+-----+
+```
+
+**Output after batch 2** (USPF goes from 2 to 3, and GOV appears)
+
+```
++------+-----+
+|sector|count|
++------+-----+
+|  USPF|    3|
+|  CORP|    1|
+|   GOV|    1|
++------+-----+
+```
+
+**Output after batch 3** (CORP goes from 1 to 3)
+
+```
++------+-----+
+|sector|count|
++------+-----+
+|  USPF|    3|
+|  CORP|    3|
+|   GOV|    1|
++------+-----+
+```
+
+**What to notice**
+
+- Spark never restarts the count from zero. It updates the running totals with each batch.
+- Each batch is a snapshot. If the job crashes after batch 2, the checkpoint lets it resume from there, so no event is counted twice.
+- With `outputMode("update")`, each output would show only the sectors that changed in that batch, such as USPF and GOV after batch 2.
+
+### 30.4 Three things to know
+
+- **Output modes.** `append` writes only new rows. `update` writes only rows that changed. `complete` rewrites the whole result each time.
+- **Late data and watermarks.** An event can arrive late. A watermark tells Spark how long to wait for late events before it closes a time window, so state doesn't grow forever.
+- **Exactly-once.** With a checkpoint and a sink that handles retries (for example, idempotent writes), each event affects the result once, even after a crash.
+
+### 30.5 Streaming vs batch
+
+| | Batch | Structured Streaming |
+|---|---|---|
+| Input | A fixed set of data | Data that keeps arriving |
+| Runs | Once, then stops | Continuously |
+| Query code | Same | Same, plus stream options |
+| Good for | Nightly loads | Near-real-time counts and alerts |
+
+### 30.6 Where it fits in DCP
+
+The platform's heavy batch work runs on Spark on Kubernetes. Structured Streaming suits live metrics, such as documents processed per sector per minute. The main document flow stays event-driven, with Kafka consumers in microservices, because each event needs its own transaction and business logic. See [§26.15](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads) and [§18](#18-aws-likely-questions-and-dcp-mapped-concepts) for the Spark and Kafka footprint.
+
+### 30.7 Interview version (about 30 seconds)
+
+> "Structured Streaming treats the incoming stream as a table that keeps growing. I write the same query I'd write for batch, and Spark runs it in micro-batches, updating the result with each batch. A checkpoint records progress, so a restart resumes instead of double-counting. For late data I set a watermark, and for live metrics it's a good fit. For the core document flow I'd still use Kafka consumers, because each event needs its own transaction."
 
 ---
 
