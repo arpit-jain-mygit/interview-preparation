@@ -41,6 +41,7 @@
     - [26.13 DCP as a multi-tenant SaaS: each sector is a tenant](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant)
     - [26.14 How a tenant reaches the database: UI to DB in DCP](#2614-how-a-tenant-reaches-the-database-ui-to-db-in-dcp)
     - [26.15 DCP on AWS: the full footprint, native vs managed, spot, secrets and uploads](#dcp-on-aws-footprint-native-vs-managed-spot-secrets-and-uploads)
+    - [26.16 How to reach 99%, 99.9% and 99.999% availability](#2616-how-to-reach-99-999-and-99999-availability)
 27. [Java Scenario Q&A](#27-java-scenario-qa)
     - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
     - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
@@ -8450,6 +8451,92 @@ For stricter control, the API can exchange the common token for a token limited 
 ### 26.15 DCP on AWS: the full footprint, native vs managed, spot, secrets and uploads
 
 The full content now sits in [§18, DCP on AWS](#dcp-on-aws-footprint-native-vs-managed-spot-secrets-and-uploads), next to the AWS interview material. This section stays in §26 so the resume story keeps its link.
+
+### 26.16 How to reach 99%, 99.9% and 99.999% availability
+
+**The simple version:** availability is the share of time a system works. Each extra "nine" cuts the allowed downtime by about ten times, and costs much more to achieve. DCP's 99%+ came from removing single points of failure, separating slow work from user-facing work, and making releases safe.
+
+#### 1. What each level allows
+
+| Availability | Downtime per year | Downtime per month | Typical use |
+|---|---|---|---|
+| 99% (two nines) | about 3.6 days | about 7.3 hours | Internal tools, batch systems |
+| 99.5% | about 1.8 days | about 3.6 hours | DCP's requirement target |
+| 99.9% (three nines) | about 8.8 hours | about 44 minutes | Most business SaaS |
+| 99.95% | about 4.4 hours | about 22 minutes | Enterprise SaaS with SLAs |
+| 99.99% (four nines) | about 53 minutes | about 4.4 minutes | Payments, core banking |
+| 99.999% (five nines) | about 5 minutes | about 26 seconds | Telecom, emergency systems |
+
+#### 2. The idea behind every level
+
+Availability fails in four ways. Each level of nines removes more of them:
+
+1. **A part breaks.** A server, disk or zone dies. *Fix:* spare copies of everything.
+2. **Nobody notices quickly.** The system is down but no one knows. *Fix:* health checks and alerts, so detection takes seconds.
+3. **The fix is slow.** Failover is manual or untested. *Fix:* automatic failover, and rehearsed runbooks.
+4. **We break it ourselves.** Releases and config changes cause outages. *Fix:* small, reversible releases.
+
+The last one causes many real outages, so it deserves as much attention as hardware.
+
+#### 3. What it takes, level by level
+
+**99% to 99.5%: basic redundancy**
+- Two or more copies of each stateless service.
+- Regular backups, and a restore that has been tested.
+- Health checks that restart a broken process.
+
+**99.9%: no single point of failure**
+- Every component is spread across at least two availability zones.
+- The database has a standby that takes over automatically.
+- Timeouts, retries with backoff, and circuit breakers on every remote call.
+- A message queue between slow work and user-facing work, so a slow dependency becomes lag, not an outage.
+
+**99.95%: safe change**
+- Canary releases, with automatic rollback when error rates rise.
+- Pre-flight checks before each deploy, and expand-then-contract database changes.
+- On-call rotation, runbooks, and blameless postmortems.
+
+**99.99%: survive a whole region**
+- Two or more regions. Active-passive is the usual start: a standby region takes over.
+- Automated, rehearsed failover, with data replicated across regions.
+- Chaos testing: deliberately break things in production-like environments to prove the failover works.
+- Bulkheads: one slow dependency can't use up the threads or connections that other features need.
+- Graceful degradation: when a feature fails, the rest keeps working.
+
+**99.999%: no planned downtime, and no weak dependency**
+- Active-active regions: every region serves traffic all the time.
+- Cell-based design: the system is split into isolated cells, so a failure hits one cell, not all users.
+- Zero-downtime upgrades for every component, including the database.
+- Every dependency must meet the same target. A 99.9% vendor caps the whole system at 99.9%.
+- Very high cost in engineering, operations and money. Few systems justify it.
+
+#### 4. Why it multiplies down
+
+If a user request must pass through three services, each at 99.9%, the chain is available about 99.7% of the time (0.999 × 0.999 × 0.999). Each extra step in a synchronous chain lowers availability. This is why asynchronous queues and fallbacks matter for high targets.
+
+#### 5. How DCP reached 99%+
+
+- **No single point of failure:** stateless services with multiple replicas, multi-zone deployment, and standby databases.
+- **Slow work behind a queue:** AI extraction runs asynchronously through Kafka. A vendor outage becomes a delay, not downtime ([§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)).
+- **Fallbacks:** circuit breakers, plus a second extraction engine when the first one fails ([§27.10](#2710-designing-retries-for-a-failing-downstream-without-a-retry-storm)).
+- **Safe change:** canary releases, pre-flight checks and fast rollback. This is what cut incidents from 60 to 24 a month ([§26.3](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices)).
+- **Fast recovery:** MTTR went from 2 hours to 20 minutes. At 99% or better, how quickly you recover matters as much as how rarely you fail.
+
+**To go beyond 99.9%** you would also need multi-region failover, which the DCP design planned but did not run as active-active. Say so honestly if asked.
+
+#### 6. Interview answer
+
+> "Availability is the share of time a system works. 99.9% allows about 44 minutes of downtime a month. To reach 99%+ in DCP, I removed single points of failure, spread every component across zones, and put the slow AI work behind Kafka with fallbacks, so a vendor outage meant delay, not downtime. Releases were canary-based with automatic rollback, and recovery time dropped from 2 hours to 20 minutes. Going to 99.99% needs multi-region failover, and 99.999% needs active-active regions and zero-downtime upgrades everywhere, at a much higher cost."
+
+#### 7. Likely follow-ups
+
+- **"What's the difference between availability and reliability?"** Availability is whether the system responds now. Reliability is whether it responds correctly over time.
+- **"Why not just add more servers?"** Servers don't help if the database, a zone or a bad release takes everything down. Redundancy must cover every layer.
+- **"How do you measure it?"** Success rate from the user's point of view, measured at the gateway or by synthetic checks, over a rolling 30 days. Uptime from a server's own view can look better than what users see.
+- **"Does a planned maintenance window count?"** Usually yes, if the SLA says so. That is why zero-downtime upgrades matter at the top levels.
+
+⚠ *Confirm the exact DCP measurement method and the number you will quote. The requirement was 99.5% and the resume says 99%+.*
+
 ---
 
 ## 27. Java Scenario Q&A
