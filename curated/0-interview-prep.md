@@ -1400,7 +1400,10 @@ Given the Solutions Architect certification, expect this vocabulary to be a natu
 
 ### DCP on AWS
 
-DCP's AWS services, the native vs managed classification, spot, secrets and the upload rule are in one place: [§26.15](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads).
+This is the AWS cluster. The related sections are:
+
+- [§26.15 DCP on AWS](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads): the full footprint, native vs managed, spot, secrets and the upload rule.
+- [§26.4 Cloud cost on AWS](#264-cut-cloud-costs-180kyear-aws-ec2-compute-down-70-databricks-compute-down-975-spot-instances-job-cluster-redesign): the EC2, spot and job-cluster cost story, with the math.
 ---
 
 ## 19. Behavioral Q&A Index
@@ -7879,6 +7882,8 @@ Strangler fig pattern · bounded contexts (DDD) · anti-corruption layer · data
 
 ### 26.4 "Cut cloud costs ~$180K/year: AWS EC2 compute down 70%, Databricks compute down 97.5% (spot instances, job-cluster redesign)"
 
+> Part of the AWS cluster. See [§18 AWS](#18-aws-likely-questions-and-dcp-mapped-concepts).
+
 **Already covered as a story:** [Story 3](#story-3-the-bill-nobody-was-watching-cost-job-clusters--spot-instances), plus [Job-cluster cold start](#job-cluster-cold-start--getting-the-savings-without-the-wait) and [Incident 1](#incident-1-the-cost-fix-that-broke-a-downstream-sla-job-cluster-cold-start). This subsection is the **architecture view**: cost is a non-functional requirement like latency, and you design for it.
 
 #### The architecture principles behind the numbers
@@ -8319,6 +8324,8 @@ For stricter control, the API can exchange the common token for a token limited 
 > "The UI is common to all sectors. The user signs in once, and the token lists the sectors they belong to. At ingestion, the user picks a sector, and the UI sends that choice with the upload. The server checks the choice against the token and the user's write permission, then maps the sector to its schema and writes the document there. The sector is stored with the document, so every later read and approval checks the document's own tenant. The file and the Kafka event carry the tenant too, so downstream processing uses that sector's rules and schema."
 
 ### 26.15 DCP on AWS: the full footprint, native vs managed, spot, secrets and uploads
+
+> Part of the AWS cluster. See [§18 AWS](#18-aws-likely-questions-and-dcp-mapped-concepts).
 
 **This is the single reference for everything DCP ran on AWS.** Other sections link here instead of repeating it.
 
