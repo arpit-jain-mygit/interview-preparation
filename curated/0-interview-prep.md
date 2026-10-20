@@ -1401,7 +1401,7 @@ Given the Solutions Architect certification, expect this vocabulary to be a natu
 
 ### AWS services used in DCP
 
-DCP's footprint was mixed on purpose: AWS-managed services where they removed commodity work, and self-managed services where we needed control. The full footprint and the upload rule are in [§26.16](#2616-dcps-aws-footprint-what-ran-where). This table is the short version:
+DCP's footprint was mixed on purpose: AWS-managed services where they removed commodity work, and self-managed services where we needed control. The full footprint and the upload rule are in [§26.16](#2616-dcps-aws-footprint-what-ran-where). This table is the short version: For the definitions of native, managed and self-managed, see [AWS-native vs managed](#aws-native-vs-managed-vs-self-managed).
 
 | DCP component | AWS service | How it was run |
 |---|---|---|
@@ -1424,6 +1424,53 @@ DCP's footprint was mixed on purpose: AWS-managed services where they removed co
 | Not used | **Lambda, DynamoDB, RDS** | Lambda didn't fit the long-running extraction jobs; DynamoDB didn't fit the document model; PostgreSQL ran on EC2 |
 
 **How to use this table live:** lead with what DCP used and why. Managed services removed commodity work: EKS's control plane, MSK and ElastiCache. Self-managed services gave control where it mattered: PostgreSQL and MongoDB on EC2, with the replication, failover and backup work that comes with them. Then give the upload rule: files up to 10 MB through API Gateway, larger files through pre-signed S3 URLs.
+
+
+### AWS-native vs managed vs self-managed
+
+**Three categories, and what they mean:**
+
+- **AWS-native:** a service AWS built and that exists only in AWS, with its own API or behaviour. Examples: IAM, CloudTrail, CloudWatch, API Gateway, ALB, DynamoDB. Other clouds have equivalents, but with different APIs, so moving means redesigning the integration.
+- **Managed:** AWS operates software that also exists elsewhere, often open source with a standard protocol. AWS handles installation, patching, scaling, backups and failover. Examples: EKS (Kubernetes), MSK (Kafka), ElastiCache (Redis).
+- **Self-managed:** you run the software yourself, on EC2 or Kubernetes. Example: PostgreSQL on EC2.
+
+**Native is not the same as "only in AWS, with no alternatives."** The useful test is whether AWS built the interface you depend on. A service can have equivalents on other clouds and still be AWS-native, because its API and integrations are AWS's.
+
+**Portability depends on the interface you depend on, not the label.** A managed service is portable at the protocol level, but its AWS integrations are not:
+
+- **MSK** speaks the standard Kafka protocol, so clients move. IAM authentication, networking and monitoring hookups are AWS-specific.
+- **ElastiCache** speaks the Redis protocol. Parameter groups and failover behaviour are AWS-specific.
+- **EKS** runs standard Kubernetes manifests. IRSA, the ALB ingress controller and node groups are AWS-specific.
+
+**Three questions to classify a service:**
+
+1. Does the software also run outside AWS? If not, it's AWS-native.
+2. Does AWS operate it for you? If yes, it's managed.
+3. Does your code depend on AWS-only APIs or authentication? If yes, moving costs more, even when the software itself is portable.
+
+**How DCP's services sort:**
+
+| Service | Category | Portability |
+|---|---|---|
+| EKS | Managed (Kubernetes) | High for workloads; Medium for AWS integrations |
+| MSK | Managed (Kafka) | High by protocol; Medium for IAM and monitoring |
+| ElastiCache | Managed (Redis) | High by protocol; Medium for operations |
+| EC2 | AWS infrastructure (compute) | Medium; VMs exist everywhere, but images and sizes differ |
+| VPC | AWS-native networking | Medium; the concept is shared, the configuration isn't |
+| S3 | AWS-native storage | Medium; S3-compatible tools exist, but pre-signed URL signing is AWS's |
+| API Gateway | AWS-native | Low; authorizers, limits and configuration are AWS-only |
+| ALB, Route 53, ACM | AWS-native | Low to Medium |
+| IAM, KMS, CloudTrail, CloudWatch | AWS-native | Low; equivalents exist with different APIs |
+| Spot instances | AWS pricing model | Medium; Azure and GCP offer similar spot VMs |
+| PostgreSQL, MongoDB, Spark | Open source, self-managed on EC2 or EKS | High; they run anywhere |
+| Databricks | Third-party, running on AWS | High; it also runs on Azure and GCP |
+| Okta | Third-party identity service | High; external to AWS |
+| HashiCorp Vault | Third-party, self-hosted | High; KMS auto-unseal is AWS-specific |
+| Prometheus, Jaeger, Splunk | Third-party or open source | High; they run anywhere |
+
+**Interview version (about 30 seconds):**
+
+> "AWS-native means AWS built the interface and nothing else offers it, like IAM or API Gateway. Managed means AWS runs software that exists elsewhere too, like MSK or EKS, so AWS handles patching, scaling and failover. Portability depends on the interface you depend on. MSK keeps the Kafka protocol, so clients move, but its IAM and monitoring hookups don't. That's why I'd reduce AWS-specific integrations in the code, and keep the standard protocols."
 
 ---
 
