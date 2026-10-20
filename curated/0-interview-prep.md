@@ -8016,6 +8016,39 @@ ExtractionStrategy engine = registry.get(template.getEngine());
 
 ⚠ *This shows how the pattern applies to DCP's design. Check the class names against your actual code before using them.*
 
+#### How the Factory fits with the Strategy pattern
+
+*Part of [Applying the Strategy pattern in DCP](#applying-the-strategy-pattern-in-dcp).*
+
+**The split:** the Factory decides which strategy to create, and the Strategy does the work. The Factory turns a configuration value (such as the template's engine name) into the right object. Callers use the strategy through its interface and never check which implementation they got.
+
+**In DCP:** `ExtractionStrategyFactory.create(template)` looks up `template.getEngine()` (for example `sparkair`, `cognize`, or `deepmine`) and returns that strategy. Spring can inject every `ExtractionStrategy` bean into a map keyed by name, so the factory is a simple lookup.
+
+```java
+public class ExtractionStrategyFactory {
+    private final Map<String, ExtractionStrategy> engines;
+
+    public ExtractionStrategyFactory(Map<String, ExtractionStrategy> engines) {
+        this.engines = engines;   // Spring injects all ExtractionStrategy beans, keyed by name
+    }
+
+    public ExtractionStrategy create(Template template) {
+        ExtractionStrategy s = engines.get(template.getEngine());
+        if (s == null) throw new IllegalArgumentException("Unknown engine: " + template.getEngine());
+        return s;
+    }
+}
+
+// The pipeline never checks which engine it has:
+factory.create(template).extract(doc, template);
+```
+
+**Why it matters:** a new engine is one new class with no change to the pipeline, and a bad configuration value fails fast with a clear error. The same pattern works for the validation and publishing strategies.
+
+**Interview answer (about 30 seconds):** "The Factory picks the strategy from configuration, and the Strategy does the work. In DCP, the template names the extraction engine, the factory looks it up, and the pipeline calls the common interface. A new engine is one class, and an unknown name fails immediately."
+
+⚠ *Check the class and method names against your code before using them.*
+
 ### 26.3 "Cut production incidents 60% and MTTR 6× by re-architecting legacy monoliths into event-driven microservices"
 
 **Already covered in depth:** the spoken story is [Story 2](#story-2-from-firefighting-to-calm-reliability), the process side is [Cutting production incidents 60%](#cutting-production-incidents-60-explained-simply), and the full migration plan is the [Monolith → microservices roadmap](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story). This subsection gives only the **architecture reasoning**: *why* does event-driven microservices reduce incidents and MTTR, when microservices also add new ways to fail?
