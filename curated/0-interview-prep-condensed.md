@@ -11,6 +11,37 @@
 
 ---
 
+## Table of Contents
+
+- [2. Core Java & Framework Depth](#2-core-java--framework-depth)
+- [3. Distributed Systems & Large-Scale Compute Design](#3-distributed-systems--large-scale-compute-design)
+- [4. Cloud & Infrastructure at Scale](#4-cloud--infrastructure-at-scale)
+- [5. Data & Storage](#5-data--storage)
+- [6. Engineering Leadership & Agile Execution](#6-engineering-leadership--agile-execution)
+- [7. Mentoring & People Development](#7-mentoring--people-development)
+- [8. Strategic/Technical Vision](#8-strategictechnical-vision)
+- [9. Motivation & Fit](#9-motivation--fit)
+- [10. GenAI Wildcard](#10-genai-wildcard)
+- [14. XiP-Specific Technical Questions](#14-xip-specific-technical-questions)
+- [15. Additional Details](#15-additional-details)
+- [16. Microservices: When, Pitfalls, Culture, Patterns](#16-microservices-when-pitfalls-culture-patterns)
+- [17. Conflict Scenarios for Behavioral Questions](#17-conflict-scenarios-for-behavioral-questions)
+- [18. AWS: Likely Questions and DCP-Mapped Concepts](#18-aws-likely-questions-and-dcp-mapped-concepts)
+- [20. System Design Reference](#20-system-design-reference)
+- [21. Spring Framework Reference](#21-spring-framework-reference)
+- [22. OOPS (Object-Oriented Design) Reference](#22-oops-object-oriented-design-reference)
+- [23. Advanced Java](#23-advanced-java)
+- [25. Redwood — Director of Engineering (AI & Full-Stack SaaS), Site-Lead Round](#25-redwood--director-of-engineering-ai--full-stack-saas-site-lead-round)
+- [26. My Resume](#26-my-resume)
+- [27. Java Scenario Q&A](#27-java-scenario-qa)
+- [28. WFS Senior Solution Architect (ADP) Q&A](#28-wfs-senior-solution-architect-adp-qa)
+- [29. OAuth 2.0 and JWT: Service-to-API Story](#29-oauth-20-and-jwt-service-to-api-story)
+- [30. Spark Structured Streaming: Simple Explanation](#30-spark-structured-streaming-simple-explanation)
+- [31. System Design Notes](#31-system-design-notes)
+- [32. Final Revision Notes (23 Sep 2026)](#32-final-revision-notes-23-sep-2026)
+- [Memory Tricks](#memory-tricks)
+- [Final checklist before you walk in](#final-checklist-before-you-walk-in)
+
 ## 2. Core Java & Framework Depth
 
 | Topic | Remember | Full answer |
