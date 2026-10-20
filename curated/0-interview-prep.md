@@ -1189,6 +1189,34 @@ Compensate: Undo Step 1 → Result: Rolled back! ✓
 
 ---
 
+#### How Jaeger, Splunk, Prometheus and Grafana connect
+
+*Part of the [Observability](#observability) section. The three signals (LMT) each come from a different tool, and Grafana shows them together.*
+
+| Tool | Signal | Question it answers | How it gets data |
+|---|---|---|---|
+| **Prometheus** | Metrics | How is it performing? | Scrapes numbers (request rate, error rate, p95 latency, Kafka lag) from each service on a schedule. Alert rules fire when a number crosses a limit. |
+| **Splunk** | Logs | What happened? | Log shippers send every service's log lines to one searchable index. |
+| **Jaeger** | Traces | Where is it slow? | Each request gets a trace ID. Every service call inside it is a span with a start time and duration, and Jaeger draws them as a timeline. |
+| **Grafana** | Dashboards | Show me all three together | Reads Prometheus (metrics), Jaeger (traces) and Splunk (logs) as data sources. |
+
+**How Jaeger works:** the services are instrumented with OpenTelemetry, which creates spans and passes the trace context on in HTTP headers and Kafka message headers. Spans are sent to a collector, which stores them for Jaeger to display. A Jaeger trace shows which hop took the time, so you see that a database call took 4 seconds, not the whole request.
+
+**How the four connect through the trace ID:**
+- Every log line includes the trace ID, for example `[extraction,4f2a9c1e8b7d3a56] extracted document 123`. Searching Splunk for that ID returns all the logs for one request.
+- Metrics can carry an example trace (an exemplar), so a latency spike on a Prometheus graph links to a real slow trace in Jaeger.
+- Grafana puts the three side by side, so one screen supports the whole investigation.
+
+**Incident path:**
+1. Prometheus alerts: p95 latency is above the limit.
+2. Grafana shows which endpoint is slow.
+3. An exemplar opens its trace in Jaeger, which shows the slow database span.
+4. Splunk, searched by that trace ID, shows the timeout and the retry.
+
+**Interview answer (about 30 seconds):** "Prometheus tells me something is wrong, through metrics and alerts. Jaeger tells me where, by showing the timeline of one slow request across services. Splunk tells me why, through the logs for that same trace ID. Grafana puts all three in one place. The trace ID links them, because every log line and every outgoing call carries it."
+
+⚠ *Confirm which exporters and data sources DCP actually used before naming them in an interview.*
+
 #### Domain-Driven Design
 
 💡 **MEMORY TRICK: "BUSINESS FIRST"**
