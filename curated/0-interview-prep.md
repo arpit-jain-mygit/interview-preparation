@@ -100,6 +100,24 @@
     - [32.5 JD-specific: XiNG platform](#325-jd-specific-xing-platform)
     - [32.6 My project: Kafka production issue and scalability story](#326-my-project-kafka-production-issue-and-scalability-story)
     - [32.7 Other topics on the list](#327-other-topics-on-the-list)
+    - [32.8 Project explanation, challenges and behavioural questions](#328-project-explanation-challenges-and-behavioural-questions)
+    - [32.9 Java: OOPS concepts](#329-java-oops-concepts)
+    - [32.10 Java: SOLID principles](#3210-java-solid-principles)
+    - [32.11 Java: exceptions, multithreading and concurrency](#3211-java-exceptions-multithreading-and-concurrency)
+    - [32.12 Java: collections](#3212-java-collections)
+    - [32.13 Java: String, StringBuilder and StringBuffer](#3213-java-string-stringbuilder-and-stringbuffer)
+    - [32.14 Java: other core topics on the list](#3214-java-other-core-topics-on-the-list)
+    - [32.15 DSA: pattern printing](#3215-dsa-pattern-printing)
+    - [32.16 Always-unknown topics](#3216-always-unknown-topics)
+    - [32.17 Microservices](#3217-microservices)
+    - [32.18 Kafka](#3218-kafka)
+    - [32.19 Design patterns and system design](#3219-design-patterns-and-system-design)
+    - [32.20 Spring](#3220-spring)
+    - [32.21 Agentic AI](#3221-agentic-ai)
+    - [32.22 Data engineering and cloud](#3222-data-engineering-and-cloud)
+    - [32.23 Old interview questions still unanswered](#3223-old-interview-questions-still-unanswered)
+    - [32.24 Hands-on programs to build](#3224-hands-on-programs-to-build)
+    - [32.25 Saved links](#3225-saved-links)
     - [29.A The story: the Report API asks the Billing API for prices](#29a-the-story-the-report-api-asks-the-billing-api-for-prices)
     - [29.B JWT: concept and example values](#29b-jwt-concept-and-example-values)
     - [29.C Interview version (about 60 seconds)](#29c-interview-version-about-60-seconds)
@@ -12419,6 +12437,229 @@ Open items from the notes. Background is in [§14](#14-xip-specific-technical-qu
 - **OOP concepts:** [OOPS.md](Java-And-MyProfessional-Projects-Interviews/OOPS.md).
 - **MongoDB and Cassandra:** see [§5](#5-data--storage).
 - **Questions for the interviewer:** see [§11](#11-questions-to-ask-them).
+
+
+### 32.8 Project explanation, challenges and behavioural questions
+
+- **Project explanation:** functional layers and technology layers. Use [§26](#26-my-resume) (DCP), [§26.13 to §26.16](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) for tenants, ingestion and AWS.
+- **3 most complex technical challenges:** [§27 Java scenarios](#27-java-scenario-qa), [§3 real incident](#real-incident-the-non-idempotent-kafka-consumer).
+- **3 most complex people challenges:** [§7 mentoring stories](#7-mentoring--people-development) and [§17 conflicts](#17-conflict-scenarios-for-behavioral-questions).
+- **3 most complex process challenges:** [§6 leadership](#6-engineering-leadership--agile-execution) and [§26.3 incidents](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices).
+- **Behavioural questions:** the full index is in [§19](#19-behavioral-qa-index). Practice file: [behavioral-mock.md](Java-And-MyProfessional-Projects-Interviews/behavioral-mock.md).
+
+### 32.9 Java: OOPS concepts
+
+- **Class:** a blueprint for creating objects. **Object:** an instance of a class.
+- **Encapsulation:** protects data from direct access.
+- **Abstraction:** hides unnecessary details.
+- **Polymorphism:** the same method behaves differently for different types.
+- **Inheritance:** reuses code from existing classes.
+
+**Types of associations**
+
+- **Aggregation (weak, "has-a"):** one class holds a reference to another, but both can exist independently. Example: a Company has Employees, and employees exist even if the company doesn't.
+- **Composition (strong, "owns"):** the parent owns the child, and the child can't exist without it. Example: a House is composed of Rooms. If the house is destroyed, its rooms go too.
+
+Full OOP notes: [OOPS.md](Java-And-MyProfessional-Projects-Interviews/OOPS.md) and [§22](#22-oops-object-oriented-design-reference).
+
+### 32.10 Java: SOLID principles
+
+| Principle | Rule | Practical meaning |
+|---|---|---|
+| **S**ingle Responsibility | A class has one reason to change | Keep each class focused on one task |
+| **O**pen/Closed | Open for extension, closed for modification | Add features with new code, without breaking old code |
+| **L**iskov Substitution | Subclasses can replace their base class | Inheritance must not break correctness |
+| **I**nterface Segregation | Clients don't depend on methods they don't use | Split fat interfaces into small ones |
+| **D**ependency Inversion | Depend on abstractions, not concrete classes | Decouple high-level code from low-level details |
+
+Detail and worked examples: [§22.1](#221-solid-principles).
+
+### 32.11 Java: exceptions, multithreading and concurrency
+
+- **Exceptions:** checked (must be handled or declared, such as `IOException`) vs unchecked (runtime, such as `NullPointerException`).
+- **Multithreading:** all synchronization techniques (`synchronized`, locks, atomic classes, volatile, latches, barriers).
+- **Concurrent API:** `ExecutorService`, `CompletableFuture`, `ConcurrentHashMap`, `BlockingQueue` (for producer/consumer problems).
+- Details: [§23 Advanced Java](#23-advanced-java), [§27.2 and §27.3](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access).
+
+### 32.12 Java: collections
+
+**Core interfaces and when to use each**
+
+| Need | Use |
+|---|---|
+| Random access and frequent end inserts | `ArrayList` |
+| Frequent front or middle inserts and removes | `LinkedList` |
+| Fast duplicate check and uniqueness | `HashSet` |
+| Sorted and unique values | `TreeSet` |
+| Insertion order and fast lookup | `LinkedHashSet` |
+| Fast key to value lookup, any order | `HashMap` |
+| Sorted key to value lookup | `TreeMap` |
+| LRU cache (insertion order and fast lookup) | `LinkedHashMap` |
+| Process by priority | `PriorityQueue` |
+| Both ends matter (deque) | `ArrayDeque` |
+| Undo and redo stack | `LinkedList` or `Deque` |
+| Thread-safe map | `ConcurrentHashMap` |
+
+**Operation costs (from the answer sheet)**
+
+- **ArrayList:** `get(i)` is O(1). `add` at the end is O(1). Inserts, removes and searches in the middle or at the front are O(n), because elements shift.
+- **LinkedList:** `add` and `remove` at the front or end are O(1). Access by index is O(n). Adding several items at the same position is cheap, because the iterator stays in place. Adding at random positions is O(n) each time, because the iterator must be repositioned.
+- **HashSet and HashMap:** `contains` and `remove` by value are O(1) on average. They have no order.
+- **TreeSet and TreeMap:** operations are O(log n), and results are sorted.
+- 
+
+**Characteristics**
+
+| Collection | Ordered | Unique | Sorted | Duplicates | Random access |
+|---|---|---|---|---|---|
+| ArrayList | Yes | No | No | Yes | Yes |
+| LinkedList | Yes | No | No | Yes | No |
+| HashSet | No | Yes | No | No | No |
+| TreeSet | No (sorted) | Yes | Yes | No | No |
+| HashMap | No | Keys unique | No | Values only | No |
+| TreeMap | No (sorted) | Keys unique | Yes | Values only | No |
+| PriorityQueue | No | No | By priority | Yes | No |
+
+**Real-world matches:** product list, ArrayList; email exists check, HashSet; leaderboard, TreeSet; urgent task queue, LinkedList; LRU cache, LinkedHashMap; user ID to profile, HashMap; process by priority, PriorityQueue; salary range search, TreeMap.
+
+**Comparable and Comparator**
+
+- **Comparable** defines the natural order inside the class, through `compareTo()`. A class can have only one natural order.
+- **Comparator** defines custom sorting outside the class, so you can have several orders.
+
+```java
+class Movie implements Comparable<Movie> {
+    String name; double rating; int year;
+    Movie(String name, double rating, int year) {
+        this.name = name; this.rating = rating; this.year = year;
+    }
+    public int compareTo(Movie other) {
+        return this.year - other.year;          // natural order: by year
+    }
+}
+
+// Custom orders, outside the class
+Comparator<Movie> byRating = (a, b) -> Double.compare(b.rating, a.rating); // highest first
+Comparator<Movie> byName   = (a, b) -> a.name.compareTo(b.name);
+
+Collections.sort(movies);                       // uses compareTo (year)
+Collections.sort(movies, byRating);             // uses the comparator
+```
+
+**hashCode() and equals()**
+
+- If two objects are equal by `equals()`, they must return the same `hashCode()`.
+- Override both together, using the same fields, or HashSet and HashMap will misbehave.
+- This is the same bug as the `Trade` example in [Karat](#24-citi-karat-screening-round).
+
+### 32.13 Java: String, StringBuilder and StringBuffer
+
+- **String:** use when the value stays constant. It is immutable.
+- **StringBuilder:** use when the value changes a lot and is used by one thread only. It is fast and not synchronized.
+- **StringBuffer:** use when the value changes and several threads use it. It is synchronized, so it's thread-safe.
+- Use StringBuilder when you don't need thread safety, since it's faster than StringBuffer.
+
+### 32.14 Java: other core topics on the list
+
+- **Concurrent API:** see 32.11.
+- **Java features across versions:** generics, lambdas and streams, modules, `var`, HttpClient, records, LTS releases, virtual threads.
+- **GC algorithms:** see [§23 GC](#gc---garbage-collection).
+- **Interface vs abstract class:** a design decision (see [§22](#22-oops-object-oriented-design-reference)).
+- **String comparison techniques** and **pass by value vs reference:** pass by value is the rule in Java, and object references are copied.
+- **Core concepts to revise:** hashCode and equals, comparator and comparable, garbage collection, collections framework.
+
+### 32.15 DSA: pattern printing
+
+Revise the key patterns and their loop conditions: hollow shapes, triangles, symmetric shapes, the K pattern, butterfly, hourglass, and diamond. Practice each one with outer loop for rows and inner loops for spaces and stars.
+
+### 32.16 Always-unknown topics
+
+Source: [always-unknown-topics.md](Java-And-MyProfessional-Projects-Interviews/always-unknown-topics.md)
+
+- Sharding and replicas.
+- Cache writing strategies, and cache eviction strategies.
+- TTL strategies, TTL vs cache eviction, and cache capacity boundary logic.
+- Concurrency vs multithreading.
+- Hashtable vs HashMap.
+- ReentrantReadWriteLock.
+- Hashing concept.
+
+### 32.17 Microservices
+
+Source: [MicroServices-Questions.md](Java-And-MyProfessional-Projects-Interviews/MicroServices-Questions.md), and [§16](#16-microservices-when-pitfalls-culture-patterns).
+
+- Distributed transaction problem, saga, orchestrator, choreography, compensating transactions.
+- Events used only in choreography? Answer: no. Orchestration can also use events, asynchronously.
+- Event sourcing, idempotency, and microservice design patterns with their DCP applicability.
+
+### 32.18 Kafka
+
+Source: [Kafka-Questions.md](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md). Most answers are in §32.3 above.
+
+- **Architecture and components:** brokers, topics, partitions, producers, consumers, consumer groups, cardinality.
+- **Use in DCP:** [§32.3](#32-final-revision-notes-23-sep-2026), and [§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp).
+- **Producer and consumer responsibilities**, partition key in DCP, offsets, order preservation.
+- **Idempotent producer and consumer.**
+- **Replication:** leader, follower, ISR. What happens when a broker fails?
+- **Consumer lag, backpressure, and DCP's handling of traffic spikes.**
+- **Consumer rebalance, retries, dead-letter topic.**
+- **Retention and log compaction.**
+- **Transactional outbox, choreography, saga, CQRS and event sourcing support.**
+- **Kafka Connect and Kafka Streams.**
+- **Security, monitoring, disaster recovery design.**
+- **Kafka or RabbitMQ:** how to choose.
+- **Common Kafka failure scenarios in DCP,** and ordering and durability.
+
+### 32.19 Design patterns and system design
+
+- **Design patterns:** [design_patterns.md](design_patterns.md).
+- **System design:** rate limiter, URL shortener, in-memory cache, consistent hashing. See [§31](#31-system-design-notes) and [MAANG system design](MAANG/MAANG-SYSTEM-DESIGN-PROBLEMS-LIST.md).
+
+### 32.20 Spring
+
+Source: [Spring-framework.md](Java-And-MyProfessional-Projects-Interviews/Spring-framework.md), and [§21](#21-spring-framework-reference) and [§32.4](#324-spring-framework-and-spring-boot).
+
+- **Key modules.**
+- **Application types:** web apps, batch jobs, schedulers, REST APIs, microservices.
+- **Spring bean lifecycle.**
+- **@Component vs @Service vs @Repository vs @Controller:** all four register beans. Each name tells the reader the layer. @Repository adds translation of database exceptions.
+- **@Autowired:** the container finds a matching bean by type and injects it, through a constructor, setter or field.
+
+### 32.21 Agentic AI
+
+- **My projects:** [§26.10 PlantGuard](#2610-plantguard-iit-hyderabad-capstone-multi-agent-predictive-maintenance-copilot) and [§25.7](#257-ai-inside-the-product-agentic-orchestration).
+- **Key terms:** agent, tool, orchestration, memory, context, evaluation. See [§10](#10-genai-wildcard) and [MCP.md](MCP.md).
+
+**What the role needs (from the notes)**
+
+- **Strategic:** AI platform and ecosystem strategy; governance built into architectures; build vs buy for models and tools; AI investment and value measurement; future-ready architecture; information architecture and data readiness; AI Ops strategy.
+- **Leadership:** technical leadership of senior experts; architecture governance and ADRs; operating model and AI-DLC ownership; executive partnership with product, security and legal; standardization without blocking innovation; a culture of engineering excellence.
+- **Technical:** distributed systems and AI architecture; multi-model and multi-agent orchestration; context, memory and reasoning; model selection; AI quality, benchmarking and observability; cost and latency optimization.
+
+### 32.22 Data engineering and cloud
+
+- **Data engineering:** Databricks control plane and data plane. See [§26.5](#265-migrated-500-etl-jobs-to-databricks-4050-projected-tco-reduction) and [§30](#30-spark-structured-streaming-simple-explanation).
+- **Cloud:** types of cloud (public, private, hybrid), how to modernize 200+ legacy apps to cloud, CI/CD. See [clouds.md](Java-And-MyProfessional-Projects-Interviews/clouds.md), [§18](#18-aws-likely-questions-and-dcp-mapped-concepts), and [§26.3](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices).
+
+### 32.23 Old interview questions still unanswered
+
+Work through the old unanswered list, and move each answer into the relevant section above when you finish it.
+
+### 32.24 Hands-on programs to build
+
+- Spring Boot REST APIs with Kafka, PL/SQL and MongoDB.
+- Multithreading.
+- Collection iteration.
+- Comparator and Comparable.
+- Hashing: why it's O(1) on average and O(n) in the worst case.
+
+### 32.25 Saved links
+
+These are the saved links from the notes, with tracking parameters removed. Use them for practice; they aren't sources in this guide.
+
+- Interview and posts: linkedin.com/posts/sumonigupta (raw data and refinement); linkedin.com/in/jaspreet-khera (recent activity); linkedin.com/posts/jaspreet-khera (Java concurrency interview questions); linkedin.com/posts/rdey91 (AI and LLM); linkedin.com/posts/bhavya-bojanapalli (RAG explained in 2 minutes); linkedin.com/posts/chauhansakshi (team from lowest to highest AI); linkedin.com/posts/bathulajavali (Spring Boot); linkedin.com/posts/arslanahmad (system design interviews); linkedin.com/posts/rathanuday (serious AI system).
+- Short links: lnkd.in/p/dnPTeBBb, lnkd.in/p/dxB3B7bF, lnkd.in/p/dmsWzgYb and lnkd.in/p/dsvtX2nb (SQL), lnkd.in/p/dQ2ZbxTf (vector databases), lnkd.in/p/dnWEWY5g (loop engineering), lnkd.in/p/dsZQHweW (DSA revision), lnkd.in/p/d8tEm8yH (DSA), lnkd.in/p/dj-ZNvrr (OOPS), lnkd.in/p/drYQYnZF (Docker cheat sheet), lnkd.in/p/ddMBjPUj (Kubernetes cheat sheet and HTTPS), lnkd.in/p/dUM25sVC (LLM vs AI agent), lnkd.in/p/dgtrHs7V, lnkd.in/p/dHKrJw9r and lnkd.in/p/dErSKGEc (AWS cheat sheets; the last also covers Kafka), lnkd.in/p/dBYisJbp (system design ladder), lnkd.in/p/dFANVEQC, lnkd.in/p/eTH6HaYQ and lnkd.in/p/gRNSjBNP (17 case studies), lnkd.in/p/dK_biPKz (LLM interview PDF), linkedin.com/posts/manasdasgupta (MCP), lnkd.in/p/dUBgXZg7 (deployment patterns), lnkd.in/p/dgxDy_yr and lnkd.in/p/deU9F3Xg (DSA), lnkd.in/p/dYvNpQsv (16 RAG questions).
+- Hashing video (from 32.24): youtu.be/KEs5UyBJ39g?t=3264
 
 ---
 
