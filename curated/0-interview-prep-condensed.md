@@ -632,6 +632,7 @@ One line per trick: what it stands for, which topics it applies to, and where th
 | **PACELC: "what if things work, and what if things break?"** | Extends CAP. Partition: choose availability or consistency. No partition: choose latency or consistency. | Consistency trade-offs beyond CAP | [§31 PACELC](0-interview-prep.md#31-system-design-notes) |
 | **Partition = Split** | A partition means two parts that can't talk to each other. Not communicating does not mean not working. | Failure modes and CAP reasoning | [§31](0-interview-prep.md#31-system-design-notes) |
 | **Knock-knock / Phone call / News broadcast** | Polling ('got data yet?'), WebSocket (two-way open call), SSE (server broadcasts one way). | Real-time communication choices | [§31](0-interview-prep.md#31-system-design-notes) |
+| **FDFC** | Availability: **F**ail (spare copies), **D**etect (health checks and alerts), **F**ailover (automatic and rehearsed), **C**hange (small, reversible releases). | Availability questions: 99%, 99.9%, 99.999% | [§26.16](0-interview-prep.md#2616-how-to-reach-99-999-and-99999-availability) |
 | **WIRE** | Caching strategies: **W**rite, **I**nvalidation, **R**ead, **E**viction. | Caching design and cache strategy questions | [§20](0-interview-prep.md#20-system-design-reference) |
 
 ---

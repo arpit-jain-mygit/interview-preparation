@@ -8478,6 +8478,19 @@ Availability fails in four ways. Each level of nines removes more of them:
 
 The last one causes many real outages, so it deserves as much attention as hardware.
 
+💡 **MEMORY TRICK: "FDFC"**
+
+Four ways a system goes down, and four matching fixes:
+
+```
+F = Fail      (a part breaks)            → spare copies of everything
+D = Detect    (nobody notices quickly)   → health checks and alerts
+F = Failover  (the fix is slow or manual) → automatic failover, rehearsed
+C = Change    (we break it ourselves)    → small, reversible releases
+```
+
+Say it as: "Fail, detect, fail over, change." Each extra nine is about making all four faster and safer.
+
 #### 3. What it takes, level by level
 
 **99% to 99.5%: basic redundancy**
