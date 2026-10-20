@@ -7976,6 +7976,46 @@ The core services (sourcing, extraction, rules, workflow, approval, disseminatio
 
 ---
 
+*See also: [Applying the Strategy pattern in DCP](#applying-the-strategy-pattern-in-dcp), the code-level view of this section.*
+
+#### Applying the Strategy pattern in DCP
+
+*This extends [§26.2](#262-architecting-the-platform-across-4-business-lines-and-50-asset-classes-leading-a-70-engineer-global-organization): the Strategy pattern is how "variation in data" becomes code that never needs an if-else chain.*
+
+**The idea in one line:** Strategy puts each variant (an extraction engine, a validation rule set, a publishing target) behind one interface. The caller picks the variant from configuration at runtime, so adding a new one means adding a class and a config entry, not editing shared code.
+
+**Where DCP uses it:**
+
+| Variation | Strategy interface | Implementations | Chosen by |
+|---|---|---|---|
+| Extraction engine | `ExtractionStrategy` | SparkAir, Cognize, Deepmine, Manual | The template's engine setting, with a fallback order |
+| Validation rules | `ValidationStrategy` | One per asset class or sector | The template's asset class |
+| Confidence routing | `RoutingStrategy` | Standard thresholds, plus per-sector overrides | The sector's configuration (>0.9 auto, 0.7–0.9 L2, <0.7 manual) |
+| Dissemination | `PublishStrategy` | S3, API, Kafka, email | The subscriber's delivery settings |
+
+**Sketch of the extraction case:**
+
+```java
+public interface ExtractionStrategy {
+    ExtractionResult extract(Document doc, Template template);
+}
+
+@Component
+class SparkAirStrategy implements ExtractionStrategy { /* AI extraction via SparkAir */ }
+
+@Component
+class CognizeStrategy implements ExtractionStrategy { /* fallback engine, same interface */ }
+
+// The caller looks the strategy up from configuration instead of if/else:
+ExtractionStrategy engine = registry.get(template.getEngine());
+```
+
+**Why it matters for 26.2:** a new asset class or sector becomes configuration plus, at most, one new strategy class. The six core services stay unchanged, which is the point of putting variation in data.
+
+**Interview answer (about 30 seconds):** "In DCP the extraction engine, the validation rules, the confidence routing and the publishing targets each sit behind a Strategy interface. The template or sector configuration selects the implementation at runtime. A new asset class adds configuration, and at most one class, so the core pipeline never changes."
+
+⚠ *This shows how the pattern applies to DCP's design. Check the class names against your actual code before using them.*
+
 ### 26.3 "Cut production incidents 60% and MTTR 6× by re-architecting legacy monoliths into event-driven microservices"
 
 **Already covered in depth:** the spoken story is [Story 2](#story-2-from-firefighting-to-calm-reliability), the process side is [Cutting production incidents 60%](#cutting-production-incidents-60-explained-simply), and the full migration plan is the [Monolith → microservices roadmap](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story). This subsection gives only the **architecture reasoning**: *why* does event-driven microservices reduce incidents and MTTR, when microservices also add new ways to fail?
