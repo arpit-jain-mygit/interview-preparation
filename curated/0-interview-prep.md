@@ -65,8 +65,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [26.12 The Threads That Run Through Your Whole Resume](#2612-the-threads-that-run-through-your-whole-resume)
     - [26.13 DCP as a multi-tenant SaaS: each sector is a tenant](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant)
     - [26.14 How a tenant reaches the database: UI to DB in DCP](#2614-how-a-tenant-reaches-the-database-ui-to-db-in-dcp)
-    - [26.15 DCP on AWS: EKS, EC2, Spot instances and secrets](#2615-dcp-on-aws-eks-ec2-spot-instances-and-secrets)
-    - [26.16 DCP's AWS footprint: what ran where](#2616-dcps-aws-footprint-what-ran-where)
+    - [26.15 DCP on AWS: the full footprint, native vs managed, spot, secrets and uploads](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads)
 27. [Java Scenario Q&A](#27-java-scenario-qa)
     - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
     - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
@@ -1399,79 +1398,9 @@ Given the Solutions Architect certification, expect this vocabulary to be a natu
 5. **Cost Optimization** — avoid unnecessary cost — this is the pillar underlying every cost story already in this doc (Databricks spot/job-cluster, small-inefficiency-at-scale, multi-cloud tradeoffs).
 6. **Sustainability** — minimize environmental impact of running workloads.
 
-### AWS services used in DCP
+### DCP on AWS
 
-DCP's footprint was mixed on purpose: AWS-managed services where they removed commodity work, and self-managed services where we needed control. The full footprint and the upload rule are in [§26.16](#2616-dcps-aws-footprint-what-ran-where). This table is the short version: For the definitions of native, managed and self-managed, see [AWS-native vs managed](#aws-native-vs-managed-vs-self-managed).
-
-| DCP component | AWS service | How it was run |
-|---|---|---|
-| Kubernetes control plane | **EKS** | AWS-managed control plane; we managed worker nodes |
-| Worker nodes | **EC2** | Node groups across availability zones; Spot for batch and extraction workers |
-| PostgreSQL | **EC2** | Self-managed, not RDS: we handled replication, failover and backups |
-| MongoDB | **EC2** | Self-managed, not DynamoDB |
-| Kafka | **Amazon MSK** | AWS-managed brokers |
-| Redis cache | **Amazon ElastiCache** | AWS-managed |
-| Documents, data lake, backups, archives | **S3** | Pre-signed URLs for files above 10 MB |
-| Upload ingress | **API Gateway** (up to 10 MB), **pre-signed S3 URLs** (above 10 MB) | Keeps large payloads away from the gateway |
-| Load balancing and DNS | **ALB, Route 53, ACM** | Public endpoints with TLS |
-| Network | **VPC** with private subnets and NAT | Outbound calls to AI vendors through NAT |
-| Identity | **Okta** (external to AWS) | OAuth 2.0 and OIDC, see [§29](#29-oauth-20-and-jwt-service-to-api-story) |
-| Encryption keys | **KMS** | Encryption at rest, and unsealing for Vault |
-| Secrets | **HashiCorp Vault** (on AWS) | Application secrets, with KMS protection |
-| Batch processing | **Spark on EKS**, and **Databricks** | Spark for in-cluster jobs; Databricks for lakehouse jobs |
-| Monitoring | **Prometheus, Jaeger, Splunk**; **CloudWatch** for AWS resource logs | Application observability is in the first three |
-| Audit of AWS activity | **CloudTrail** | Records who changed what in the account |
-| Not used | **Lambda, DynamoDB, RDS** | Lambda didn't fit the long-running extraction jobs; DynamoDB didn't fit the document model; PostgreSQL ran on EC2 |
-
-**How to use this table live:** lead with what DCP used and why. Managed services removed commodity work: EKS's control plane, MSK and ElastiCache. Self-managed services gave control where it mattered: PostgreSQL and MongoDB on EC2, with the replication, failover and backup work that comes with them. Then give the upload rule: files up to 10 MB through API Gateway, larger files through pre-signed S3 URLs.
-
-
-### AWS-native vs managed vs self-managed
-
-**Three categories, and what they mean:**
-
-- **AWS-native:** a service AWS built and that exists only in AWS, with its own API or behaviour. Examples: IAM, CloudTrail, CloudWatch, API Gateway, ALB, DynamoDB. Other clouds have equivalents, but with different APIs, so moving means redesigning the integration.
-- **Managed:** AWS operates software that also exists elsewhere, often open source with a standard protocol. AWS handles installation, patching, scaling, backups and failover. Examples: EKS (Kubernetes), MSK (Kafka), ElastiCache (Redis).
-- **Self-managed:** you run the software yourself, on EC2 or Kubernetes. Example: PostgreSQL on EC2.
-
-**Native is not the same as "only in AWS, with no alternatives."** The useful test is whether AWS built the interface you depend on. A service can have equivalents on other clouds and still be AWS-native, because its API and integrations are AWS's.
-
-**Portability depends on the interface you depend on, not the label.** A managed service is portable at the protocol level, but its AWS integrations are not:
-
-- **MSK** speaks the standard Kafka protocol, so clients move. IAM authentication, networking and monitoring hookups are AWS-specific.
-- **ElastiCache** speaks the Redis protocol. Parameter groups and failover behaviour are AWS-specific.
-- **EKS** runs standard Kubernetes manifests. IRSA, the ALB ingress controller and node groups are AWS-specific.
-
-**Three questions to classify a service:**
-
-1. Does the software also run outside AWS? If not, it's AWS-native.
-2. Does AWS operate it for you? If yes, it's managed.
-3. Does your code depend on AWS-only APIs or authentication? If yes, moving costs more, even when the software itself is portable.
-
-**How DCP's services sort:**
-
-| Service | Category | Portability |
-|---|---|---|
-| EKS | Managed (Kubernetes) | High for workloads; Medium for AWS integrations |
-| MSK | Managed (Kafka) | High by protocol; Medium for IAM and monitoring |
-| ElastiCache | Managed (Redis) | High by protocol; Medium for operations |
-| EC2 | AWS infrastructure (compute) | Medium; VMs exist everywhere, but images and sizes differ |
-| VPC | AWS-native networking | Medium; the concept is shared, the configuration isn't |
-| S3 | AWS-native storage | Medium; S3-compatible tools exist, but pre-signed URL signing is AWS's |
-| API Gateway | AWS-native | Low; authorizers, limits and configuration are AWS-only |
-| ALB, Route 53, ACM | AWS-native | Low to Medium |
-| IAM, KMS, CloudTrail, CloudWatch | AWS-native | Low; equivalents exist with different APIs |
-| Spot instances | AWS pricing model | Medium; Azure and GCP offer similar spot VMs |
-| PostgreSQL, MongoDB, Spark | Open source, self-managed on EC2 or EKS | High; they run anywhere |
-| Databricks | Third-party, running on AWS | High; it also runs on Azure and GCP |
-| Okta | Third-party identity service | High; external to AWS |
-| HashiCorp Vault | Third-party, self-hosted | High; KMS auto-unseal is AWS-specific |
-| Prometheus, Jaeger, Splunk | Third-party or open source | High; they run anywhere |
-
-**Interview version (about 30 seconds):**
-
-> "AWS-native means AWS built the interface and nothing else offers it, like IAM or API Gateway. Managed means AWS runs software that exists elsewhere too, like MSK or EKS, so AWS handles patching, scaling and failover. Portability depends on the interface you depend on. MSK keeps the Kafka protocol, so clients move, but its IAM and monitoring hookups don't. That's why I'd reduce AWS-specific integrations in the code, and keep the standard protocols."
-
+DCP's AWS services, the native vs managed classification, spot, secrets and the upload rule are in one place: [§26.15](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads).
 ---
 
 ## 19. Behavioral Q&A Index
@@ -7782,7 +7711,7 @@ The single most important design decision is **splitting the system into a fast 
 ##### B. Latency (under 2s): "never make the user wait for the slow part"
 
 1. **Async request-reply.** Upload returns **202 Accepted** with a `documentId` in milliseconds. The UI then shows status by polling a cheap status endpoint, or by a push notification (WebSocket / server-sent events) when extraction finishes. The 3-minute extraction never sits on the user's request.
-2. **Upload bytes straight to object storage.** Files above 10 MB go to S3 directly through a pre-signed URL, so they bypass API Gateway, which limits payloads to about 10 MB. Files up to 10 MB go through API Gateway. See [§26.16](#2616-dcps-aws-footprint-what-ran-where).
+2. **Upload bytes straight to object storage.** Files above 10 MB go to S3 directly through a pre-signed URL, so they bypass API Gateway, which limits payloads to about 10 MB. Files up to 10 MB go through API Gateway. See [§26.15](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads).
 3. **CQRS: separate read models shaped for the screens.** Writes go to the event log and PostgreSQL. Reads are served from models built for the query: MongoDB for the document view, Elasticsearch for full-text entity search, PostgreSQL **read replicas** for reporting. Reads never compete with writes for the same database.
 4. **Multi-layer caching, with a TTL chosen per kind of data:**
 
@@ -7878,7 +7807,7 @@ Accuracy in a distributed system has two halves. **Data integrity**: no document
 - Availability: the requirements doc says a 99.5% target, the deployment doc says 99.0% achieved, and the [architect guide](Java-And-MyProfessional-Projects-Interviews/ARCHITECT_INTERVIEW_GUIDE.md#key-metrics-mentioned) says 99.0% → 99.9%. The resume says 99%+. Know which one you'll defend.
 - RTO/RPO: the requirements doc says 1 hour / 15 minutes, while the cheat sheet says 4 hours / 1 hour. The DR table above reconciles them by failure type (database restore vs whole-cluster loss).
 - Autoscaling range: 5→20 pods in the deployment doc, 5→50 in §4. Pick one.
-- Kafka durability settings are standard design, not documented in the repo. The pre-signed upload rule is documented in [§26.16](#2616-dcps-aws-footprint-what-ran-where).
+- Kafka durability settings are standard design, not documented in the repo. The pre-signed upload rule is documented in [§26.15](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads).
 
 ### 26.2 "Architecting the platform across 4 business lines and 50 asset classes, leading a 70-engineer global organization"
 
@@ -8389,107 +8318,79 @@ For stricter control, the API can exchange the common token for a token limited 
 
 > "The UI is common to all sectors. The user signs in once, and the token lists the sectors they belong to. At ingestion, the user picks a sector, and the UI sends that choice with the upload. The server checks the choice against the token and the user's write permission, then maps the sector to its schema and writes the document there. The sector is stored with the document, so every later read and approval checks the document's own tenant. The file and the Kafka event carry the tenant too, so downstream processing uses that sector's rules and schema."
 
-### 26.15 DCP on AWS: EKS, EC2, Spot instances and secrets
+### 26.15 DCP on AWS: the full footprint, native vs managed, spot, secrets and uploads
 
-**The story in one line:** DCP's microservices ran on **EKS**. The worker nodes were **EC2** instances, and batch and extraction workers used **Spot** capacity with on-demand fallback to cut cost. Secrets were held in **HashiCorp Vault**, and encryption keys in **AWS KMS**.
+**This is the single reference for everything DCP ran on AWS.** Other sections link here instead of repeating it.
 
-⚠ *Confirm whether Vault ran on EC2 or inside the cluster, and how it was unsealed. Details are in the secrets section below.*
+**The story in one line:** DCP's microservices ran on **EKS**, with **EC2** worker nodes. We used managed services where they removed commodity work (EKS control plane, MSK, ElastiCache) and self-managed services where we needed control (PostgreSQL and MongoDB on EC2). Batch and extraction workers used **Spot** capacity with on-demand fallback. Secrets were held in **HashiCorp Vault**, with **KMS** protecting the keys. Files up to 10 MB went through **API Gateway**; larger files used **pre-signed S3 URLs**.
 
-#### The building blocks
+⚠ *Confirm whether Vault ran on EC2 or inside the cluster, and how it was unsealed.*
 
-| Service | What DCP used it for | Why it fits the NFRs |
+#### 1. The footprint
+
+| Component | AWS service or tool | How it was run |
 |---|---|---|
-| **EKS** (Elastic Kubernetes Service) | Ran the six microservices (sourcing, extraction, rules, workflow, approval, dissemination) as pods. AWS runs the control plane. | Self-healing pods, horizontal scaling, rolling and canary releases ([§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)). |
-| **EC2** | Worker nodes for EKS, in node groups across several availability zones. PostgreSQL and MongoDB also ran on EC2 ([§26.16](#2616-dcps-aws-footprint-what-ran-where)). | Control over instance types, sizes and placement. Multi-AZ spread protects availability. |
-| **Spot instances** | Capacity for interruption-tolerant workers: batch processing, re-runnable extraction and reprocessing. Always with on-demand capacity as a fallback. | Large cost savings on work that can be restarted safely. Same idea as the Databricks spot work in [Story 3](#story-3-the-bill-nobody-was-watching-cost-job-clusters--spot-instances). |
-| **KMS** (Key Management Service) | Encryption keys for data at rest, and for unsealing Vault. | Keys stay in AWS, with rotation and access policies. |
-| **HashiCorp Vault** | Application secrets: API keys, database passwords, and similar credentials. | Secrets are kept out of code and config files, and every read can be audited. |
+| Foundation network | **VPC** with private subnets and NAT | Load balancers in public subnets; services, databases and caches in private subnets |
+| Kubernetes control plane | **EKS** | AWS-managed control plane; we managed the worker nodes |
+| Worker nodes | **EC2** | Node groups across availability zones; Spot for batch and extraction workers |
+| Relational metadata | **PostgreSQL on EC2** | Self-managed, not RDS. We handled replication, failover and backups |
+| Documents and events | **MongoDB on EC2** | Self-managed, not DynamoDB |
+| Event streaming | **Amazon MSK** | AWS-managed Kafka brokers |
+| Cache | **Amazon ElastiCache** (Redis) | AWS-managed |
+| Documents, data lake, backups, archives | **S3** | Bronze, Silver and Gold layers; backups; archives |
+| Upload ingress | **API Gateway** (up to 10 MB), **pre-signed S3 URLs** (above 10 MB) | Keeps large payloads away from the gateway |
+| Load balancing and DNS | **ALB, Route 53, ACM** | Public endpoints with TLS |
+| Identity | **Okta** (external to AWS) | OAuth 2.0 and OIDC, see [§29](#29-oauth-20-and-jwt-service-to-api-story) |
+| Encryption keys | **KMS** | Encryption at rest, and unsealing for Vault |
+| Secrets | **HashiCorp Vault** | Application secrets, protected by KMS |
+| Batch processing | **Spark on EKS**, and **Databricks** | Spark for in-cluster jobs; Databricks for lakehouse jobs |
+| Application monitoring | **Prometheus, Jaeger, Splunk** | Metrics, traces and logs |
+| Infrastructure logs and metrics | **CloudWatch** | Logs and metrics for AWS resources |
+| Audit of AWS activity | **CloudTrail** | Records who changed what in the account |
+| Not used | **Lambda, DynamoDB, RDS** | Lambda didn't fit the long-running extraction jobs; DynamoDB didn't fit the document model; PostgreSQL ran on EC2 |
 
-#### How spot fits Kubernetes
+#### 2. Native, managed and self-managed
 
-Spot capacity can be reclaimed at short notice. AWS gives a two-minute interruption warning. The design must handle that without losing work:
+- **AWS-native:** a service AWS built and that exists only in AWS, with its own API or behaviour. Examples: IAM, CloudTrail, CloudWatch, API Gateway, ALB, DynamoDB. Moving means redesigning the integration.
+- **Managed:** AWS operates software that also exists elsewhere, often open source with a standard protocol. AWS handles installation, patching, scaling, backups and failover. Examples: EKS, MSK, ElastiCache.
+- **Self-managed:** you run the software yourself, on EC2 or Kubernetes. Examples: PostgreSQL and MongoDB on EC2.
 
-- **Which pods may run on spot:** stateless, re-runnable workers, such as extraction and batch jobs. Never the database, the Kafka-facing services that must not lose position, or the SLA-critical approval path.
+**Three questions to classify a service:**
+
+1. Does the software also run outside AWS? If not, it's AWS-native.
+2. Does AWS operate it for you? If yes, it's managed.
+3. Does your code depend on AWS-only APIs or authentication? If yes, moving costs more, even when the software is portable.
+
+**Portability depends on the interface you depend on.** MSK speaks the standard Kafka protocol, so clients move, but its IAM and monitoring hookups don't. ElastiCache speaks the Redis protocol, but its parameter groups and failover behaviour are AWS-specific. EKS runs standard Kubernetes manifests, but IRSA, the ALB ingress controller and node groups are AWS-specific.
+
+**Why we chose what we chose:** managed where the service was commodity and the risk was low (EKS control plane, MSK, ElastiCache). Self-managed for PostgreSQL and MongoDB, where the regulated environment needed control over patch timing, the exact software stack for audit attestation, and audit logging detail that some managed services don't expose. The cost of that choice is that we owned replication, failover and backups for those two.
+
+#### 3. Spot instances on Kubernetes
+
+Spot capacity can be reclaimed at short notice. AWS gives a two-minute interruption warning. Designing for it:
+
+- **Which pods may run on spot:** stateless, re-runnable workers, such as extraction and batch jobs. Never the databases, the Kafka-facing services that must not lose position, or the SLA-critical approval path.
 - **Node groups:** spot node groups for worker pods, and an on-demand node group for everything critical.
 - **Graceful drain:** on the warning, the node stops taking new work, and its pods finish or hand back their messages.
 - **Pod disruption budgets:** keep a minimum number of replicas running during a reclaim.
 - **Idempotent work:** a half-finished extraction can run again, so every consumer must be idempotent ([§3](#3-distributed-systems--large-scale-compute-design)).
 - **Diversified instance types** across spot pools, so one reclaim wave doesn't remove all capacity at once.
 
-#### How secrets were handled
+The same spot idea, applied to Databricks, is in [Story 3](#story-3-the-bill-nobody-was-watching-cost-job-clusters--spot-instances).
+
+#### 4. Secrets
 
 - **Vault holds the secrets** that services need, such as API keys and database passwords.
 - **Services authenticate to Vault with their Kubernetes identity**, not with a static token stored in the image or in a config file. ⚠ Confirm this is how DCP was set up.
 - **KMS protects the data at rest**, and can unseal Vault automatically, so Vault's master key isn't stored in plain text.
 - **Every secret read is audited**, and where possible services used short-lived or dynamically generated credentials.
 
-#### 60-second answer
-
-> "DCP ran on AWS. The six microservices ran as pods on EKS, on EC2 worker nodes spread across availability zones. Batch and extraction workers used Spot instances with on-demand fallback, while the stateful and SLA-critical parts stayed on on-demand capacity. Secrets were held in HashiCorp Vault, with KMS protecting the encryption keys and unsealing Vault. Services authenticated to Vault with their Kubernetes identity, so no static credentials sat in the images."
-
-#### Likely follow-ups
-
-- **"What happens when a spot node is reclaimed mid-extraction?"** The two-minute warning triggers a drain. The pod finishes or stops cleanly. The message is processed again on another node, safely, because the consumer is idempotent.
-- **"Why EKS and not self-managed Kubernetes?"** AWS runs the control plane, so the team patches and scales worker nodes, not the masters.
-- **"Why Vault and KMS, not just KMS?"** KMS encrypts and protects keys. Vault manages the secrets themselves: who may read which secret, rotation, and an audit trail of each read.
-- **"Why not Lambda?"** Extraction jobs run for minutes, with heavy memory and steady load. Long-running pods are cheaper and easier to control than Lambda's time limits and cold starts.
-
-#### ⚠ Confirm before using
-
-- Whether Vault ran on EC2 or inside the cluster, and how it was unsealed.
-- How services authenticated to Vault.
-- The instance types, node-group layout and spot share.
-- Whether the production cluster was EKS, or whether the DCP docs' AKS (Azure) design applied.
-
-### 26.16 DCP's AWS footprint: what ran where
-
-**The story in one line:** DCP ran on AWS with a small set of foundation services, and each piece of the platform was matched to the service that fit it. Some pieces were managed by AWS, and some ran on EC2 and Kubernetes, where we controlled them directly.
-
-#### 1. The minimum AWS foundation
-
-| Service | What it did in DCP |
-|---|---|
-| **VPC** | Public and private subnets across several availability zones. Load balancers in public subnets; everything else in private subnets. NAT gateway for outbound calls to AI vendors. Security groups limit traffic between services. |
-| **EKS** | Ran the six microservices as pods. AWS manages the control plane. |
-| **EC2** | Worker nodes for EKS. Also ran PostgreSQL and MongoDB, self-managed. |
-| **S3** | Document storage, data lake (Bronze, Silver, Gold), backups, archives. |
-| **IAM** | Roles and policies for people and services. |
-| **KMS** | Encryption keys for data at rest. |
-| **CloudWatch** | Baseline logs and metrics for AWS resources. The main application monitoring is in the next section. |
-| **ALB** | Load balancer for public traffic, created by the EKS ingress controller. |
-| **Route 53** | DNS for the platform's domain names. |
-| **ACM** | TLS certificates for public endpoints. |
-
-PostgreSQL was **not** RDS. It ran on EC2 instances that we operated ourselves. That gave us control over versions and tuning, and it moved the high-availability work to us: replication, failover and backups.
-
-#### 2. Data and platform services
-
-| Component | Technology | Where it ran |
-|---|---|---|
-| Relational metadata and configuration | PostgreSQL | EC2 (self-managed) |
-| Documents, events and flexible records | MongoDB | EC2 (self-managed) |
-| Event streaming | Kafka | **Amazon MSK** |
-| Cache: sessions, templates, entity mappings | Redis | **Amazon ElastiCache** |
-| Container workloads | Microservices | EKS |
-| Batch processing | Spark on Kubernetes, and Databricks | EKS (Spark), Databricks (lakehouse jobs) |
-| Document storage | Files, data lake | S3 |
-
-#### 3. Identity, security and operations
-
-| Concern | Tool | Notes |
-|---|---|---|
-| Identity and login | **Okta** | Issues the OAuth 2.0 and OIDC tokens, as in [§29](#29-oauth-20-and-jwt-service-to-api-story). |
-| Encryption keys | **KMS** | Encrypts data at rest, including the keys used for PostgreSQL and MongoDB volumes. |
-| Secrets | **HashiCorp Vault** | Holds application secrets such as API keys and database passwords. Vault itself uses KMS for its encryption. |
-| Application monitoring | **Prometheus, Jaeger, Splunk** | Prometheus for metrics, Jaeger for distributed traces, Splunk for logs and search. |
-| Audit of AWS activity | **CloudTrail** | Records who changed what in the AWS account. |
-
-#### 4. How a document gets in: the upload path
+#### 5. The upload path
 
 The upload path depends on file size, because API Gateway limits request payloads to about 10 MB:
 
-- **Up to 10 MB:** the client sends the file through **AWS API Gateway**. The gateway checks the token and applies rate limits, then passes the request to the sourcing service.
-- **Above 10 MB:** the sourcing service issues a **pre-signed S3 URL**. The client uploads the file straight to S3, bypassing API Gateway. The client then sends a small call to confirm the upload, and the service publishes the Kafka event.
+- **Up to 10 MB:** the client sends the file through **API Gateway**. The gateway checks the token and applies rate limits, then passes the request to the sourcing service.
+- **Above 10 MB:** the sourcing service issues a **pre-signed S3 URL**. The client uploads straight to S3, bypassing API Gateway. The client then confirms the upload, and the service publishes the Kafka event.
 
 ```
 ≤ 10 MB:  Client ──> API Gateway (token, rate limit) ──> Sourcing service ──> S3 + Kafka
@@ -8498,32 +8399,31 @@ The upload path depends on file size, because API Gateway limits request payload
           Client ──> Sourcing service: "upload done" ──> Kafka event
 ```
 
-⚠ Use a threshold a little below 10 MB. Binary encoding can add size, so a file exactly at the limit may be rejected. Also check the current payload limit in the AWS documentation for your API type.
+⚠ Use a threshold a little below 10 MB, since binary encoding can add size. Check the current payload limit in the AWS documentation for your API type.
 
-#### 5. Why these choices
+#### 6. The 60-second answer
 
-- **Managed where it saves effort, self-managed where control matters.** MSK, ElastiCache and EKS removed operational work from the team. PostgreSQL and MongoDB stayed on EC2 for control over versions, tuning and data placement.
-- **Secrets and keys are separate.** KMS encrypts the data, and Vault holds the secrets that services read. Each has its own access policy.
-- **Two monitoring views.** Prometheus and Jaeger show application behaviour. CloudTrail shows AWS account activity. Splunk brings the logs together for search.
+> "DCP ran on AWS. The six microservices ran as pods on EKS, on EC2 worker nodes across availability zones, inside a VPC with private subnets. We used managed services where they removed commodity work: EKS's control plane, MSK for Kafka, and ElastiCache for Redis. PostgreSQL and MongoDB ran on EC2, which we managed ourselves for control over patching and audit. Documents and the data lake lived in S3, and batch ran as Spark on Kubernetes and in Databricks. Batch and extraction workers used Spot with on-demand fallback. Secrets were in HashiCorp Vault, with KMS protecting the keys. Files up to 10 MB went through API Gateway, and larger files used pre-signed S3 URLs, so the gateway never handled a large payload."
 
-#### 60-second answer
+#### 7. Likely follow-ups
 
-> "DCP ran on AWS with a small foundation: a VPC with private subnets, EKS for the six microservices on EC2 worker nodes, S3 for documents and the data lake, KMS for encryption, and ALB, Route 53 and ACM for public traffic. PostgreSQL and MongoDB ran on EC2 that we managed ourselves. Kafka was MSK, Redis was ElastiCache, and identity was Okta. Batch ran as Spark on Kubernetes and in Databricks. Secrets lived in HashiCorp Vault, backed by KMS. Monitoring was Prometheus, Jaeger and Splunk, and CloudTrail recorded AWS activity. For uploads, files up to 10 MB went through API Gateway, and larger files used a pre-signed S3 URL, so the gateway never handled a large payload."
-
-#### Likely follow-ups
-
-- **"Why PostgreSQL on EC2 and not RDS?"** Control over versions, tuning and placement. The cost is that we own failover, replication and backups, so those were automated and tested.
-- **"Why MSK instead of Kafka on EKS?"** AWS handles broker patching, storage and failover. The team spends its effort on the application.
+- **"What happens when a spot node is reclaimed mid-extraction?"** The two-minute warning triggers a drain. The message is processed again on another node, safely, because the consumer is idempotent.
+- **"Why EKS and not self-managed Kubernetes?"** AWS runs the control plane, so the team patches and scales worker nodes, not the masters.
+- **"Why PostgreSQL on EC2 and not RDS?"** Control over versions, tuning and patch timing. We owned failover, replication and backups, and automated and tested them.
+- **"Why MSK instead of Kafka on EKS?"** AWS handles broker patching, storage and failover, so the team's effort goes into the application.
+- **"Why Vault and KMS, not just KMS?"** KMS encrypts and protects keys. Vault manages the secrets themselves: who may read which secret, rotation, and an audit trail of each read.
 - **"Why pre-signed URLs?"** API Gateway has a payload limit, and large files would tie up gateway capacity. S3 handles big uploads directly.
-- **"Where does the Spring Cloud Gateway fit?"** It runs inside the cluster for internal routing, tenant checks and rate limits, while API Gateway handles public traffic for smaller uploads.
+- **"Why not Lambda?"** Extraction jobs run for minutes, with heavy memory and steady load. Long-running pods are cheaper and easier to control than Lambda's time limits and cold starts.
+- **"What does the Spring Cloud Gateway do, if API Gateway exists?"** It runs inside the cluster for internal routing, tenant checks and rate limits. API Gateway handles public traffic for smaller uploads.
 
-#### ⚠ Confirm before using
+#### 8. ⚠ Confirm before using
 
-- **Secrets:** confirm whether Vault ran on EC2 or inside the cluster, and how it was unsealed.
-- **CloudWatch:** it's in the foundation list, but the monitoring stack is Prometheus, Jaeger and Splunk. Confirm how much CloudWatch was used beyond AWS resource logs.
-- **Repo docs:** the deployment doc describes AKS (Azure). This section follows your AWS input.
-- **PostgreSQL and MongoDB on EC2:** confirm the replication and failover setup, since it was self-managed.
-- **Upload threshold:** confirm the exact cut-off used in production.
+- Whether Vault ran on EC2 or inside the cluster, how it was unsealed, and how services authenticated to it.
+- The instance types, node-group layout and spot share.
+- Whether the production cluster was EKS, or whether the DCP docs' AKS (Azure) design applied.
+- The exact upload threshold used in production.
+- The PostgreSQL and MongoDB replication and failover setup, since both were self-managed.
+- How much CloudWatch was used beyond AWS resource logs.
 
 ---
 
