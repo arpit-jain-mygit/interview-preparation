@@ -576,6 +576,35 @@
 
 ---
 
+## Memory Tricks
+
+One line per trick: the letters or words, what they stand for, and where the full version is.
+
+| Trick | What it stands for | Full section |
+|---|---|---|
+| **BLAST RADIUS** | Why leave a monolith: **B**ottleneck (can't deploy fast), **L**ocked together (teams blocked), **A**ll-or-nothing (one failure takes all), **S**cales inefficiently, **T**ech frozen (can't upgrade). | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+| **20-50-100** | Migration pace: 20% of apps moved in year 1, 50% by year 2 (70% by end of year 2), 100% by year 3. | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+| **QUADRANT MATRIX** | Pick the first app to migrate: **high value, high pain** first. Then high value, low pain. | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+| **NEGATIVE → ZERO → POSITIVE** | The ROI curve: year 1 burns cash, year 2 breaks even, year 3 pays back. | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+| **DAMP-N-COSMOS** | Golden rules: **D**ecentralize data, **A**sync messaging, **M**onitor, **P**roven patterns, **N**etwork is unreliable. Then **C**ontracts, **O**wnership, **S**aga, **M**inimal services, **O**perations automated, **S**ecurity in depth. **Big 3:** own your data, use async, monitor everything. | [§16 golden rules](0-interview-prep.md#golden-rules-of-microservices) |
+| **ACES-DCBE** | Patterns. **ACES**: API gateway, Circuit breaker, Event sourcing, Service discovery. **DCBE**: Database per service, Caching, Bulkhead, Saga. | [§16 patterns](0-interview-prep.md#design-patterns) |
+| **UNDO STEPS** | Saga: run steps forward (1→2→3). If a step fails, undo the completed steps backward (3→2→1). | [§16 saga](0-interview-prep.md#compensating-transactions-saga) |
+| **BUSINESS FIRST** | Org structure becomes architecture: each capability with its own team becomes its own service. | [§16](0-interview-prep.md#16-microservices-when-pitfalls-culture-patterns) |
+| **WEEK BY WEEK** | Transformation plan: week 1 get buy-in (ROI case, budget, lead), week 2 plan (steering committee), and so on. | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+| **LMT** | Debugging: **L**ogs (what happened), **M**etrics (how it's performing), **T**races (where it's slow). | [§16 observability](0-interview-prep.md#observability) |
+| **NAACS** | Security layers: **N**etwork, **A**uthentication, **A**uthorization, **C**ryptography, **S**ecrets. | [§16 security](0-interview-prep.md#security-in-microservices) |
+| **PACED** | Spring's philosophy: **P**OJO (your code stays yours), **A**OP (cross-cutting concerns), **C**onvention over configuration, **E**cosystem (batteries included), **D**ependency injection / IoC. | [§21](0-interview-prep.md#spring-framework-philosophy-complete-overview) |
+| **S-P-C-G-Z-S-E** | GC evolution, oldest to newest: **S**erial, **P**arallel, **C**oncurrent, **G1**, **Z**GC, **S**henandoah, **E**psilon. | [§23 GC](0-interview-prep.md#gc---garbage-collection) |
+| **ACID** | **A**tomic (all or nothing), **C**onsistent (follows the rules), **I**solated (transactions don't disturb each other), **D**urable (survives a crash). | [§5](0-interview-prep.md#5-data--storage) |
+| **2PC: PREPARE → COMMIT** | Two-phase commit: first ask everyone "can you do it?" (prepare), then tell everyone to commit only if all said yes. | [§23 2PC](0-interview-prep.md#2-phase-commit-protocol) |
+| **CAP: "what if things break?"** | Choose two of consistency, availability and partition tolerance. In a partition, pick consistency (CP) or availability (AP). | [§31 CAP](0-interview-prep.md#31-system-design-notes) |
+| **PACELC: "what if things work, and what if things break?"** | Extends CAP: if a partition (P), choose availability or consistency (A/C). Else (E), choose latency or consistency (L/C). | [§31 PACELC](0-interview-prep.md#31-system-design-notes) |
+| **Partition = Split** | A partition means two parts that can't talk to each other. Not communicating does not mean not working. | [§31](0-interview-prep.md#31-system-design-notes) |
+| **Knock-knock / Phone call / News broadcast** | Polling ("got data yet?"), WebSocket (two-way open call), SSE (server broadcasts one way). | [§31](0-interview-prep.md#31-system-design-notes) |
+| **WIRE** | Caching strategies: **W**rite, **I**nvalidation, **R**ead, **E**viction. | [§20](0-interview-prep.md#20-system-design-reference) |
+
+---
+
 ## Final checklist before you walk in
 
 - Can you explain the DCP architecture in 60 seconds?
