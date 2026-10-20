@@ -92,6 +92,14 @@
     - [31.17 Long-Polling vs WebSockets vs Server-Sent Events](#3117-long-polling-vs-websockets-vs-server-sent-events)
     - [31.18 How SSE is stateless ?](#3118-how-sse-is-stateless-)
     - [31.19 Bloom Filters](#3119-bloom-filters)
+32. [Final Revision Notes (23 Sep 2026)](#32-final-revision-notes-23-sep-2026)
+    - [32.1 Resume: six key achievements](#321-resume-six-key-achievements)
+    - [32.2 Microservices: FAQs, legacy to monolith, design patterns](#322-microservices-faqs-legacy-to-monolith-design-patterns)
+    - [32.3 Kafka](#323-kafka)
+    - [32.4 Spring Framework and Spring Boot](#324-spring-framework-and-spring-boot)
+    - [32.5 JD-specific: XiNG platform](#325-jd-specific-xing-platform)
+    - [32.6 My project: Kafka production issue and scalability story](#326-my-project-kafka-production-issue-and-scalability-story)
+    - [32.7 Other topics on the list](#327-other-topics-on-the-list)
     - [29.A The story: the Report API asks the Billing API for prices](#29a-the-story-the-report-api-asks-the-billing-api-for-prices)
     - [29.B JWT: concept and example values](#29b-jwt-concept-and-example-values)
     - [29.C Interview version (about 60 seconds)](#29c-interview-version-about-60-seconds)
@@ -12105,6 +12113,312 @@ REAL EXAMPLES:
 ✓ Spam filtering
 ~~~~~~
 ```
+
+
+---
+
+## 32. Final Revision Notes (23 Sep 2026)
+
+**What this is:** the final revision notes, reorganized into sections for quick review. Google search links in the source file were removed, since they were search queries rather than sources. GitHub links were kept.
+
+⚠ **Two Kafka statements in the source notes were wrong, and are corrected here.** The delivery-mode definitions were swapped, and a consumer group was described as mapped to a topic rather than to partitions. The corrections are marked.
+
+### 32.1 Resume: six key achievements
+
+The source file has only this heading. Use [§26 My Resume](#26-my-resume) for the six achievements.
+
+### 32.2 Microservices: FAQs, legacy to monolith, design patterns
+
+Source: [MicroServices-Questions.md](Java-And-MyProfessional-Projects-Interviews/MicroServices-Questions.md)
+
+**Distributed transactions**
+
+- Two-phase commit (see Advanced Java, [§23](#23-advanced-java)).
+- Saga, in two styles:
+  - **Orchestration:** a coordinator sends commands to each service.
+  - **Choreography:** each service reacts to events published by the others.
+- **Compensating transactions:** undo steps that already completed when a later step fails.
+
+**Choosing a style**
+
+| Situation | Choose |
+|---|---|
+| Fast processing pipeline | Choreography, with idempotent consumers |
+| Complex human approval workflow | Orchestration, with compensating transactions |
+| Audit-sensitive state | Event sourcing |
+
+**Rules of thumb**
+
+- One human decision followed by simple reactions: choreography can work well.
+- A managed process that must remember where it is, handle timers, and decide the next valid action: orchestration is usually easier.
+
+**Open question:** how do you scale the orchestrator?
+
+### 32.3 Kafka
+
+Source: [Kafka-Questions.md](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md)
+
+**Consumer delivery modes** (corrected)
+
+| Mode | Order of work | What can go wrong |
+|---|---|---|
+| At-most-once | Commit the offset first, then process | A crash after the commit loses the message |
+| At-least-once | Process first, then commit the offset | A crash after processing but before the commit causes a duplicate |
+| Exactly-once | Processing and the offset commit happen in one transaction (with idempotency) | Covers Kafka only. External databases and APIs need their own idempotency |
+
+**Which mode, and must consumers be idempotent?**
+
+- At-most-once avoids duplicates but accepts message loss. That is rarely acceptable for financial documents.
+- At-least-once is the usual choice for DCP. Duplicates are possible, so the consumer must be idempotent.
+- Exactly-once still needs idempotent side effects for anything outside Kafka.
+
+So for any mode that can deliver a message twice, the consumer must be idempotent. In practice, DCP treats every consumer as idempotent.
+
+**Why DCP uses Kafka**
+
+- **Decoupling:** sourcing doesn't need extraction to be available at that moment.
+- **Buffering:** Kafka absorbs a large document spike.
+- **Parallel processing:** many extraction workers process different partitions.
+- **Replay:** events can be read again to rebuild a read model or reprocess data.
+- **Fan-out:** quality, audit and analytics consumers read the same event independently.
+- **Ordering:** events for one document stay in order.
+- **Durability:** events are replicated across brokers.
+
+Kafka doesn't make business logic simpler by itself. DCP still designs idempotency, retries, schemas, monitoring and failure handling.
+
+**Interview answer:** "For DCP, Kafka decouples high-volume sourcing from slower AI extraction and provides a durable buffer during spikes. I partition document lifecycle topics by documentId to preserve per-document ordering, and I scale extraction through competing consumers. I prefer at-least-once delivery with idempotent consumers, because losing a financial document is worse than safely detecting a duplicate. Critical producers use durable acknowledgements and idempotence, and the transactional outbox prevents a database update from committing without its event. Consumer lag and oldest-message age drive alerts and controlled autoscaling. Temporary failures get bounded retries with backoff, and permanent failures go to manual handling or a dead-letter topic. Schema compatibility, replication, security, replay and disaster recovery are business reliability concerns, not only Kafka settings."
+
+**Partitions and parallelism**
+
+- 15 consumers for a topic with 10 partitions: 5 consumers sit idle.
+- 5 consumers for 10 partitions: each consumer is assigned two partitions.
+
+⚠ **Correction:** a consumer group subscribes to topics, and its consumers are assigned partitions. The source note said a group is mapped to a topic, not a partition. The rule to remember: partitions are assigned to consumers within a group, and a partition is read by one consumer per group at a time.
+
+**Ordering**
+
+- Events with the same key go to the same partition, so they stay in order.
+- Kafka guarantees order only within a partition, not across partitions.
+- For DCP, ordering matters because each document moves through sourcing, extraction, validation, approval and dissemination in a valid sequence. The approach is a documentId partition key, state-transition checks, and idempotency.
+
+**Vocabulary**
+
+- **Topic:** the business event meaning and policy boundary.
+- **Partition:** a parallel, ordered lane inside a topic.
+- **Consumer group:** the business job that processes the topic.
+- **Offset:** a record's position in its lane.
+- **Consumer:** a worker that reads one or more lanes.
+
+**Relationships**
+
+| From | To | Relationship |
+|---|---|---|
+| Cluster | Broker | One cluster contains many brokers |
+| Cluster | Topic | One cluster hosts many logical topics |
+| Topic | Partition | One topic is divided into many partitions |
+| Partition | Replica | One partition has multiple replicas, per its replication factor |
+| Broker | Replica | One broker stores replicas from many topics |
+| Topic | Broker | A topic spans many brokers, and a broker stores replicas from many topics |
+| Partition | Event | One partition contains many ordered events |
+| Event | Partition | Each event belongs to exactly one partition |
+| Event | Replica | Each event is copied into every replica of its partition |
+
+**Worked example: offsets per consumer group**
+
+```text
+Topic: pizza-orders
+
+Partition 0:  Offset 0 → Order A,  Offset 1 → Order B,  Offset 2 → Order C
+Partition 1:  Offset 0 → Order D,  Offset 1 → Order E
+
+Kitchen group:  P0 next offset → 3,  P1 next offset → 2   (all orders processed)
+Billing group:  P0 next offset → 1,  P1 next offset → 1   (one order per partition processed)
+```
+
+Billing continues independently from its own offsets. An offset is a record's position in one partition. A committed offset records where one consumer group should continue reading that partition.
+
+**Producers and consumers**
+
+- The **producer** decides which topic receives the event, which key to use, how long to wait for an acknowledgement, whether to retry, and how records are batched and compressed.
+- A **consumer** should be idempotent, observable, safe to retry, careful about offset commits, and able to tell temporary failures from permanent ones.
+
+**Waiting for two events**
+
+Events such as PizzaPrepared and PaymentCompleted usually arrive at different times. The coordinator doesn't block a thread while it waits. It stores partial state by orderId. See [Kafka-Questions](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md#how-does-the-delivery-coordinator-wait-for-two-events).
+
+**When should a producer be idempotent, and why isn't that enough?** (answer added; the source note had only the question)
+
+An idempotent producer stops retries from writing the same record twice into one partition. It protects the producer-to-broker path only. It doesn't protect a database write, an external API call, or a side effect in the consumer. So consumers still need their own idempotency checks. The analogy: a stamped ticket stops a counter from issuing duplicates, but it doesn't stop the kitchen from cooking the order twice if it reads the ticket twice.
+
+**Trade-offs to state in an interview**
+
+- Kafka introduces eventual consistency.
+- Ordering is per partition, not global.
+- More partitions improve parallelism but add overhead.
+- At-least-once requires idempotency.
+- Exactly-once doesn't automatically include external databases and APIs.
+- Long retention and replication increase storage cost.
+- Kafka needs careful management of schemas, offsets, lag and rebalances.
+- Managed Kafka reduces operational burden, but not application design responsibility.
+
+**Quick revision table**
+
+| Interview question | Short answer |
+|---|---|
+| Why Kafka for DCP? | Decoupling, buffering, replay, fan-out, ordering, and parallel processing |
+| What controls parallelism? | Topic partitions and consumer group size |
+| What ordering does Kafka provide? | Ordering within one partition |
+| Best DCP key? | Usually documentId for lifecycle events |
+| Why at-least-once? | Avoid message loss; handle duplicates with idempotency |
+| Does exactly-once cover MongoDB or S3? | No. Use application idempotency, the outbox, or an inbox |
+| What is lag? | Work waiting between the latest and the consumed offsets |
+| Why use a dead-letter topic? | Isolate permanent failures without blocking healthy documents |
+| Why use the outbox? | Save business state and the intent to publish in one transaction |
+| Why a schema registry? | Keep producer and consumer contracts compatible |
+| Why replication factor 3? | Keep working through a broker failure, with multiple copies |
+| What's the main Kafka trade-off? | Scalability and replay, in exchange for operational and eventual-consistency complexity |
+
+**Replication and data-plane notes:** brokers are data-plane servers, and KRaft controllers manage the control plane. Start production with three brokers across failure zones, and scale from measured storage and throughput. Business services share the broker cluster through separate topics and consumer groups. Kafka retains events for operational replay, while the Audit Service writes searchable records to PostgreSQL and archives immutable compliance copies where required.
+
+Related: [Idempotency and Kafka's limits](Java-And-MyProfessional-Projects-Interviews/MicroServices-Questions.md#important-limitation-kafka-cannot-protect-database-updates), [partition and consumer counts](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md#relationship-between-partition-and-consumer-counts).
+
+### 32.4 Spring Framework and Spring Boot
+
+Source: [Spring-framework.md](Java-And-MyProfessional-Projects-Interviews/Spring-framework.md)
+
+**Dependency injection vs inversion of control**
+
+- **IoC** is the big picture: the framework, not your code, decides who creates and wires objects.
+- **DI** is the method: the framework hands each object the tools (dependencies) it needs.
+
+**Spring AOP and cross-cutting concerns.** AOP lets you put concerns such as logging, transactions, security and metrics in one place, instead of repeating them in every class. ⚠ The source note asked for a snippet; add one before the interview.
+
+**What `@SpringBootApplication` is**
+
+`@SpringBootApplication` = `@EnableAutoConfiguration` + `@Configuration` + `@ComponentScan`
+
+**How a Spring Boot app starts**
+
+```java
+@SpringBootApplication
+public class UserServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(UserServiceApplication.class, args);
+    }
+}
+```
+
+1. Java runs `main()`.
+2. `SpringApplication.run()` is called.
+3. Spring creates the ApplicationContext (the IoC container).
+4. It scans the classpath for `@Component`, `@Service` and `@Repository`.
+5. It auto-configures from the dependencies it finds.
+6. It creates and registers all beans.
+7. It starts an embedded Tomcat server (port 8080 by default).
+8. It logs "Started UserServiceApplication in X seconds".
+9. The service is ready for requests.
+
+**Traditional WAR vs Spring Boot JAR**
+
+- Traditional: write code, compile, package a WAR, install Tomcat separately, deploy the WAR, start Tomcat. The problem is the setup: separate server, many steps.
+- Spring Boot: write code, compile to a JAR, run `java -jar app.jar`. Tomcat is embedded in the JAR. The benefit is one command.
+
+**Key benefits of Spring Boot startup**
+
+| Feature | Benefit |
+|---|---|
+| `main()` method | Simple entry point, no complex config |
+| Embedded Tomcat | No separate server installation |
+| Auto-configuration | Spring detects and configures what you use |
+| JAR packaging | Deploy one file anywhere |
+| Quick startup | Usually starts in 2–5 seconds |
+| Easy scaling | Run multiple instances easily |
+
+**`@Component` or `@Bean`?**
+
+- Use `@Component` when the class is your own, you want automatic detection, no special configuration is needed, and you have the source code.
+- Use `@Bean` when the class comes from an external library (such as Jackson or Apache Commons), you need custom configuration logic, you want to create it conditionally, or you don't have the source code.
+
+**Why `@Bean` helps**
+
+| Aspect | Without `@Bean` | With `@Bean` |
+|---|---|---|
+| Instances | Multiple, one per use | Single instance, reused |
+| Configuration | Scattered | Centralized |
+| Memory | Wasteful | Efficient |
+| Updates | Change in many places | Change in one place |
+| Dependency | Can't inject into other beans | Can inject anywhere |
+| Consistency | May vary | Always the same |
+
+**Singleton or prototype?**
+
+| Need | Scope | Example | Reason |
+|---|---|---|---|
+| Shared resource | Singleton | Database, email, logger | Expensive to create many |
+| Instance-specific data | Prototype | Request context, shopping cart | Each needs its own data |
+| Stateless utility | Singleton | UserService, OrderService | No state to share |
+| Stateful data | Prototype | Cart, request, report | State is per instance |
+
+**Transaction propagation levels:** the source note lists the topic without content. See [Spring-framework.md](Java-And-MyProfessional-Projects-Interviews/Spring-framework.md), and the propagation discussion in [§23](#23-advanced-java).
+
+**CORS**
+
+| When | Frontend | Backend | Result |
+|---|---|---|---|
+| No CORS config | localhost:3000 | localhost:8080 | Blocked by the browser |
+| CORS enabled | localhost:3000 | localhost:8080 | Works |
+| Wrong origin | localhost:9000 | localhost:8080 (allows 3000) | Blocked |
+| Same domain | example.com | example.com | Works (no CORS needed) |
+
+**Spring Boot for distributed systems:** the source note has a heading only, "How Spring Boot helps Citi in a distributed system like an air traffic controller." Add the talking points before the interview.
+
+### 32.5 JD-specific: XiNG platform
+
+Open items from the notes. Background is in [§14](#14-xip-specific-technical-questions).
+
+- How to call quant rules written in C++ from microservices.
+- Python sandbox: does it apply here?
+- Keeping the platform safe from attackers.
+- The scope of AI in XiNG.
+- AWS Direct Connect and hybrid cloud.
+
+### 32.6 My project: Kafka production issue and scalability story
+
+- **Circuit breaker in extraction:** use retries for small transient failures, and open the circuit when failures continue.
+- Pattern background: [MicroServices-Questions, pattern applicability in DCP](Java-And-MyProfessional-Projects-Interviews/MicroServices-Questions.md#pattern-applicability-in-dcp).
+
+**Quick DCP decision guide**
+
+| DCP situation | Prefer |
+|---|---|
+| Upload should return before extraction finishes | Kafka asynchronous messaging |
+| SparkAir fails briefly | Timeout and retry with backoff |
+| SparkAir keeps failing | Circuit breaker and Cognize fallback |
+| Both AI providers fail | Manual extraction queue and user notification |
+| One malformed document repeatedly fails | Dead-letter queue |
+| The same Kafka event is delivered again | Idempotent consumer |
+| Save document metadata and reliably publish an event | Transactional outbox |
+| Simple automated sourcing-to-quality pipeline | Choreography |
+| L1/L2 review with timers, escalation and rework | Orchestration |
+| Publication fails after approval | Saga compensation and controlled retry |
+| Reviewer dashboard needs a fast combined view | CQRS read model |
+| Low-volume screen needs the freshest live status | API composition |
+| Regulators need the complete document history | Event sourcing |
+| Soniq becomes slow but extraction must continue | Bulkhead plus cache |
+| One partner sends a very large traffic spike | Rate limiting |
+
+**Summary answer:** "In microservices I avoid a distributed ACID transaction across service databases. I model the business transaction as a saga of local transactions. For a simple event pipeline I use choreography. For workflows with timeouts, branching or human approval I use orchestration. Each completed step has a compensating action, and every consumer is idempotent, because duplicate delivery is possible. I use event sourcing only where complete history, auditing or replay justify its complexity."
+
+### 32.7 Other topics on the list
+
+- **Distributed systems:** [NFRs](Java-And-MyProfessional-Projects-Interviews/NFR.md), and [my designs in this guide](#31-system-design-notes).
+- **Advanced Java, collections, production triage and mocks:** [java-mock.md](Java-And-MyProfessional-Projects-Interviews/java-mock.md), and [§23](#23-advanced-java).
+- **Data engineering:** see [§31](#31-system-design-notes) and the Spark section [§30](#30-spark-structured-streaming-simple-explanation).
+- **Private, public and hybrid cloud:** see [§18](#18-aws-likely-questions-and-dcp-mapped-concepts) and [§26.15](#2615-dcp-on-aws-the-full-footprint-native-vs-managed-spot-secrets-and-uploads).
+- **Always-unknown topics:** [always-unknown-topics.md](Java-And-MyProfessional-Projects-Interviews/always-unknown-topics.md).
+- **OOP concepts:** [OOPS.md](Java-And-MyProfessional-Projects-Interviews/OOPS.md).
+- **MongoDB and Cassandra:** see [§5](#5-data--storage).
+- **Questions for the interviewer:** see [§11](#11-questions-to-ask-them).
 
 ---
 
