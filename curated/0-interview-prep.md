@@ -66,6 +66,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [26.13 DCP as a multi-tenant SaaS: each sector is a tenant](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant)
     - [26.14 How a tenant reaches the database: UI to DB in DCP](#2614-how-a-tenant-reaches-the-database-ui-to-db-in-dcp)
     - [26.15 DCP on AWS: EKS, EC2, Spot instances and secrets](#2615-dcp-on-aws-eks-ec2-spot-instances-and-secrets)
+    - [26.16 DCP's AWS footprint: what ran where](#2616-dcps-aws-footprint-what-ran-where)
 27. [Java Scenario Q&A](#27-java-scenario-qa)
     - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
     - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
@@ -8397,6 +8398,90 @@ The improved design you would describe:
 - What the custom store held, how services read it, and how it was encrypted and rotated.
 - The instance types, node-group layout and spot share.
 - Whether the production cluster was EKS, or whether the DCP docs' AKS (Azure) design applied.
+
+### 26.16 DCP's AWS footprint: what ran where
+
+**The story in one line:** DCP ran on AWS with a small set of foundation services, and each piece of the platform was matched to the service that fit it. Some pieces were managed by AWS, and some ran on EC2 and Kubernetes, where we controlled them directly.
+
+#### 1. The minimum AWS foundation
+
+| Service | What it did in DCP |
+|---|---|
+| **VPC** | Public and private subnets across several availability zones. Load balancers in public subnets; everything else in private subnets. NAT gateway for outbound calls to AI vendors. Security groups limit traffic between services. |
+| **EKS** | Ran the six microservices as pods. AWS manages the control plane. |
+| **EC2** | Worker nodes for EKS. Also ran PostgreSQL and MongoDB, self-managed. |
+| **S3** | Document storage, data lake (Bronze, Silver, Gold), backups, archives. |
+| **IAM** | Roles and policies for people and services. |
+| **KMS** | Encryption keys for data at rest. |
+| **CloudWatch** | Baseline logs and metrics for AWS resources. The main application monitoring is in the next section. |
+| **ALB** | Load balancer for public traffic, created by the EKS ingress controller. |
+| **Route 53** | DNS for the platform's domain names. |
+| **ACM** | TLS certificates for public endpoints. |
+
+PostgreSQL was **not** RDS. It ran on EC2 instances that we operated ourselves. That gave us control over versions and tuning, and it moved the high-availability work to us: replication, failover and backups.
+
+#### 2. Data and platform services
+
+| Component | Technology | Where it ran |
+|---|---|---|
+| Relational metadata and configuration | PostgreSQL | EC2 (self-managed) |
+| Documents, events and flexible records | MongoDB | EC2 (self-managed) |
+| Event streaming | Kafka | **Amazon MSK** |
+| Cache: sessions, templates, entity mappings | Redis | **Amazon ElastiCache** |
+| Container workloads | Microservices | EKS |
+| Batch processing | Spark on Kubernetes, and Databricks | EKS (Spark), Databricks (lakehouse jobs) |
+| Document storage | Files, data lake | S3 |
+
+#### 3. Identity, security and operations
+
+| Concern | Tool | Notes |
+|---|---|---|
+| Identity and login | **Okta** | Issues the OAuth 2.0 and OIDC tokens, as in [§29](#29-oauth-20-and-jwt-service-to-api-story). |
+| Encryption keys | **KMS** | Encrypts data at rest, including the keys used for PostgreSQL and MongoDB volumes. |
+| Secrets | **HashiCorp Vault** | Holds application secrets such as API keys and database passwords. Vault itself uses KMS for its encryption. |
+| Application monitoring | **Prometheus, Jaeger, Splunk** | Prometheus for metrics, Jaeger for distributed traces, Splunk for logs and search. |
+| Audit of AWS activity | **CloudTrail** | Records who changed what in the AWS account. |
+
+#### 4. How a document gets in: the upload path
+
+The upload path depends on file size, because API Gateway limits request payloads to about 10 MB:
+
+- **Up to 10 MB:** the client sends the file through **AWS API Gateway**. The gateway checks the token and applies rate limits, then passes the request to the sourcing service.
+- **Above 10 MB:** the sourcing service issues a **pre-signed S3 URL**. The client uploads the file straight to S3, bypassing API Gateway. The client then sends a small call to confirm the upload, and the service publishes the Kafka event.
+
+```
+≤ 10 MB:  Client ──> API Gateway (token, rate limit) ──> Sourcing service ──> S3 + Kafka
+> 10 MB:  Client ──> Sourcing service: request pre-signed URL
+          Client ──> S3 (direct upload, pre-signed)
+          Client ──> Sourcing service: "upload done" ──> Kafka event
+```
+
+⚠ Use a threshold a little below 10 MB. Binary encoding can add size, so a file exactly at the limit may be rejected. Also check the current payload limit in the AWS documentation for your API type.
+
+#### 5. Why these choices
+
+- **Managed where it saves effort, self-managed where control matters.** MSK, ElastiCache and EKS removed operational work from the team. PostgreSQL and MongoDB stayed on EC2 for control over versions, tuning and data placement.
+- **Secrets and keys are separate.** KMS encrypts the data, and Vault holds the secrets that services read. Each has its own access policy.
+- **Two monitoring views.** Prometheus and Jaeger show application behaviour. CloudTrail shows AWS account activity. Splunk brings the logs together for search.
+
+#### 60-second answer
+
+> "DCP ran on AWS with a small foundation: a VPC with private subnets, EKS for the six microservices on EC2 worker nodes, S3 for documents and the data lake, KMS for encryption, and ALB, Route 53 and ACM for public traffic. PostgreSQL and MongoDB ran on EC2 that we managed ourselves. Kafka was MSK, Redis was ElastiCache, and identity was Okta. Batch ran as Spark on Kubernetes and in Databricks. Secrets lived in HashiCorp Vault, backed by KMS. Monitoring was Prometheus, Jaeger and Splunk, and CloudTrail recorded AWS activity. For uploads, files up to 10 MB went through API Gateway, and larger files used a pre-signed S3 URL, so the gateway never handled a large payload."
+
+#### Likely follow-ups
+
+- **"Why PostgreSQL on EC2 and not RDS?"** Control over versions, tuning and placement. The cost is that we own failover, replication and backups, so those were automated and tested.
+- **"Why MSK instead of Kafka on EKS?"** AWS handles broker patching, storage and failover. The team spends its effort on the application.
+- **"Why pre-signed URLs?"** API Gateway has a payload limit, and large files would tie up gateway capacity. S3 handles big uploads directly.
+- **"Where does the Spring Cloud Gateway fit?"** It runs inside the cluster for internal routing, tenant checks and rate limits, while API Gateway handles public traffic for smaller uploads.
+
+#### ⚠ Confirm before using
+
+- **Secrets:** §26.15 says the production store was a custom solution on EC2. This section says HashiCorp Vault. Only one can be right, so update the other.
+- **CloudWatch:** it's in the foundation list, but the monitoring stack is Prometheus, Jaeger and Splunk. Confirm how much CloudWatch was used beyond AWS resource logs.
+- **Repo docs:** the deployment doc describes AKS (Azure). This section follows your AWS input.
+- **PostgreSQL and MongoDB on EC2:** confirm the replication and failover setup, since it was self-managed.
+- **Upload threshold:** confirm the exact cut-off used in production.
 
 ---
 
