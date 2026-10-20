@@ -65,6 +65,7 @@ Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)]
     - [26.12 The Threads That Run Through Your Whole Resume](#2612-the-threads-that-run-through-your-whole-resume)
     - [26.13 DCP as a multi-tenant SaaS: each sector is a tenant](#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant)
     - [26.14 How a tenant reaches the database: UI to DB in DCP](#2614-how-a-tenant-reaches-the-database-ui-to-db-in-dcp)
+    - [26.15 DCP on AWS: EKS, EC2, Spot instances and secrets](#2615-dcp-on-aws-eks-ec2-spot-instances-and-secrets)
 27. [Java Scenario Q&A](#27-java-scenario-qa)
     - [27.1 Spring Boot API suddenly takes 5–6 seconds in production](#271-spring-boot-api-suddenly-takes-56-seconds-in-production)
     - [27.2 HashMap works in tests but breaks under concurrent access](#272-hashmap-works-in-tests-but-breaks-under-concurrent-access)
@@ -8335,6 +8336,67 @@ For stricter control, the API can exchange the common token for a token limited 
 #### 60-second answer
 
 > "The UI is common to all sectors. The user signs in once, and the token lists the sectors they belong to. At ingestion, the user picks a sector, and the UI sends that choice with the upload. The server checks the choice against the token and the user's write permission, then maps the sector to its schema and writes the document there. The sector is stored with the document, so every later read and approval checks the document's own tenant. The file and the Kafka event carry the tenant too, so downstream processing uses that sector's rules and schema."
+
+### 26.15 DCP on AWS: EKS, EC2, Spot instances and secrets
+
+**The story in one line:** DCP ran its microservices on **EKS**, the workers ran on **EC2** instances, the batch and extraction workers used **Spot** capacity to cut cost, and secrets were kept in a **custom-built store on EC2**.
+
+⚠ *Secrets: the repo's DCP docs name HashiCorp Vault as the secrets tool. Your input says the production solution was custom-built and hosted on EC2. Confirm which one was in production before using this section, and fill in the details below.*
+
+#### The building blocks
+
+| Service | What DCP used it for | Why it fits the NFRs |
+|---|---|---|
+| **EKS** (Elastic Kubernetes Service) | Ran the six microservices (sourcing, extraction, rules, workflow, approval, dissemination) as pods. AWS runs the control plane. | Self-healing pods, horizontal scaling, and rolling or canary releases ([§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp)). |
+| **EC2** | The worker nodes of the EKS cluster, grouped into node groups across several availability zones. The custom secrets store also ran on EC2. | Gives control over instance types, sizes and placement. Multi-AZ spread protects availability. |
+| **Spot instances** | Capacity for interruption-tolerant workers: batch processing, re-runnable extraction and reprocessing. Always with on-demand capacity as a fallback. | Large cost savings on compute that can be restarted safely. This is the same idea as the Databricks spot work in [Story 3](#story-3-the-bill-nobody-was-watching-cost-job-clusters--spot-instances). |
+| **S3** | Documents, data lake, backups, archives ([§26.5](#265-migrated-500-etl-jobs-to-databricks-4050-projected-tco-reduction)) | Durable storage and recovery. |
+| **Custom secrets store on EC2** | Held credentials and keys for the platform. ⚠ Confirm what was stored, how services fetched it, and how it was encrypted. | Centralized secrets, so they aren't in code or config files. |
+
+#### How spot fits Kubernetes
+
+Spot capacity can be reclaimed at short notice. AWS gives a two-minute interruption warning. The design must handle that without losing work:
+
+- **Which pods may run on spot:** stateless, re-runnable workers, such as extraction and batch jobs. Never the Kafka brokers, the databases, or the SLA-critical approval path.
+- **Node groups:** spot node groups for the worker pods, and an on-demand node group for everything critical.
+- **Graceful drain:** on the warning, the node stops taking new work and its pods finish or hand back their messages.
+- **Pod disruption budgets:** keep a minimum number of replicas running during a reclaim.
+- **Idempotent work:** because a half-finished extraction can run again, every consumer must be idempotent ([§3](#3-distributed-systems--large-scale-compute-design)).
+- **Diversify instance types** across spot pools, so one reclaim wave doesn't remove all capacity at once.
+
+#### The secrets store: what to say
+
+Keep the answer honest, and show that you know what a good design needs. A custom store on a single EC2 host carries known risks:
+
+- **Single point of failure** if the host goes down.
+- **Manual rotation**, if rotation wasn't automated.
+- **Static credentials** stored and read by services, instead of short-lived identities.
+- **Audit gaps**, if access wasn't logged for every read.
+
+The improved design you would describe:
+
+- A managed secrets service (AWS Secrets Manager or HashiCorp Vault), with encryption keys in AWS KMS.
+- **IAM roles for service accounts (IRSA)** on EKS, so each pod gets its own short-lived AWS permissions. No long-lived keys in pods.
+- **Automatic rotation** on a schedule, with the application re-reading secrets without a restart.
+- **Audit logging** of every secret read.
+
+#### 60-second answer
+
+> "DCP ran on AWS. The six microservices ran as pods on EKS, and the worker nodes were EC2 instances in several availability zones. Batch and extraction workers used Spot instances with on-demand fallback. The stateful and SLA-critical parts stayed on on-demand capacity. Documents and backups went to S3. Secrets were kept in a secrets store we built on EC2. If I were redesigning it, I'd move those secrets to a managed store with KMS encryption and give each pod its own IAM role through IRSA, so no long-lived credentials sit in the cluster."
+
+#### Likely follow-ups
+
+- **"What happens when a spot node is reclaimed mid-extraction?"** The two-minute warning triggers a drain. The pod finishes or stops cleanly. The message goes back to Kafka and is processed again on another node, safely, because the consumer is idempotent.
+- **"Why EKS and not self-managed Kubernetes?"** AWS runs the control plane, so the team patches and scales worker nodes, not the masters.
+- **"Why not Lambda?"** Extraction jobs run for minutes, with heavy memory and steady load. Long-running pods are cheaper and easier to control than Lambda's time limits and cold starts.
+- **"What was the weakest part of the secrets design?"** The single EC2 host, and any static credentials. Be ready to say what you would change.
+
+#### ⚠ Confirm before using
+
+- Which secrets tool was in production: the custom store on EC2, or HashiCorp Vault (named in the DCP docs).
+- What the custom store held, how services read it, and how it was encrypted and rotated.
+- The instance types, node-group layout and spot share.
+- Whether the production cluster was EKS, or whether the DCP docs' AKS (Azure) design applied.
 
 ---
 
