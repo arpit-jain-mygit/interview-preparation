@@ -1,28 +1,3 @@
-# Citi — Lead Java Engineer (XiP Compute Service / XCS) Interview Prep
-
-**Interview date:** 2026-09-29
-**Role:** Lead Java Engineer, XiP Compute Service (XCS) team — owns the most performance-critical component of Citi's unified risk-calculation platform (XiP/XiNG). Orchestrates 1.5B risk calculations/day across hundreds of thousands of pods and tens of thousands of compute nodes, private + public cloud. Parallelization regularly handles 250,000 compute-hours in a single 90-minute execution.
-
-**Source material:** Answers below are grounded in the real DCP (Data Collection Platform) project write-ups in this repo — `Java-And-MyProfessional-Projects-Interviews/data-collection-platform/`, `Kafka-Questions.md`, `ARCHITECT_INTERVIEW_GUIDE.md`, `behavioral-mock.md` — plus GenAI project docs and the resume headline numbers. DCP's codenames (SparkAir = extraction AI, Cognize/Deepmine = fallback extraction engines, Soniq = entity-mapping API) map to the resume's "S&P Global Ratings" platform work. Where the resume has a number this repo doesn't detail (e.g. the exact 70% EC2 / 97.5% Databricks / President's Award figures), it's flagged — use the resume number as the headline, DCP material as the mechanism.
-
----
-
-## XiP/XiNG Platform — What It Actually Is (Public Info)
-
-Verified via public reporting, not inferred from the JD — cross-checked across an industry trade article and two other live Citi job postings for the same XCS team at different levels (req 26975610 = this SVP role you're interviewing for; a parallel AVP req, 7+ yrs, identical platform language).
-
-- **XiNG** ("Xi Next Generation," pronounced "zing") = Citi's standardized cross-asset quant library and risk/pricing engine. Started ~2014 in the fixed-income desk, built on an older internal analytics library ("Xi"), originally a post-2008-crisis regulatory response.
-- **XiP** = the platform that runs XiNG at production scale — an API-services platform so the same valuation/risk data services are consumed consistently across business units, instead of each asset class building its own. **XCS ("XiP Compute Service") is the engine room inside XiP** — the compute orchestration layer specifically, which is exactly the team/role you're interviewing for.
-- **Not just risk — "risk & suitability" calculations.** The actual job-posting language is "1.5 billion risk & suitability calculations," not risk alone. Suitability is a compliance/regulatory-fit concept (is this trade appropriate for this client), not just quantitative pricing risk — worth a clarifying question (§11).
-- **Timeline**: ~6 years to expand from fixed income to credit, commodities, equities, risk/quant functions, equity mark-to-market accounting, and derivatives. By Q3 2024, "every trade at Citi goes through XiNG." CEO Jane Fraser cited it publicly on that quarter's earnings call as part of a broader simplification push (~1,250 legacy platforms retired since 2022).
-- **Architecture**: Kubernetes-based orchestration, hybrid multi-cloud — on-prem core plus dynamic bursting to multiple public clouds, with placement decided by resource availability, latency, and cost. Self-service: quants can build custom pricing models (e.g. pricing callable bonds) with minimal code, without needing engineering for every new model. Some multi-hour calculations are threaded across many Kubernetes pods. Delivered ~10x improvement in calculation execution time as the platform matured.
-- **Signal worth noting**: Citi is hiring across levels on this same XCS team concurrently (this SVP req + a parallel AVP req) — reads as active team growth, not a single backfill.
-- **Led by** Jon Lofthouse (CIO since Feb 2025) working physically alongside Andy Morton (then head of rates trading, now head of Markets) — the reporting specifically credits physical proximity between tech and trading-desk leadership as pivotal to how it got built.
-
-Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)](https://www.waterstechnology.com/data-management/7952400/xing-inside-citis-all-encompassing-risk-platform) · [Derivatives house of the year: Citi (Risk.net)](https://www.risk.net/awards/7962588/derivatives-house-of-the-year-citi) · [AVP req, same team](https://jobs.citi.com/job/pune/java-developer-distributed-systems-assistant-vice-president/287/99709913104)
-
----
-
 ## Table of Contents
 
 1. [Role Snapshot & Fit](#1-role-snapshot--fit)
@@ -9003,3 +8978,28 @@ Okta calculates it from the header and payload, using its private key. Changing 
 ### 29.C Interview version (about 60 seconds)
 
 > "The Report API is a service, so it has its own identity in Okta. It proves itself with a private key, not a password: it signs a request and Okta checks it with the public key registered during setup. Okta returns an access token, a JWT, signed with Okta's private key. The token has three parts: a header with the key ID, a payload with issuer, audience, expiry and scope, and the signature. The Billing API finds Okta's public key by the key ID, checks the signature, then checks issuer, audience and expiry, then checks the scope. A bad signature or wrong audience or expiry gives 401, and a missing scope gives 403."
+
+---
+
+# Citi — Lead Java Engineer (XiP Compute Service / XCS) Interview Prep
+
+**Interview date:** 2026-09-29
+**Role:** Lead Java Engineer, XiP Compute Service (XCS) team — owns the most performance-critical component of Citi's unified risk-calculation platform (XiP/XiNG). Orchestrates 1.5B risk calculations/day across hundreds of thousands of pods and tens of thousands of compute nodes, private + public cloud. Parallelization regularly handles 250,000 compute-hours in a single 90-minute execution.
+
+**Source material:** Answers below are grounded in the real DCP (Data Collection Platform) project write-ups in this repo — `Java-And-MyProfessional-Projects-Interviews/data-collection-platform/`, `Kafka-Questions.md`, `ARCHITECT_INTERVIEW_GUIDE.md`, `behavioral-mock.md` — plus GenAI project docs and the resume headline numbers. DCP's codenames (SparkAir = extraction AI, Cognize/Deepmine = fallback extraction engines, Soniq = entity-mapping API) map to the resume's "S&P Global Ratings" platform work. Where the resume has a number this repo doesn't detail (e.g. the exact 70% EC2 / 97.5% Databricks / President's Award figures), it's flagged — use the resume number as the headline, DCP material as the mechanism.
+
+---
+
+## XiP/XiNG Platform — What It Actually Is (Public Info)
+
+Verified via public reporting, not inferred from the JD — cross-checked across an industry trade article and two other live Citi job postings for the same XCS team at different levels (req 26975610 = this SVP role you're interviewing for; a parallel AVP req, 7+ yrs, identical platform language).
+
+- **XiNG** ("Xi Next Generation," pronounced "zing") = Citi's standardized cross-asset quant library and risk/pricing engine. Started ~2014 in the fixed-income desk, built on an older internal analytics library ("Xi"), originally a post-2008-crisis regulatory response.
+- **XiP** = the platform that runs XiNG at production scale — an API-services platform so the same valuation/risk data services are consumed consistently across business units, instead of each asset class building its own. **XCS ("XiP Compute Service") is the engine room inside XiP** — the compute orchestration layer specifically, which is exactly the team/role you're interviewing for.
+- **Not just risk — "risk & suitability" calculations.** The actual job-posting language is "1.5 billion risk & suitability calculations," not risk alone. Suitability is a compliance/regulatory-fit concept (is this trade appropriate for this client), not just quantitative pricing risk — worth a clarifying question (§11).
+- **Timeline**: ~6 years to expand from fixed income to credit, commodities, equities, risk/quant functions, equity mark-to-market accounting, and derivatives. By Q3 2024, "every trade at Citi goes through XiNG." CEO Jane Fraser cited it publicly on that quarter's earnings call as part of a broader simplification push (~1,250 legacy platforms retired since 2022).
+- **Architecture**: Kubernetes-based orchestration, hybrid multi-cloud — on-prem core plus dynamic bursting to multiple public clouds, with placement decided by resource availability, latency, and cost. Self-service: quants can build custom pricing models (e.g. pricing callable bonds) with minimal code, without needing engineering for every new model. Some multi-hour calculations are threaded across many Kubernetes pods. Delivered ~10x improvement in calculation execution time as the platform matured.
+- **Signal worth noting**: Citi is hiring across levels on this same XCS team concurrently (this SVP req + a parallel AVP req) — reads as active team growth, not a single backfill.
+- **Led by** Jon Lofthouse (CIO since Feb 2025) working physically alongside Andy Morton (then head of rates trading, now head of Markets) — the reporting specifically credits physical proximity between tech and trading-desk leadership as pivotal to how it got built.
+
+Sources: [XiNG: Inside Citi's all-encompassing risk platform (WatersTechnology)](https://www.waterstechnology.com/data-management/7952400/xing-inside-citis-all-encompassing-risk-platform) · [Derivatives house of the year: Citi (Risk.net)](https://www.risk.net/awards/7962588/derivatives-house-of-the-year-citi) · [AVP req, same team](https://jobs.citi.com/job/pune/java-developer-distributed-systems-assistant-vice-president/287/99709913104)
