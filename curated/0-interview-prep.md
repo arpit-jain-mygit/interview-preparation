@@ -8139,6 +8139,22 @@ Strangler fig pattern · bounded contexts (DDD) · anti-corruption layer · data
 
 ---
 
+#### Explaining the ~27 FTEs/year figure
+
+*Part of [§26.4](#264-cut-cloud-costs-180kyear-aws-ec2-compute-down-70-databricks-compute-down-975-spot-instances-job-cluster-redesign). This shows the arithmetic behind the resume claim, using assumed inputs. Replace them with your real numbers.*
+
+**What the claim means:** 1 FTE (full-time equivalent) is one person working a full year. "27 FTEs freed" means the automation gave back the equivalent of 27 people's yearly work.
+
+**Step 1: time saved per document.** Before the pipeline, one document took 2 analyst-days, about 16 working hours. After it, the AI does the work in 20 minutes, and a person still checks it, so call it about 0.33 hours. Saved per document: about 15.7 hours.
+
+**Step 2: hours in 27 FTEs.** One FTE is about 1,800 productive hours a year. So 27 FTEs = 27 × 1,800 = 48,600 hours a year.
+
+**Step 3: documents needed.** 48,600 hours ÷ 15.7 hours per document ≈ 3,100 documents a year.
+
+**What it means:** the claim holds only if about 3,100 documents a year used to be processed by hand. The platform handles 10,000 a day, so that is about 1% of volume. If the real manual count is higher, the claim is conservative. If it is lower, soften the claim to match.
+
+⚠ *Confirm the manual document count and the productive hours per FTE before quoting 27.*
+
 ### 26.5 "Migrated 500+ ETL jobs to Databricks (40–50% projected TCO reduction)"
 
 #### What the claim really is
