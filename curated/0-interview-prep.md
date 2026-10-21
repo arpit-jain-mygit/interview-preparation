@@ -10841,6 +10841,21 @@ Shows you understand trade-offs, not just choosing "better" database.
 
 **Interview answer (about 30 seconds):** "If one system fails during commit, the coordinator doesn't roll back, because the decision was already made. It keeps retrying the commit, and the failed system commits when it recovers from its log. Until then the data is inconsistent, which is the cost of 2PC. That is why I'd avoid 2PC across services and use a saga with compensation, where each step is a local commit and failures are undone explicitly."
 
+#### If the failed system never recovers
+
+*Continues [What if one of three systems fails during commit?](#what-if-one-of-three-systems-fails-during-commit).*
+
+- **The coordinator keeps retrying COMMIT** to the failed system. The decision is logged, so it never rolls back.
+- **A and B stay committed.** Their changes can't be reverted automatically.
+- **C stays "in doubt"**, holding its locks with its old data. Anything touching those rows is blocked, and the blocking can spread to other transactions.
+
+**How teams resolve it:**
+1. **Restore C.** Rebuild the node from a backup or replica, then replay its prepared log so it commits.
+2. **Force a decision by hand.** An operator tells C to commit or roll back from its log. This ends the blocking, but it's manual and risky: if the decision is wrong, A, B and C disagree. Record it for audit.
+3. **Reconcile afterwards.** If C's data can't be recovered, A and B need compensating actions to undo their changes. This is the saga approach.
+
+**Why this matters:** one permanently failed participant can block a whole 2PC transaction. A saga avoids that, because each step commits locally and has an explicit undo.
+
 ### 31.13 PARTITION IN CAP THEOREM
 
 ```text
