@@ -1699,6 +1699,77 @@ What's below is a 1-3 sentence summary of each topic with a direct link to its f
 | **[Kafka push vs. pull](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#how-would-a-kafka-broker-ever-push-messages-to-consumer-i-thought-its-always-pull)** | Kafka is always pull, never push, even though SDKs hide the poll loop and make it feel like push. This is the real reason Kafka gets natural backpressure (the consumer sets its own rate) where push-based brokers (RabbitMQ, Pub/Sub) can overwhelm a slow consumer. |
 | **[Backpressure](https://github.com/arpit-jain-mygit/interview-preparation/blob/main/curated/System-Design-Realtime-Messaging.md#backpressure)** | What happens when a producer is faster than a consumer: push systems let the queue build up on the broker (risk of dropped messages); pull systems let the consumer set its own pace, inherently safer at scale. |
 
+### 20.6 WebSockets vs SSE, explained simply
+
+**The simple version:** both keep one connection open, so the server can send data without waiting for the client to ask. The difference is direction. A WebSocket talks both ways. SSE (Server-Sent Events) only pushes from server to client, over ordinary HTTP.
+
+*Analogy:* a WebSocket is a phone call, where both people can speak at any time. SSE is a radio broadcast, where the station talks and listeners cannot reply on the same channel. If a listener wants to reply, they use a different channel, such as a normal HTTP request.
+
+| | WebSocket | SSE |
+|---|---|---|
+| Direction | Both ways, full duplex | Server to client only |
+| How it starts | An HTTP request that upgrades to the `ws://` or `wss://` protocol | A normal HTTP GET whose response stays open, with `Content-Type: text/event-stream` |
+| Data | Text or binary | Text only (UTF-8 events) |
+| Reconnect after a drop | You write this logic yourself | The browser's `EventSource` reconnects automatically and sends `Last-Event-ID` |
+| Through proxies and firewalls | Sometimes blocked, and needs upgrade support | Works like any HTTP response |
+| Browser limit | None specific | HTTP/1.1 allows about 6 connections per domain. HTTP/2 removes most of this problem |
+| Typical infrastructure | A stateful gateway tier that holds sockets | The same idea, but it fits standard HTTP load balancers and proxies more easily |
+
+**The SSE wire format is just text:**
+
+```
+event: status
+id: 1042
+data: {"documentId":123,"status":"EXTRACTED"}
+
+```
+
+A blank line ends each event. The `id` lets the browser resume after a drop.
+
+**DCP example, SSE:** an analyst has the document page open. The UI shows live status: Sourced, Extracting, Ready for review, Approved. The analyst never sends anything on this stream. The server pushes each status change as it happens:
+
+```javascript
+const es = new EventSource("/documents/123/events");
+es.onmessage = (e) => render(JSON.parse(e.data));
+```
+
+When the analyst clicks Approve, the browser makes a normal `POST` request. The one-way stream is enough for the update, so SSE is the right tool.
+
+**DCP example, WebSocket:** two reviewers edit the same extracted table at the same time. Each cell edit goes from the browser to the server, and the server sends it on to the other reviewer's screen. Traffic flows both ways and frequently, so a WebSocket fits.
+
+**Use cases**
+
+| Use case | Pick | Why |
+|---|---|---|
+| Chat, multiplayer games | WebSocket | Both sides send often, with low latency |
+| Collaborative editing with live cursors (Google Docs style) | WebSocket | Every keystroke and cursor move goes both ways |
+| Live notifications, activity feeds, dashboards | SSE | The server pushes, the client only listens |
+| Progress bars, job status, log tailing | SSE | One-way updates from the server |
+| Stock tickers, live scores | SSE | Server pushes prices or scores |
+| Streaming an LLM answer token by token (ChatGPT style) | SSE | The answer flows one way; the question goes up as a normal POST |
+| Old browsers or networks that block everything except plain HTTP | Long polling | Last resort; high latency and wasteful |
+
+**The decision rule:** if the client must send many messages over the same live channel with low latency, use a WebSocket. If the client only needs updates from the server and sends the occasional action as a normal request, use SSE. Most product status updates, including DCP's, fall into the second group.
+
+**Scaling and state, the honest version:** both keep a live connection open on one server, so neither is truly stateless. The real difference is what happens after a server dies:
+
+- **SSE:** the browser reconnects and sends `Last-Event-ID`. If events are stored in a shared place (Kafka, Redis or PostgreSQL), any server can replay the missed events from that ID. Without replay, the client silently misses events during the gap.
+- **WebSocket:** the same replay problem exists, but you build the reconnect, acknowledgement and replay logic yourself.
+
+**Multi-server fan-out:** an event can be created on server A while the client is connected to server B. To deliver it, each gateway subscribes to a shared channel (Redis pub/sub or a Kafka topic) and pushes events only to the clients connected to it. This is needed for both protocols. See [§31.18](#3118-how-sse-is-stateless-) for the detail on SSE state.
+
+**Interview answer (about 30 seconds):**
+
+> "Both WebSockets and SSE keep one connection open so the server can push data. WebSockets are two-way, so I'd use them for chat or collaborative editing, where both sides send often. SSE is one-way over plain HTTP. It reconnects by itself and works through proxies, so I'd use it for live status, notifications and streaming LLM answers. In DCP, the document status page is SSE, because the analyst only listens, and the approve action is a normal POST."
+
+**Likely follow-ups**
+
+- **"Why not use WebSockets for everything?"** More infrastructure: upgrade support, a stateful gateway tier, and your own reconnect and acknowledgement logic. If the traffic is one-way, you pay that cost for nothing.
+- **"Why not polling?"** It works everywhere, but latency equals the poll interval and most requests return nothing. SSE pushes the moment data changes.
+- **"How does the client send anything when it uses SSE?"** With a normal HTTP `POST`. The stream only goes one way.
+
+*Memory trick:* "**Radio vs phone call**": SSE is the radio (one way), WebSocket is the phone call (both ways).
+
 ---
 
 ## 21. Spring Framework Reference
