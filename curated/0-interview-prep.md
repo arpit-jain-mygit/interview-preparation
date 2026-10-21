@@ -13017,6 +13017,33 @@ Microservices shrink the blast radius: a failure stays inside one service.
 
 **Full answer:** [design patterns in summary](#microservice-design-patterns-in-summary-aligned-with-dcp), [golden rules](#golden-rules-of-microservices), and [Design Patterns](#design-patterns). DCP-specific mapping: [§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp).
 
+#### CQRS, explained simply
+
+**The idea:** split the model that changes data (commands, the write side) from the model that reads it (queries, the read side). The name is Command Query Responsibility Segregation.
+
+**Analogy:** a restaurant. The kitchen follows strict rules to prepare each order correctly. The menu board is built for quick reading by customers. Both are about the same food, but they are shaped for different jobs.
+
+**Why:** writes need rules and consistency. Reads need speed and a shape that fits the screen. One model rarely does both well.
+
+**Example in DCP:**
+- **Write side (command):** an analyst approves a document. The approval rules run, PostgreSQL is updated, and a `DocumentApproved` event goes to the outbox and then to Kafka.
+- **Read side (query):** the reviewer dashboard needs the document, its extraction, its approvals and its sector in one view. A projector listens to the events and builds a read model in MongoDB or Elasticsearch, shaped exactly for that screen. The dashboard reads from there, quickly, without joining five tables.
+
+**Flow:** command → write model → event → projector → read model → query.
+
+**The trade-off:**
+- **Eventual consistency:** the dashboard may lag by seconds behind the write. Approval decisions should still read from the write side, the source of truth.
+- **Two models to maintain:** more code and more moving parts.
+- **Rebuildable:** if a read model breaks, you can rebuild it by replaying the events.
+
+**When not to use it:** a small app where one model serves both reads and writes well. Don't add CQRS only because it sounds advanced.
+
+**Relation to event sourcing:** CQRS and event sourcing are often used together, but they are separate ideas. CQRS splits reads from writes. Event sourcing stores events as the truth. You can use CQRS alone.
+
+**Interview answer (about 30 seconds):** "CQRS separates the write model from the read model. In DCP, an approval updates the write side and publishes an event. A projector builds a read model shaped for the reviewer dashboard, so the screen loads fast. The cost is a few seconds of lag, so approval decisions still read from the source of truth."
+
+⚠ *Confirm which read models DCP built (MongoDB, Elasticsearch, or both) before naming them.*
+
 ### 33.4 Security
 
 - **Defense in depth (NAACS):** network, authentication, authorization, cryptography, secrets.
