@@ -466,6 +466,32 @@ A separate, simple background process then reads that outbox table and actually 
 
 **One-liner for the interview:** *"Kafka can't protect your database update — the outbox pattern makes the DB write and the 'I need to tell Kafka about this' intent atomic, then a separate process does the actual publishing."*
 
+#### Simple DCP example: approving a document
+
+**The problem:** an analyst approves a document. Two things must happen: PostgreSQL marks the document `APPROVED`, and Kafka publishes `DocumentApproved` so dissemination and billing can act. These are two different systems, so they can't share one transaction. If the app crashes between them, one of two things goes wrong:
+- The database says APPROVED, but no event is sent, so downstream never knows. The data is missing from the export.
+- The event is sent, but the database change rolls back. Downstream acts on an approval that never happened.
+
+**The outbox fix:** write the event into an `outbox` table in the same database, in the same transaction as the status change. Either both are saved or neither is.
+
+```sql
+BEGIN;
+  UPDATE document SET status = 'APPROVED' WHERE id = 123;
+  INSERT INTO outbox (aggregate_id, event_type, payload, published)
+  VALUES (123, 'DocumentApproved', '{"documentId":123}', false);
+COMMIT;   -- both rows are saved, or neither is
+```
+
+**A separate relay sends the events:** a small background process (or a change-data-capture tool such as Debezium) reads unpublished outbox rows in order, sends each one to Kafka with the key `documentId`, and marks it published only after Kafka confirms.
+
+**What if the relay crashes after sending but before marking?** It sends the event again. That is why the consumers must be idempotent (see the next subsection). The result is at-least-once delivery, with no lost events and no events for changes that were rolled back.
+
+**Analogy:** it's like writing the "send this letter" note into the same notebook as the account change, in one pen stroke. A postman collects the notes later and posts them. If the postman drops one, the note is still in the notebook.
+
+**Interview answer (about 30 seconds):** "In DCP, when an analyst approves a document, the status update and a DocumentApproved row go into an outbox table in one database transaction. A separate relay publishes outbox rows to Kafka, keyed by documentId, and marks them sent only after Kafka confirms. So the approval can't be saved without its event, and the event can't exist without the approval. If the relay resends, the consumers are idempotent."
+
+⚠ *Confirm the outbox table name and relay design against DCP's actual implementation before naming them.*
+
 ### Idempotent Consumers vs. the Outbox (Solving Double-Processing)
 
 These solve two different halves of the same problem — one on the sending side, one on the receiving side.
