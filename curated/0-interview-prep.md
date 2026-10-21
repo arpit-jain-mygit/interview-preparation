@@ -13052,6 +13052,32 @@ Microservices shrink the blast radius: a failure stays inside one service.
 
 **Full answer:** [§27.10 retries without a retry storm](#2710-designing-retries-for-a-failing-downstream-without-a-retry-storm), [idempotent consumers and the outbox](#idempotent-consumers-vs-the-outbox-solving-double-processing), [blue-green and canary](#blue-green--canary-how-the-traffic-switch-actually-works).
 
+#### Bulkhead, explained simply
+
+**The idea:** a ship is built with walls (bulkheads) that split it into sealed compartments. If one compartment springs a leak, the water stays in that room, and the ship stays afloat.
+
+**In software:** give each dependency or feature its own limited share of resources (threads, connections, or concurrent calls). If one slow dependency fills its share, the others keep working.
+
+**Example in DCP:** the extraction service calls SparkAir (slow, external) and also serves approval requests from the database.
+- **Without a bulkhead:** SparkAir slows down. Every request thread waits on it, all threads get stuck, and the approval screens stop working too. One slow vendor takes down the whole app.
+- **With a bulkhead:** SparkAir gets its own pool, say 20 threads. When that pool is full, extra extraction calls fail fast or fall back to Cognize. The approval service has its own pool, so approvals keep working.
+
+**Four common forms:**
+- **Thread pool bulkhead:** a separate thread pool for each dependency.
+- **Connection pool per dependency:** for example, a separate database pool for reporting, so reports can't use up the connections that approvals need.
+- **Semaphore:** a cap on how many calls to one dependency run at the same time.
+- **Per-tenant or per-sector limit:** one sector's burst can't use up another sector's share.
+
+**How to size it:** pool size ≈ expected concurrent calls, plus some headroom. When a bulkhead is full, reject quickly rather than queue forever, so the caller can fall back or retry later.
+
+**Works with the others:** the bulkhead limits how many calls run. A timeout stops a call that hangs. A circuit breaker stops calls once a dependency is clearly failing. Use all three together.
+
+**In Java:** Resilience4j provides `@Bulkhead` (semaphore) and `ThreadPoolBulkhead`. Each Hikari connection pool is also a bulkhead for its database.
+
+**Interview answer (about 30 seconds):** "A bulkhead gives each dependency its own limited pool of threads or connections, like watertight compartments on a ship. In DCP, if SparkAir slows down, only its pool fills up and fallback kicks in, while the approval service keeps its own threads. A bulkhead limits how much one dependency can take down, and a timeout and circuit breaker handle the rest."
+
+⚠ *Check the pool sizes and the bulkhead names against DCP's configuration before quoting them.*
+
 ### 33.8 Scalability
 
 - **Scale out, not up:** add instances behind a load balancer.
