@@ -492,6 +492,20 @@ COMMIT;   -- both rows are saved, or neither is
 
 ⚠ *Confirm the outbox table name and relay design against DCP's actual implementation before naming them.*
 
+#### When the background relay fails
+
+*Part of the [Transactional Outbox Pattern](#transactional-outbox-pattern).*
+
+The outbox keeps events safe even when the relay (the background process) fails. Nothing is lost, because the events sit in the database until they are sent.
+
+- **Relay is down:** unpublished rows wait in the outbox table. Consumers see no new events, and the backlog grows. When the relay restarts, it reads the unpublished rows in their original order and catches up.
+- **Relay crashes after Kafka accepts an event but before it marks the row as sent:** on restart it sends that event again. Consumers must be idempotent, so the duplicate does no harm.
+- **One event that Kafka keeps rejecting (a "poison" message):** retry with backoff for a while, then park it for manual handling and raise an alert. Don't let it block other events for the same document.
+- **Two relay instances run at once:** they must not publish the same row together. Lock each row while it's being processed, for example with `SELECT ... FOR UPDATE SKIP LOCKED` in PostgreSQL.
+- **What to monitor:** the age of the oldest unpublished row. A growing value means the relay is down or stuck. Alert on it before the SLA is missed.
+
+**Interview answer (about 30 seconds):** "If the relay fails, the events stay in the outbox table, so nothing is lost and the backlog is visible. When it restarts it catches up in order. A crash after sending can cause a duplicate, which idempotent consumers absorb. I'd alert on the age of the oldest unpublished row, and park poison messages instead of blocking the queue."
+
 ### Idempotent Consumers vs. the Outbox (Solving Double-Processing)
 
 These solve two different halves of the same problem — one on the sending side, one on the receiving side.
