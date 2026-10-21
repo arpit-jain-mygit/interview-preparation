@@ -13106,6 +13106,19 @@ If step 3 fails, the saga compensates:
 - **Choreography:** each service reacts to the previous event. Simple for short pipelines, harder to follow as steps grow.
 - **Orchestration:** one coordinator tells each service what to do next and tracks timeouts. Easier to debug, and it suits workflows with approvals and rework. In DCP's design, extraction uses choreography, and the approval workflow uses orchestration.
 
+**What problem a saga solves that 2PC can't:**
+- **Blocking:** in 2PC, every participant holds its locks until the coordinator's decision arrives. If one participant or the coordinator fails, the others wait with locks held. A saga releases each service's locks as soon as its local step commits.
+- **Long-running work:** 2PC assumes the transaction finishes in seconds. A flow that waits for a human approval, a vendor callback or a timer can take hours or days. A saga commits each step and resumes when the next event arrives.
+- **Systems that can't join 2PC:** 2PC needs every participant to support prepare and commit under a shared coordinator. Email providers, payment gateways, third-party APIs and many legacy systems can't. A saga only needs a local action and a compensating action from each one.
+
+| | 2PC | Saga |
+|---|---|---|
+| Locks | Held across all participants until commit | Released after each local step |
+| Failure of one participant | Others wait, possibly indefinitely | Compensations undo completed steps |
+| Duration | Seconds | Seconds to days |
+| Works with external systems | Rarely | Yes, with a compensating action |
+| Isolation | Strong (atomic to other readers) | Weak (intermediate states are visible) |
+
 **The trade-off:** a saga is not isolated like a database transaction. Other readers can see the intermediate state, for example a document that is approved but not yet billed.
 
 **Interview answer (about 30 seconds):** "A saga replaces one distributed transaction with a chain of local transactions. Each service commits its step, and if a later step fails, compensating actions undo the earlier ones. In DCP, if billing fails after publication, we retract the publication and move the document back for review. The irreversible step goes last, and every compensation is idempotent and retried."
