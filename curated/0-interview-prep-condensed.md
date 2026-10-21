@@ -651,7 +651,7 @@ The microservices questions in one place. Each row links to the full section in 
 
 | Topic | Remember | Full answer |
 |---|---|---|
-| Why microservices are helpful | Independent deployment, fault isolation (smaller blast radius), independent scaling of hot services, team ownership, and technology choice per service. | [→](0-interview-prep.md#331-why-microservices-are-helpful) |
+| Why microservices are helpful | Use BLAST RADIUS: a monolith is a **B**ottleneck, **L**ocked together, **A**ll-or-nothing, **S**cales inefficiently, and **T**ech frozen. Microservices shrink the blast radius, and also add independent deployment, scaling and team ownership. | [→](0-interview-prep.md#331-why-microservices-are-helpful) |
 | When they are not required | Small team or simple product, unclear domain, low scaling needs, or heavy data coupling. Start with a well-structured monolith and extract a service when a clear boundary appears. | [→](0-interview-prep.md#332-when-microservices-are-not-required) |
 | Design patterns | Bounded contexts, sync APIs versus async messaging, database per service with outbox and idempotent consumers, sagas, circuit breaker and bulkhead, API gateway and BFF. | [→](0-interview-prep.md#333-design-patterns) |
 | Security | Defense in depth (NAACS), OAuth 2.0 and OIDC for users, client-credentials tokens between services, least privilege, secrets in a vault, and audit of sensitive access. | [→](0-interview-prep.md#334-security) |
@@ -671,7 +671,7 @@ One line per trick: what it stands for, which topics it applies to, and where th
 
 | Trick | What it stands for | Applies to | Full section |
 |---|---|---|---|
-| **BLAST RADIUS** | Why leave a monolith: **B**ottleneck, **L**ocked together, **A**ll-or-nothing, **S**cales inefficiently, **T**ech frozen. | Microservices migration; incident impact (§26.3) | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
+| **BLAST RADIUS** | Why leave a monolith: **B**ottleneck, **L**ocked together, **A**ll-or-nothing, **S**cales inefficiently, **T**ech frozen. | Microservices migration; incident impact (§26.3); why microservices help (§33.1) | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
 | **20-50-100** | Migration pace: 20% of apps in year 1, 50% by year 2 (70% by end of year 2), 100% by year 3. | Migration plan and timeline | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
 | **QUADRANT MATRIX** | Pick the first app to migrate: **high value, high pain** first. | Choosing the first migration candidate | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |
 | **NEGATIVE → ZERO → POSITIVE** | ROI curve: year 1 burns cash, year 2 breaks even, year 3 pays back. | Justifying the modernization budget | [§16 roadmap](0-interview-prep.md#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story) |

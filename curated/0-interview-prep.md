@@ -12943,6 +12943,16 @@ These are the saved links from the notes, with tracking parameters removed. Use 
 - **Team ownership:** one team owns one service end to end, which speeds up decisions.
 - **Technology choice per service:** each service can use the stack that fits its job.
 
+💡 **MEMORY TRICK: "BLAST RADIUS"** (why a monolith is risky)
+
+- **B**ottleneck: one team can't deploy its change without the whole app.
+- **L**ocked together: teams wait on each other's releases.
+- **A**ll-or-nothing: one failure takes everything down.
+- **S**cales inefficiently: the whole app scales, even the part that is hot.
+- **T**ech frozen: no part can move to a newer stack without moving everything.
+
+Microservices shrink the blast radius: a failure stays inside one service.
+
 **Full answer:** [§16](#16-microservices-when-pitfalls-culture-patterns). Use the DCP evidence: six services, extraction scaled 5 to 50 pods, and blast radius in [§26.3](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices).
 
 ### 33.2 When microservices are not required
