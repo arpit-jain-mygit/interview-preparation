@@ -611,6 +611,38 @@
 
 ---
 
+## Multi-Tenant Architecture
+
+One place for everything about tenants: general concepts first, then how DCP applies them. Each row links to the full answer.
+
+### General concepts
+
+| Topic | Remember | Full answer |
+|---|---|---|
+| What is a tenant? | A tenant is one customer organization using a shared product. Each request must carry its tenant so the system knows whose data to read and whose rules to apply. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Shared vs per-tenant | Share what is the same for everyone: code, infrastructure, releases and security. Keep per tenant what describes the customer: data, configuration, users, quotas and encryption keys. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Isolation: shared table with tenant_id | Every row has a tenant_id. Cheapest and easiest to run, but a missing filter leaks data, so enforce it with row-level security (Oracle VPD, PostgreSQL RLS). | [→](0-interview-prep.md#q4-compare-tenant-isolation-models-which-would-you-choose-for-wfs) |
+| Isolation: schema or database per tenant | A schema per tenant gives stronger separation, with migrations run per schema. A database per tenant gives the strongest isolation and the highest cost. Use it for large or regulated tenants. | [→](0-interview-prep.md#q4-compare-tenant-isolation-models-which-would-you-choose-for-wfs) |
+| Hybrid model | Most tenants share a schema with row-level security. The largest or regulated tenants move to a dedicated schema or database. This keeps cost low while isolating the tenants that need it. | [→](0-interview-prep.md#28c-multi-tenant-saas-on-oci) |
+| Tenant context on every request | Identify the tenant from the validated token, never from a value the client sends alone. Store it in a request-scoped context, and always clear it at the end of the request. | [→](0-interview-prep.md#29-oauth-20-and-jwt-service-to-api-story) |
+| Noisy neighbour | One tenant's heavy load must not slow the others. Use per-tenant rate limits at the gateway, per-tenant concurrency limits in workers, and separate queues or partitions for large tenants. | [→](0-interview-prep.md#q5-how-do-you-stop-one-tenants-load-from-slowing-down-the-others) |
+| Rate limiting per tenant | Limit each tenant (and each API key) at the API gateway, so one customer cannot use up shared capacity. Token bucket is the usual default, with 429 responses and a Retry-After header. | [→](0-interview-prep.md#q5-how-do-you-stop-one-tenants-load-from-slowing-down-the-others) |
+| Tenant-aware messaging | Put the tenant ID in the Kafka key or headers, so events are routed and ordered per tenant. Use one topic per event type with tenant in the key, and separate topics only for the largest or regulated tenants. | [→](0-interview-prep.md#q17-how-would-you-design-kafka-topics-for-many-tenants) |
+| Onboarding a new tenant | A new tenant should be configuration, not code: create the tenant, load its templates and rules, set its users, roles and quotas, and check it in shadow mode before going live. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Releases per tenant | A shared code change can reach every tenant at once. Roll out one tenant at a time with a feature flag, then a canary on one tenant, then the rest. A rollback can be applied to one tenant only. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Data residency and keys | Some tenants need their data in a specific region or encrypted with their own key. A key per tenant lets you cut off or delete one tenant's data without touching the others. | [→](0-interview-prep.md#28c-multi-tenant-saas-on-oci) |
+
+### DCP: tenants are sectors
+
+| Topic | Remember | Full answer |
+|---|---|---|
+| Why a sector is the tenant | Sectors (USPF, Corporate, Governance, SF and others) differ in sources, templates, taxonomy, rules, approvals, destinations and audit needs. A tenant is exactly that kind of boundary, and it keeps the tenant count to about five. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Tenant set at ingestion | A document's tenant is set when it enters through its sector's source, then carried in the Kafka key and headers. The tenant never changes after that, so every later step uses the same rules. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| One login, many sectors | One common UI serves every sector. The token lists the sectors the user belongs to. The user picks one at ingestion, and the server checks that choice against the token before storing the document. | [→](0-interview-prep.md#2614-how-a-tenant-reaches-the-database-ui-to-db-in-dcp) |
+| Schema per sector in PostgreSQL | Each sector gets its own schema. The app sets the schema per request, so the same code serves every sector. MongoDB and Elasticsearch use a tenant ID on each document or index. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Quotas and fairness per sector | Each sector has quotas for documents per day and concurrent extractions. SLA-critical sectors get their own lanes, so a quarter-end burst in one sector does not delay another. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+| Keys per sector | Each sector has its own encryption key, so one sector's data can be cut off or deleted independently of the others. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
+
 ## Memory Tricks
 
 One line per trick: what it stands for, which topics it applies to, and where the full version is.
