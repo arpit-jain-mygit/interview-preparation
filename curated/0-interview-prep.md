@@ -1775,6 +1775,41 @@ What's below is a 1-2 sentence summary of each topic with a direct link to its f
 
 What's below is a 1-2 sentence summary of each topic with a direct link — read the source before using any of these live, this index is for fast recall of which topic covers what.
 
+### OOP and SOLID, explained simply
+
+#### The four OOP ideas, with DCP examples
+
+- **Class and object:** a class is a blueprint, and an object is one thing built from it. `Document` is the blueprint, and document 123 is an object made from it.
+- **Encapsulation:** hide the data and expose safe actions. The `status` field is private. Only `approve()` can change it, and it checks the rules first, so no code can set `APPROVED` directly.
+- **Abstraction:** show what something does, hide how. The pipeline calls `ExtractionEngine.extract()` and doesn't need to know whether SparkAir or Cognize does the work.
+- **Polymorphism:** one call, different behaviour depending on the object. `engine.extract(doc)` runs SparkAir's logic for one template and Cognize's for another.
+- **Inheritance and composition:** inheritance means "is-a" and reuses code from a parent class. Composition means "has-a" and builds behaviour from parts. Prefer composition when the parts can change independently. For example, a `Document` *has* a validator and a router, rather than inheriting from a `ValidatingRouter` class.
+
+**Interview answer (about 30 seconds):** "Encapsulation keeps the approval status private, so only approve() can change it and only after the rules pass. Abstraction lets the pipeline call one extract() method without knowing the engine. Polymorphism is what makes that call pick the right engine at runtime. I prefer composition over inheritance when the parts change independently."
+
+#### SOLID, explained simply
+
+SOLID is five rules that keep code easy to change. Each has a DCP example.
+
+- **S, Single responsibility:** one class, one reason to change. The validator checks documents, the parser reads them, and the notifier sends emails. A change to email rules shouldn't touch validation.
+- **O, Open/closed:** open for extension, closed for modification. A new extraction engine is a new class that implements the interface. The pipeline isn't edited.
+- **L, Liskov substitution:** a subclass or implementation must work wherever the parent is expected. A `ManualExtraction` must return the same `ExtractionResult` shape and must not throw surprise exceptions, so the pipeline keeps working.
+- **I, Interface segregation:** many small interfaces are better than one large one. A read-only dashboard client should depend on a `DocumentReader` interface, not on an interface that also has `approve()`.
+- **D, Dependency inversion:** depend on abstractions, not concrete classes. The pipeline depends on `ExtractionEngine`, and Spring supplies SparkAir or Cognize. Tests can supply a fake engine.
+
+```java
+// D and O together: the pipeline depends on the interface, and new engines plug in
+public class ExtractionPipeline {
+    private final ExtractionEngine engine;          // abstraction, not SparkAirClient
+    public ExtractionPipeline(ExtractionEngine engine) { this.engine = engine; }
+    public ExtractionResult run(Document doc) { return engine.extract(doc); }
+}
+```
+
+**Interview answer (about 40 seconds):** "SOLID keeps the code easy to change. Single responsibility means one reason to change per class. Open/closed means a new engine is a new class, not an edit to the pipeline. Liskov means any engine can replace another without breaking callers. Interface segregation means small interfaces, so clients don't depend on methods they don't use. Dependency inversion means the pipeline depends on the ExtractionEngine interface, so the engine can be swapped or faked in tests."
+
+⚠ *Check class names against DCP's code before quoting them.*
+
 ### The 4 Pillars, Unified (One Example, Four Lenses)
 
 Each pillar answers a different question about the same code — not a different shape of code. Same `PaymentProcessor` interface throughout:

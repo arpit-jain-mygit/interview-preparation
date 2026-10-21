@@ -265,6 +265,8 @@
 
 | Topic | Remember | Full answer |
 |---|---|---|
+| OOP concepts, explained simply | Class is the blueprint, object is one built from it. Encapsulation hides data behind safe actions (only approve() changes status). Abstraction hides how (pipeline calls extract()). Polymorphism picks the right behaviour at runtime. Prefer composition over inheritance when parts change independently. | [→](0-interview-prep.md#oop-and-solid-explained-simply) |
+| SOLID, explained simply | S: one reason to change per class. O: a new engine is a new class, not an edit. L: any engine can replace another safely. I: small interfaces. D: the pipeline depends on the ExtractionEngine interface, so engines can be swapped or faked. | [→](0-interview-prep.md#solid-explained-simply) |
 | The 4 Pillars, Unified (One Example, Four Lenses) | Abstraction — WHAT. Is the shared contract the right, minimal one? Litmus test: does the caller need to think about this to use the object correctly? | [→](0-interview-prep.md#the-4-pillars-unified-one-example-four-lenses) |
 | 22.1 SOLID Principles | Covers the five principles: single responsibility, open/closed, Liskov substitution, interface segregation, and dependency inversion. Dependency inversion is a design rule, while dependency injection is one technique for applying it. | [→](0-interview-prep.md#221-solid-principles) |
 | 22.2 Design Patterns | Points to the design patterns section in the OOPS notes, with the classic GoF patterns and their Java examples. | [→](0-interview-prep.md#222-design-patterns) |
