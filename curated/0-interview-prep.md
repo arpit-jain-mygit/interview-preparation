@@ -13079,6 +13079,39 @@ Microservices shrink the blast radius: a failure stays inside one service.
 
 ⚠ *Confirm which read models DCP built (MongoDB, Elasticsearch, or both) before naming them.*
 
+#### Saga, explained simply
+
+**The problem:** one business action touches several services, and each service has its own database. There is no single transaction across them, and two-phase commit blocks when a participant fails.
+
+**The idea:** a saga is a chain of local transactions. Each service commits its own step right away. If a later step fails, the saga runs compensating actions that undo the steps already committed.
+
+**Analogy:** booking a holiday. You book the flight, then the hotel, then the car. If the car booking fails, you cancel the hotel and then the flight. Each cancellation is a new action, not a rollback of history.
+
+**Example in DCP (approval, publishing, billing):**
+1. Approve the document (committed in the document service).
+2. Publish it to subscribers (committed in the dissemination service).
+3. Create the billing entry (committed in the billing service).
+
+If step 3 fails, the saga compensates:
+- Publish a `DocumentRetracted` event, so subscribers undo what they received.
+- Move the document back to `PENDING_BILLING`, or flag it for manual review.
+
+**Design rules:**
+- **Put irreversible steps last.** An email that has been sent can't be unsent, so send it at the end, after everything else succeeded.
+- **Make every compensation idempotent.** It can run more than once, so it must be safe to repeat.
+- **Store the saga's state** (which step is done, which is next) in a table, so a crash lets it resume instead of starting over.
+- **Retry compensations that fail,** and alert when a saga stays stuck too long.
+
+**Two styles:**
+- **Choreography:** each service reacts to the previous event. Simple for short pipelines, harder to follow as steps grow.
+- **Orchestration:** one coordinator tells each service what to do next and tracks timeouts. Easier to debug, and it suits workflows with approvals and rework. In DCP's design, extraction uses choreography, and the approval workflow uses orchestration.
+
+**The trade-off:** a saga is not isolated like a database transaction. Other readers can see the intermediate state, for example a document that is approved but not yet billed.
+
+**Interview answer (about 30 seconds):** "A saga replaces one distributed transaction with a chain of local transactions. Each service commits its step, and if a later step fails, compensating actions undo the earlier ones. In DCP, if billing fails after publication, we retract the publication and move the document back for review. The irreversible step goes last, and every compensation is idempotent and retried."
+
+⚠ *Confirm which steps DCP's saga compensates and which it retries, before quoting them.*
+
 ### 33.4 Security
 
 - **Defense in depth (NAACS):** network, authentication, authorization, cryptography, secrets.
