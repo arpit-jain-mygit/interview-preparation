@@ -1770,6 +1770,67 @@ When the analyst clicks Approve, the browser makes a normal `POST` request. The 
 
 *Memory trick:* "**Radio vs phone call**": SSE is the radio (one way), WebSocket is the phone call (both ways).
 
+### 20.7 Bloom filters, explained simply
+
+**The simple version:** a Bloom filter is a small, fast checklist that answers one question: "Have I seen this item before?" It answers in one of two ways:
+
+- **"Definitely not seen."** This answer is always correct.
+- **"Maybe seen."** This answer can be wrong. Occasionally it says "maybe" for an item that was never added. That is a **false positive**.
+
+It never says "definitely seen" for something that was not added. So it never misses an item that is in the set; it can only cry wolf now and then.
+
+*Analogy:* a bouncer with a short list that is too long to memorise. If you are clearly not on the list, you are turned away immediately. If your name looks familiar, the bouncer checks the full guest book before deciding.
+
+**How it works, in three steps:**
+
+1. **Start with a bit array**, say 10 bits, all set to 0.
+2. **To add an item,** run it through several different hash functions (for example 3). Each hash gives a bit position. Set those bits to 1.
+3. **To check an item,** run it through the same hash functions. If *any* of those bits is 0, the item was definitely never added. If *all* are 1, the item is maybe in the set.
+
+```
+Bit array:  [0 0 0 0 0 0 0 0 0 0]        (10 bits, all 0)
+
+Add "alice":  hashes give positions 1, 4, 7   -> set them to 1
+Bit array:  [0 1 0 0 1 0 0 1 0 0]
+
+Check "bob":  hashes give positions 2, 4, 9   -> bit 2 is 0
+Result:     DEFINITELY NOT added
+
+Check "carol": hashes give positions 1, 4, 7  -> all are 1
+Result:     MAYBE added (could be a false positive)
+```
+
+**Why it can say "maybe" wrongly:** different items share bits. Over time most bits get set to 1, so a new item may find all its bits already set by other items.
+
+**What it cannot do:**
+
+- **No deletion.** Clearing a bit could break other items that share it. Variants such as counting Bloom filters allow deletion, at more memory cost.
+- **No listing.** You cannot read the items back out.
+- **No exact answer.** If "maybe" matters, check the real source of truth.
+
+**Why it is useful:** it is tiny compared with storing the items. Roughly 10 bits per item gives a false-positive rate near 1%. For 1 million items, that is about 1.2 MB, which can sit in memory.
+
+**DCP example:** the extraction consumer must make sure it never processes the same Kafka message twice (see the idempotency section, §15). The real check is a PostgreSQL or MongoDB lookup, which costs a network round trip for every message. Most messages are new, so most of those lookups are wasted. A Bloom filter of processed message IDs, held in memory, fixes this:
+
+- **Filter says "definitely not seen":** the message is new. Process it, with no database lookup.
+- **Filter says "maybe seen":** run the real database check. If the ID really exists, skip it. If not, it was a false positive, so process it.
+
+The filter removes most lookups, and the database stays the source of truth. A false positive costs one extra lookup and never causes a skipped message.
+
+**Where else you see them:** a web crawler that checks whether a URL was already visited, a cache that avoids looking up keys that do not exist (such as HBase or Cassandra on-disk lookups), and a spell checker or browser safe-browsing check.
+
+**Interview answer (about 30 seconds):**
+
+> "A Bloom filter is a small bit array with several hash functions. It answers 'definitely not in the set' with certainty, or 'maybe in the set' with a small false-positive chance. It never misses an item that was added, and it can't delete. In DCP I'd use it in front of the duplicate-message lookup: most messages are new, so the filter lets us skip the database on those, and we only query the database when the filter says maybe."
+
+**Likely follow-ups**
+
+- **"Why not a HashSet?"** A HashSet is exact but stores every item. For billions of IDs, a Bloom filter uses a tiny fraction of the memory.
+- **"How do you size it?"** Choose the item count and the false-positive rate you can tolerate. Those two values set the bit-array size and the number of hash functions.
+- **"Can you remove items?"** Not in a standard Bloom filter. Use a counting Bloom filter, or rebuild the filter periodically.
+
+*Memory trick:* "**Bouncer with a short list**": a "no" is always right, a "maybe" needs a check of the guest book.
+
 ---
 
 ## 21. Spring Framework Reference

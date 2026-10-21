@@ -251,6 +251,7 @@
 | 20.4 Consistency & Theorems | Covers what a partition is, the CAP theorem (choose two, so pick CP or AP during a partition), and PACELC, which adds the latency-vs-consistency trade-off when there is no partition. | [→](0-interview-prep.md#204-consistency--theorems) |
 | 20.5 Realtime & Messaging | Compares long polling, WebSockets and Server-Sent Events for pushing data to clients. It also explains why SSE is not fully stateless: each open connection is held by one server. | [→](0-interview-prep.md#205-realtime--messaging) |
 | 20.6 WebSockets vs SSE, explained simply | Both keep one connection open so the server can push. WebSocket is two-way (phone call): use it for chat and live collaborative editing. SSE is one-way over plain HTTP (radio): use it for live status, notifications and streaming LLM answers. In DCP the status page is SSE and approve is a normal POST. | [→](0-interview-prep.md#206-websockets-vs-sse-explained-simply) |
+| 20.7 Bloom filters, explained simply | A small bit array with several hash functions. "Definitely not in the set" is always right; "maybe in the set" can be a false positive. It never misses an added item, and it cannot delete. In DCP it sits in front of the duplicate-message lookup, so most new messages skip the database. | [→](0-interview-prep.md#207-bloom-filters-explained-simply) |
 
 ## 21. Spring Framework Reference
 
