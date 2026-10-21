@@ -119,6 +119,16 @@
     - [32.23 Old interview questions still unanswered](#3223-old-interview-questions-still-unanswered)
     - [32.24 Hands-on programs to build](#3224-hands-on-programs-to-build)
     - [32.25 Saved links](#3225-saved-links)
+33. [Microservices: Interview Q&A](#33-microservices-interview-qa)
+    - [33.1 Why microservices are helpful](#331-why-microservices-are-helpful)
+    - [33.2 When microservices are not required](#332-when-microservices-are-not-required)
+    - [33.3 Design patterns](#333-design-patterns)
+    - [33.4 Security](#334-security)
+    - [33.5 Observability](#335-observability)
+    - [33.6 Availability](#336-availability)
+    - [33.7 Reliability](#337-reliability)
+    - [33.8 Scalability](#338-scalability)
+    - [33.9 Other aspects worth covering](#339-other-aspects-worth-covering)
     - [29.A The story: the Report API asks the Billing API for prices](#29a-the-story-the-report-api-asks-the-billing-api-for-prices)
     - [29.B JWT: concept and example values](#29b-jwt-concept-and-example-values)
     - [29.C Interview version (about 60 seconds)](#29c-interview-version-about-60-seconds)
@@ -12919,6 +12929,104 @@ These are the saved links from the notes, with tracking parameters removed. Use 
 - Interview and posts: linkedin.com/posts/sumonigupta (raw data and refinement); linkedin.com/in/jaspreet-khera (recent activity); linkedin.com/posts/jaspreet-khera (Java concurrency interview questions); linkedin.com/posts/rdey91 (AI and LLM); linkedin.com/posts/bhavya-bojanapalli (RAG explained in 2 minutes); linkedin.com/posts/chauhansakshi (team from lowest to highest AI); linkedin.com/posts/bathulajavali (Spring Boot); linkedin.com/posts/arslanahmad (system design interviews); linkedin.com/posts/rathanuday (serious AI system).
 - Short links: lnkd.in/p/dnPTeBBb, lnkd.in/p/dxB3B7bF, lnkd.in/p/dmsWzgYb and lnkd.in/p/dsvtX2nb (SQL), lnkd.in/p/dQ2ZbxTf (vector databases), lnkd.in/p/dnWEWY5g (loop engineering), lnkd.in/p/dsZQHweW (DSA revision), lnkd.in/p/d8tEm8yH (DSA), lnkd.in/p/dj-ZNvrr (OOPS), lnkd.in/p/drYQYnZF (Docker cheat sheet), lnkd.in/p/ddMBjPUj (Kubernetes cheat sheet and HTTPS), lnkd.in/p/dUM25sVC (LLM vs AI agent), lnkd.in/p/dgtrHs7V, lnkd.in/p/dHKrJw9r and lnkd.in/p/dErSKGEc (AWS cheat sheets; the last also covers Kafka), lnkd.in/p/dBYisJbp (system design ladder), lnkd.in/p/dFANVEQC, lnkd.in/p/eTH6HaYQ and lnkd.in/p/gRNSjBNP (17 case studies), lnkd.in/p/dK_biPKz (LLM interview PDF), linkedin.com/posts/manasdasgupta (MCP), lnkd.in/p/dUBgXZg7 (deployment patterns), lnkd.in/p/dgxDy_yr and lnkd.in/p/deU9F3Xg (DSA), lnkd.in/p/dYvNpQsv (16 RAG questions).
 - Hashing video (from 32.24): youtu.be/KEs5UyBJ39g?t=3264
+
+
+## 33. Microservices: Interview Q&A
+
+**What this is:** the microservices questions in one place, with a short answer for each and a link to the full material. The last part lists aspects that were missing from the earlier notes.
+
+### 33.1 Why microservices are helpful
+
+- **Independent deployment:** each service ships on its own schedule, so one team's release doesn't wait for everyone else.
+- **Fault isolation:** a bug or a memory leak in one service doesn't take down the whole system. The blast radius is smaller.
+- **Independent scaling:** scale only the hot service (for example, extraction workers) instead of the whole application.
+- **Team ownership:** one team owns one service end to end, which speeds up decisions.
+- **Technology choice per service:** each service can use the stack that fits its job.
+
+**Full answer:** [§16](#16-microservices-when-pitfalls-culture-patterns). Use the DCP evidence: six services, extraction scaled 5 to 50 pods, and blast radius in [§26.3](#263-cut-production-incidents-60-and-mttr-6-by-re-architecting-legacy-monoliths-into-event-driven-microservices).
+
+### 33.2 When microservices are not required
+
+- **A small team or a simple product:** the overhead of many services, pipelines and deployments outweighs the benefit.
+- **An unclear domain:** cutting services before the boundaries are known creates a distributed monolith.
+- **Low scaling needs:** a modular monolith handles most loads well.
+- **Strong data coupling:** if most features need the same tables in one transaction, splitting them adds cost and consistency problems.
+
+**Rule of thumb:** start with a well-structured monolith, and extract a service when a clear boundary, scaling need or team boundary appears.
+
+**Full answer:** [§16](#16-microservices-when-pitfalls-culture-patterns), including the "when is a modular monolith the right call" question.
+
+### 33.3 Design patterns
+
+- **Decomposition:** bounded contexts (DDD) and business capabilities.
+- **Communication:** synchronous APIs for immediate answers; asynchronous messaging for everything else.
+- **Data:** database per service, transactional outbox, idempotent consumers.
+- **Transactions:** saga (orchestration or choreography) with compensating actions.
+- **Resilience:** circuit breaker, bulkhead, timeouts, retries with backoff.
+- **Edge:** API gateway, backend for frontend.
+
+**Full answer:** [design patterns in summary](#microservice-design-patterns-in-summary-aligned-with-dcp), [golden rules](#golden-rules-of-microservices), and [Design Patterns](#design-patterns). DCP-specific mapping: [§26.1](#261-delivered-99-availability-and-95-accuracy-under-2s-latency-processing-10k-documentsday-dcp).
+
+### 33.4 Security
+
+- **Defense in depth (NAACS):** network, authentication, authorization, cryptography, secrets.
+- **Identity:** OAuth 2.0 and OIDC for users; client-credentials tokens for service-to-service calls; mTLS inside the mesh.
+- **Least privilege:** each service gets only the scopes and roles it needs.
+- **Secrets and keys:** a secrets manager (Vault) for credentials, KMS for encryption, and no secrets in code or images.
+- **Audit:** log every sensitive read and change.
+
+**Full answer:** [Security in Microservices](#security-in-microservices), [§29](#29-oauth-20-and-jwt-service-to-api-story), and [§28 Q22](#28-wfs-senior-solution-architect-adp-qa).
+
+### 33.5 Observability
+
+- **Three signals (LMT):** logs (what happened), metrics (how it's performing), traces (where it's slow).
+- **Correlation IDs** carried through HTTP and Kafka headers, so one request can be followed across services.
+- **Tools:** Prometheus for metrics, Jaeger for traces, Splunk for logs, Grafana for dashboards.
+
+**Full answer:** [Observability](#observability) and [How Jaeger, Splunk, Prometheus and Grafana connect](#how-jaeger-splunk-prometheus-and-grafana-connect).
+
+### 33.6 Availability
+
+- **No single point of failure:** replicas in several availability zones, and standby databases.
+- **Asynchronous decoupling:** a slow dependency becomes lag, not an outage.
+- **Each extra nine costs more:** 99.9% allows about 44 minutes of downtime a month. Multi-region failover is what 99.99% needs.
+
+**Full answer:** [§26.16 How to reach 99%, 99.9% and 99.999% availability](#2616-how-to-reach-99-999-and-99999-availability).
+
+### 33.7 Reliability
+
+- **Retries with backoff and jitter**, only for transient errors and idempotent operations.
+- **Idempotent consumers** and the transactional outbox, so duplicates and lost events don't corrupt data.
+- **Circuit breakers and fallbacks**, so a failing service degrades gracefully.
+- **Safe releases:** canary deployments with automatic rollback.
+
+**Full answer:** [§27.10 retries without a retry storm](#2710-designing-retries-for-a-failing-downstream-without-a-retry-storm), [idempotent consumers and the outbox](#idempotent-consumers-vs-the-outbox-solving-double-processing), [blue-green and canary](#blue-green--canary-how-the-traffic-switch-actually-works).
+
+### 33.8 Scalability
+
+- **Scale out, not up:** add instances behind a load balancer.
+- **Partition the data** by key, so load spreads across servers.
+- **Scale on the right signal:** queue lag and latency, not only CPU.
+- **Remove the real bottleneck:** cache, batch, and fall back, as in the entity-mapping case.
+
+**Full answer:** [§3 Distributed Systems](#3-distributed-systems--large-scale-compute-design) and [the entity-mapping bottleneck](#the-entity-mapping-bottleneck-explained-simply).
+
+### 33.9 Other aspects worth covering
+
+These were missing from the earlier notes. Each has a short answer.
+
+- **API versioning and contracts:** version APIs, make only additive changes within a version, and use consumer-driven contract tests.
+- **Testing across services:** contract tests for the boundaries, plus a small set of end-to-end tests. Don't rely on full-system tests for every change.
+- **Data ownership:** each service owns its data. Other services use its API or events, never its tables.
+- **Service discovery and configuration:** services find each other through a registry or the platform (Kubernetes DNS), and config comes from the environment or a config service.
+- **Deployment and CI/CD:** each service has its own pipeline, and every change passes the same gates (tests, security scans, canary).
+- **Debugging locally:** run the services you need with stubs for the rest, or use a shared dev environment.
+- **Cost:** more services mean more infrastructure, monitoring and on-call. Count that cost before splitting.
+- **Team topology:** service boundaries should match team boundaries ("business first"). See the BUSINESS FIRST trick in [§16](#16-microservices-when-pitfalls-culture-patterns).
+- **Migration:** strangler fig, one capability at a time, with a numeric exit criterion for each step ([§16 roadmap](#roadmap-legacymonolith-to-microservices-wired-to-the-dcp-story)).
+- **Kafka schema evolution:** a schema registry with compatibility rules ([Kafka questions](Java-And-MyProfessional-Projects-Interviews/Kafka-Questions.md)).
+
+**Full answers in the earlier notes:** [§16 Other Microservices Questions](#16-microservices-when-pitfalls-culture-patterns).
 
 ---
 

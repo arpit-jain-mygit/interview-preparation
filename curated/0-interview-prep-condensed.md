@@ -645,6 +645,26 @@ One place for everything about tenants: general concepts first, then how DCP app
 | Quotas and fairness per sector | Each sector has quotas for documents per day and concurrent extractions. SLA-critical sectors get their own lanes, so a quarter-end burst in one sector does not delay another. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
 | Keys per sector | Each sector has its own encryption key, so one sector's data can be cut off or deleted independently of the others. | [→](0-interview-prep.md#2613-dcp-as-a-multi-tenant-saas-each-sector-is-a-tenant) |
 
+## Microservices Q&A
+
+The microservices questions in one place. Each row links to the full section in §33 of the main guide.
+
+| Topic | Remember | Full answer |
+|---|---|---|
+| Why microservices are helpful | Independent deployment, fault isolation (smaller blast radius), independent scaling of hot services, team ownership, and technology choice per service. | [→](0-interview-prep.md#-331-why-microservices-are-helpful) |
+| When they are not required | Small team or simple product, unclear domain, low scaling needs, or heavy data coupling. Start with a well-structured monolith and extract a service when a clear boundary appears. | [→](0-interview-prep.md#-332-when-microservices-are-not-required) |
+| Design patterns | Bounded contexts, sync APIs versus async messaging, database per service with outbox and idempotent consumers, sagas, circuit breaker and bulkhead, API gateway and BFF. | [→](0-interview-prep.md#-333-design-patterns) |
+| Security | Defense in depth (NAACS), OAuth 2.0 and OIDC for users, client-credentials tokens between services, least privilege, secrets in a vault, and audit of sensitive access. | [→](0-interview-prep.md#-334-security) |
+| Observability | Three signals (LMT): logs, metrics and traces, linked by correlation IDs through HTTP and Kafka headers. Prometheus, Jaeger, Splunk and Grafana. | [→](0-interview-prep.md#-335-observability) |
+| Availability | No single point of failure: replicas across zones and standby databases. Asynchronous decoupling turns a slow dependency into lag, not an outage. Each extra nine costs more. | [→](0-interview-prep.md#-336-availability) |
+| Reliability | Retries with backoff and jitter for transient errors only, idempotent consumers, the outbox, circuit breakers and fallbacks, and canary releases with rollback. | [→](0-interview-prep.md#-337-reliability) |
+| Scalability | Scale out behind a load balancer, partition data by key, scale on queue lag and latency rather than CPU, and remove the real bottleneck (cache, batch, fallback). | [→](0-interview-prep.md#-338-scalability) |
+| Other: API versioning and contracts | Version APIs, make only additive changes within a version, and use consumer-driven contract tests. | [→](0-interview-prep.md#-339-other-aspects-worth-covering) |
+| Other: testing across services | Contract tests at each boundary plus a small set of end-to-end tests, rather than full-system tests for every change. | [→](0-interview-prep.md#-339-other-aspects-worth-covering) |
+| Other: data ownership | Each service owns its data. Others use its API or events, never its tables. | [→](0-interview-prep.md#-339-other-aspects-worth-covering) |
+| Other: discovery, config and deployment | Services find each other through a registry or Kubernetes DNS. Config comes from the environment. Each service has its own CI/CD pipeline with the same gates. | [→](0-interview-prep.md#-339-other-aspects-worth-covering) |
+| Other: cost, team topology and migration | Each service adds infrastructure, monitoring and on-call cost. Match boundaries to teams, and migrate one capability at a time with an exit criterion for each step. | [→](0-interview-prep.md#-339-other-aspects-worth-covering) |
+
 ## Memory Tricks
 
 One line per trick: what it stands for, which topics it applies to, and where the full version is.
