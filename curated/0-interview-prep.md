@@ -10814,6 +10814,33 @@ Shows you understand trade-offs, not just choosing "better" database.
 ~~~~~~
 ```
 
+#### What if one of three systems fails during commit?
+
+*Part of [31.12 2-Phase Commit](#3112-2-phase-commit-2pc--simple-explanation).*
+
+**Setup:** a coordinator and three databases (A, B, C). The transaction touches all three.
+
+**Phase 1 (prepare) finished:** all three voted YES. Each one wrote its changes to a log, so it can still commit or roll back later, and it is holding its locks.
+
+**Phase 2 (commit):** the coordinator logs "commit", then sends COMMIT to A, B and C.
+- A commits and acknowledges.
+- B commits and acknowledges.
+- C fails before it commits.
+
+**What happens next:**
+1. The coordinator does not roll back. The decision was already made and written to its log, and A and B have already committed.
+2. The coordinator keeps retrying COMMIT to C until C acknowledges.
+3. C, when it recovers, reads its prepared log entry, sees the commit decision, and commits.
+4. Until C commits, the data is inconsistent: A and B show the new state, and C still shows the old one. Reads on C can see stale data, and C's locks block related work.
+
+**The lesson:** 2PC guarantees that all systems reach the same decision, but only after the failed system recovers. In the meantime the system is in a partial state.
+
+**Two other failure cases to know:**
+- **A fails during prepare:** it never votes YES, so the coordinator aborts, and everyone rolls back. Nothing is committed. This is the safe case.
+- **The coordinator fails after prepare but before sending COMMIT:** the participants are "in doubt" and holding locks, and they can't safely decide alone. This is the blocking problem of 2PC. A new coordinator or a recovery process has to read the log and decide.
+
+**Interview answer (about 30 seconds):** "If one system fails during commit, the coordinator doesn't roll back, because the decision was already made. It keeps retrying the commit, and the failed system commits when it recovers from its log. Until then the data is inconsistent, which is the cost of 2PC. That is why I'd avoid 2PC across services and use a saga with compensation, where each step is a local commit and failures are undone explicitly."
+
 ### 31.13 PARTITION IN CAP THEOREM
 
 ```text
