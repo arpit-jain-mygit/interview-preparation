@@ -1831,6 +1831,43 @@ The filter removes most lookups, and the database stays the source of truth. A f
 
 *Memory trick:* "**Bouncer with a short list**": a "no" is always right, a "maybe" needs a check of the guest book.
 
+### 20.8 CDN vs cache, explained simply
+
+**The simple version:** a CDN (Content Delivery Network) is a cache. It is a network of edge servers spread across regions. It stores HTTP responses close to users, so a request from Mumbai can be answered in Mumbai instead of travelling to a data centre in Virginia. "Cache" is the broader term. It covers CDNs, browser caches, and in-app caches such as Redis.
+
+*Analogy:* a cache is a notebook you keep on your desk. A CDN is a chain of branch libraries in every city, each holding copies of the most borrowed books, so most readers never travel to the head office.
+
+| | CDN | Application cache (e.g. Redis) |
+|---|---|---|
+| Where it sits | Edge locations near end users | Next to your services, inside your network |
+| Who runs it | A provider (CloudFront, Akamai, Cloudflare) | You run it (ElastiCache, or Redis on your cluster) |
+| What it stores | HTTP responses: images, JS and CSS, videos, public API responses | Any data: query results, computed values, sessions |
+| How entries are keyed | URL, plus any headers the cache rules use | Whatever key your code chooses |
+| How entries are cleared | `Cache-Control` max-age, or a purge request to the provider | Your code deletes or updates keys, or the TTL expires |
+| Main benefit | Lower latency for distant users, and less load on your origin | Less load on the database, and faster internal calls |
+
+**Shared limit:** both can serve a stale copy until the TTL expires or a purge reaches every copy. A CDN purge can take seconds to minutes to spread across all edge locations.
+
+**Banking example**
+- Public content such as rate tables, branch pages and marketing pages can sit on a CDN.
+- Account responses must never be cached at the CDN. Send `Cache-Control: private, no-store`, so no shared edge keeps a customer's balance.
+
+**DCP example**
+- The React bundles, with hashed file names such as `app.3f9a.js`, can use a long-lived CDN cache. A new release gets new file names, so nothing needs purging.
+- Document status responses should bypass the CDN, because they change often and are user-specific.
+- Reference data, such as sector configuration, can be cached in Redis with a TTL.
+
+**Interview answer (about 30 seconds):**
+
+> "A CDN is an edge cache. It stores public HTTP responses close to users, so static assets and public content load fast worldwide and the origin gets less traffic. An application cache like Redis sits inside our network and caches data our services compute or query. In DCP, the UI bundles go on the CDN with hashed file names, and status responses bypass it. In banking, account data never goes on a CDN. It must be marked private and no-store."
+
+**Likely follow-ups**
+
+- **"How do you clear a CDN cache after a change?"** Prefer versioned file names, so the old copy is never requested again. Use a purge request only for content that cannot be versioned, and accept that the purge takes a little time to spread.
+- **"Can a CDN run logic?"** Yes. Edge functions (such as Lambda@Edge or Cloudflare Workers) can rewrite requests or add headers at the edge. Keep the logic small, because it runs close to users and cannot hold much state.
+
+*Memory trick:* "**Library branches**": the CDN is a branch library in every city, Redis is the notebook on your desk. Private books never go in the branch library.
+
 ---
 
 ## 21. Spring Framework Reference
