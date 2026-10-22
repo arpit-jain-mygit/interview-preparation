@@ -1921,6 +1921,46 @@ The filter removes most lookups, and the database stays the source of truth. A f
 
 *Memory trick:* "**Ask for strong, per request**": the default is fast and eventual; strong is a flag you set each time.
 
+### 20.11 Server-side vs client-side caching, explained simply
+
+**The simple version:** a cache can sit in two places. **Client-side** caches live on the user's device: the browser, the mobile app, or a service worker. **Server-side** caches live in your infrastructure: Redis, Memcached, an in-process cache, or a reverse proxy. The closer the copy is to the user, the faster it loads, but the harder it is to control.
+
+*Analogy:* a client-side cache is a notebook the user keeps at home. A server-side cache is the shared reference shelf in your office. Everyone can use the shelf, and you can clear it in one place.
+
+| | Client-side cache | Server-side cache |
+|---|---|---|
+| Where it lives | Browser, mobile app, device storage | Redis, Memcached, app memory, proxy |
+| Speed for the user | Fastest: no network call at all | Fast, but the request still travels to your servers |
+| Shared across users? | No, each user has their own copy | Yes, one copy serves many users |
+| Who controls freshness | Mostly the server, through headers like `Cache-Control` and `ETag` | You, through TTLs, invalidation and deletes |
+| How to clear it | Hard. You can't reach into a user's browser, so use versioned URLs or short TTLs | Easy. Delete or update the key in one place |
+| Security risk | Data sits on a device you don't control | Data stays inside your network |
+
+**The two work together.** A browser can cache a response with an `ETag`. Next time, it asks the server "has this changed?" with `If-None-Match`. If nothing changed, the server replies `304 Not Modified` with no body. The browser saves the transfer, and the server decides freshness.
+
+**Banking example**
+- Never store balances, account numbers or other personal data in `localStorage`. Anyone with access to the device can read it.
+- Account pages must send `Cache-Control: private, no-store`, so the browser keeps nothing.
+- Server-side, the balance can sit in a short-lived cache for display. Debits still read the database, as in the strong consistency section.
+
+**DCP example**
+- The browser caches the built UI bundles for a long time, using hashed file names, so a new release loads fresh files.
+- Sector configuration (reference data, shared by everyone) sits in Redis on the server, with a TTL.
+- The document a user is working on is never cached on the client after the session, because it is confidential.
+
+**Rule of thumb:** cache static, shared, non-sensitive data on the client. Cache shared, changing data on the server. Never cache personal or financial data on the client unless the data is safe to lose.
+
+**Interview answer (about 30 seconds):**
+
+> "Client-side caching is the fastest, because the request never leaves the device, but I can't control the copy once it's there. Server-side caching is shared and easy to clear, but each request still travels to us. I'd cache hashed static assets on the client, shared reference data in Redis with a TTL, and never cache personal or financial data on the client. For data that changes, I'd use ETags so the browser checks with the server before using its copy."
+
+**Likely follow-ups**
+
+- **"How do you force a client to get a new version?"** Change the URL (a version or hash in the file name). You can't reach into a user's browser to clear its cache.
+- **"Is a CDN client-side or server-side?"** It sits between them. It is server-side infrastructure, but it sits close to the user (see the CDN section).
+
+*Memory trick:* "**Notebook at home, shelf at the office**": the client cache is the user's notebook, the server cache is the shared shelf.
+
 ---
 
 ## 21. Spring Framework Reference
