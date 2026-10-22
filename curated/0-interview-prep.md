@@ -1701,74 +1701,39 @@ What's below is a 1-3 sentence summary of each topic with a direct link to its f
 
 ### 20.6 WebSockets vs SSE, explained simply
 
-**The simple version:** both keep one connection open, so the server can send data without waiting for the client to ask. The difference is direction. A WebSocket talks both ways. SSE (Server-Sent Events) only pushes from server to client, over ordinary HTTP.
+**The simple version:** both let the server send data without waiting for the client to ask. SSE is one-way (server to client) over plain HTTP. WebSocket is two-way over its own connection. Each one fixes a problem in the one before it.
 
-*Analogy:* a WebSocket is a phone call, where both people can speak at any time. SSE is a radio broadcast, where the station talks and listeners cannot reply on the same channel. If a listener wants to reply, they use a different channel, such as a normal HTTP request.
+*Analogy:* SSE is a radio broadcast. A WebSocket is a phone call.
 
-| | WebSocket | SSE |
-|---|---|---|
-| Direction | Both ways, full duplex | Server to client only |
-| How it starts | An HTTP request that upgrades to the `ws://` or `wss://` protocol | A normal HTTP GET whose response stays open, with `Content-Type: text/event-stream` |
-| Data | Text or binary | Text only (UTF-8 events) |
-| Reconnect after a drop | You write this logic yourself | The browser's `EventSource` reconnects automatically and sends `Last-Event-ID` |
-| Through proxies and firewalls | Sometimes blocked, and needs upgrade support | Works like any HTTP response |
-| Browser limit | None specific | HTTP/1.1 allows about 6 connections per domain. HTTP/2 removes most of this problem |
-| Typical infrastructure | A stateful gateway tier that holds sockets | The same idea, but it fits standard HTTP load balancers and proxies more easily |
+**How the options build on each other**
 
-**The SSE wire format is just text:**
+1. **Short polling.** The client asks "anything new?" every few seconds.
+   - *Simple.*
+   - *Weakness:* most answers are empty, and updates arrive only at the next poll.
+2. **Long polling.** The server holds the request open until it has data, then answers.
+   - *Solves:* the empty answers, and the wait between polls.
+   - *Weakness:* every update still needs a new request, and each open request ties up a server connection.
+3. **SSE (Server-Sent Events).** One HTTP response stays open, and the server pushes each event down it. The browser reconnects by itself.
+   - *Solves:* the repeated requests. The server pushes as soon as data changes.
+   - *Weakness:* the client cannot send anything on the same stream. Every client action needs a separate POST.
+4. **WebSocket.** One connection carries messages in both directions.
+   - *Solves:* the one-way limit. Both sides can send at any time with low overhead.
+   - *Weakness:* more infrastructure. It needs a stateful gateway, and reconnect and replay are your job.
 
-```
-event: status
-id: 1042
-data: {"documentId":123,"status":"EXTRACTED"}
+**Which one to use**
 
-```
+- **Client only listens** (notifications, status, live feeds, LLM answers): **SSE**.
+- **Both sides send often** (chat, live co-editing, games): **WebSocket**.
 
-A blank line ends each event. The `id` lets the browser resume after a drop.
+**DCP example:** the analyst's document page uses SSE for status changes. Clicking Approve is a normal POST.
 
-**DCP example, SSE:** an analyst has the document page open. The UI shows live status: Sourced, Extracting, Ready for review, Approved. The analyst never sends anything on this stream. The server pushes each status change as it happens:
+**Banking example:** a live balance or payment-status feed uses SSE. A trading screen that sends orders many times a second uses a WebSocket.
 
-```javascript
-const es = new EventSource("/documents/123/events");
-es.onmessage = (e) => render(JSON.parse(e.data));
-```
+**Interview answer (about 20 seconds):**
 
-When the analyst clicks Approve, the browser makes a normal `POST` request. The one-way stream is enough for the update, so SSE is the right tool.
+> "If the client only listens, I'd use SSE. It's plain HTTP, reconnects by itself, and actions go out as normal POSTs. If both sides send often, like chat or co-editing, I'd use a WebSocket, and accept the extra gateway work."
 
-**DCP example, WebSocket:** two reviewers edit the same extracted table at the same time. Each cell edit goes from the browser to the server, and the server sends it on to the other reviewer's screen. Traffic flows both ways and frequently, so a WebSocket fits.
-
-**Use cases**
-
-| Use case | Pick | Why |
-|---|---|---|
-| Chat, multiplayer games | WebSocket | Both sides send often, with low latency |
-| Collaborative editing with live cursors (Google Docs style) | WebSocket | Every keystroke and cursor move goes both ways |
-| Live notifications, activity feeds, dashboards | SSE | The server pushes, the client only listens |
-| Progress bars, job status, log tailing | SSE | One-way updates from the server |
-| Stock tickers, live scores | SSE | Server pushes prices or scores |
-| Streaming an LLM answer token by token (ChatGPT style) | SSE | The answer flows one way; the question goes up as a normal POST |
-| Old browsers or networks that block everything except plain HTTP | Long polling | Last resort; high latency and wasteful |
-
-**The decision rule:** if the client must send many messages over the same live channel with low latency, use a WebSocket. If the client only needs updates from the server and sends the occasional action as a normal request, use SSE. Most product status updates, including DCP's, fall into the second group.
-
-**Scaling and state, the honest version:** both keep a live connection open on one server, so neither is truly stateless. The real difference is what happens after a server dies:
-
-- **SSE:** the browser reconnects and sends `Last-Event-ID`. If events are stored in a shared place (Kafka, Redis or PostgreSQL), any server can replay the missed events from that ID. Without replay, the client silently misses events during the gap.
-- **WebSocket:** the same replay problem exists, but you build the reconnect, acknowledgement and replay logic yourself.
-
-**Multi-server fan-out:** an event can be created on server A while the client is connected to server B. To deliver it, each gateway subscribes to a shared channel (Redis pub/sub or a Kafka topic) and pushes events only to the clients connected to it. This is needed for both protocols. See [§31.18](#3118-how-sse-is-stateless-) for the detail on SSE state.
-
-**Interview answer (about 30 seconds):**
-
-> "Both WebSockets and SSE keep one connection open so the server can push data. WebSockets are two-way, so I'd use them for chat or collaborative editing, where both sides send often. SSE is one-way over plain HTTP. It reconnects by itself and works through proxies, so I'd use it for live status, notifications and streaming LLM answers. In DCP, the document status page is SSE, because the analyst only listens, and the approve action is a normal POST."
-
-**Likely follow-ups**
-
-- **"Why not use WebSockets for everything?"** More infrastructure: upgrade support, a stateful gateway tier, and your own reconnect and acknowledgement logic. If the traffic is one-way, you pay that cost for nothing.
-- **"Why not polling?"** It works everywhere, but latency equals the poll interval and most requests return nothing. SSE pushes the moment data changes.
-- **"How does the client send anything when it uses SSE?"** With a normal HTTP `POST`. The stream only goes one way.
-
-*Memory trick:* "**Radio vs phone call**": SSE is the radio (one way), WebSocket is the phone call (both ways).
+*Memory trick:* "**Radio, then phone**": SSE is one-way radio, WebSocket is a two-way phone call.
 
 ### 20.7 Bloom filters, explained simply
 
@@ -1913,6 +1878,48 @@ The filter removes most lookups, and the database stays the source of truth. A f
 > "I'd start with a token bucket. It allows short bursts and caps the average rate. The counters sit in Redis, updated atomically with a Lua script. If the downstream system needs a smooth rate, I'd switch to a leaky bucket."
 
 *Memory trick:* "**Each one fixes the last one's problem**": fixed window → sliding log → sliding counter → token bucket → leaky bucket.
+
+### 20.10 How NoSQL databases support strong consistency, explained simply
+
+**The simple version:** most NoSQL databases are eventually consistent by default, because that keeps them fast and easy to scale out. Most of them also offer a strong mode, but you must ask for it on each operation, and it usually costs some speed.
+
+**Three things make a read or write strong:**
+
+1. **Read from the copy that has the latest write** (the primary or leader), not a replica.
+2. **Wait until enough copies confirm the write** before answering the client.
+3. **Make the write conditional,** so it only applies if the data is still what you read. This stops a stale read from causing a wrong write.
+
+**How the common NoSQL databases do it**
+
+| Database | How to ask for strong consistency | Limits |
+|---|---|---|
+| MongoDB | Write concern `majority` and read concern `majority`, reading from the primary. Multi-document transactions are available | Reads from secondaries can be stale. Transactions cost more and work best within one shard |
+| DynamoDB | `ConsistentRead=true` on `GetItem` and `Query`. `TransactWriteItems` for several items. Conditional writes for compare-and-set | Not available on global secondary indexes. Global tables replicate eventually across regions |
+| Cassandra | `QUORUM` reads and writes, where R + W is greater than N. Lightweight transactions (`IF` conditions, using Paxos) for compare-and-set | `QUORUM` is strong per key, within one datacentre. Lightweight transactions are much slower |
+| HBase | Each row is owned by one region server, so reads and writes on one row are strong | Multi-row transactions are limited |
+
+**Banking example (DynamoDB):** to debit an account:
+
+1. Read the balance with `ConsistentRead=true`, and keep its version number.
+2. Run a conditional update: apply the debit only if `version` is still the same and `balance >= amount`.
+3. If the condition fails, someone else changed the account first. Retry from step 1.
+
+**Design rules**
+
+- Use strong mode only for data that must be exact: balances, uniqueness checks, inventory counts.
+- Use eventual reads for feeds, catalogues and search, where a slightly old value is fine.
+- Keep data that must change together under one key or partition, because cross-partition strong transactions are slower and more fragile.
+
+**Interview answer (about 30 seconds):**
+
+> "NoSQL databases are eventually consistent by default, but most can be strong per operation. I'd read from the primary with a consistent read, write with a majority or quorum, and make the update conditional on the version I read. For a banking balance, that's a DynamoDB consistent read followed by a conditional update. For feeds and catalogues I'd keep eventual reads, because they're faster."
+
+**Likely follow-ups**
+
+- **"So why not just use SQL?"** You can, and for multi-region strong consistency a NewSQL database (Spanner, CockroachDB) is often the cleaner choice. NoSQL is chosen for scale-out and flexible schema, and strong mode is a per-operation option.
+- **"Does strong consistency in one database stop at its boundary?"** Yes. Across databases or services, you need a saga or two-phase commit, as in the saga section.
+
+*Memory trick:* "**Ask for strong, per request**": the default is fast and eventual; strong is a flag you set each time.
 
 ---
 
