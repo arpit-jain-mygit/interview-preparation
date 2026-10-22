@@ -1870,72 +1870,49 @@ The filter removes most lookups, and the database stays the source of truth. A f
 
 ### 20.9 Rate limiting algorithms, explained simply
 
-**The simple version:** a rate limiter decides how many requests a client may make in a time period. Requests over the limit are rejected, usually with HTTP `429 Too Many Requests` and a `Retry-After` header. The algorithms differ in how they handle **bursts** (many requests at once) and how much memory they use.
+**The simple version:** a rate limiter counts each client's requests and rejects the extra ones with `429 Too Many Requests`. The five algorithms differ only in how they count, and each one fixes a problem in the one before it.
 
-*Analogy:* a car park with a fixed number of spaces, and a gate that counts cars in and out. Each algorithm is a different rule for how the gate counts.
+*Analogy:* a car park gate. Each algorithm is a different way of counting cars.
 
-#### The five algorithms
+**How each one builds on the last**
 
-**1. Token bucket (the usual default)**
-- A bucket holds up to `B` tokens. Tokens refill at a steady rate `r` per second.
-- Each request takes one token. If the bucket is empty, the request is rejected.
-- Short bursts are allowed up to `B`. The long-run average is capped at `r`.
+1. **Fixed window counter.** Count requests per minute, and reset at the start of each minute.
+   - *Simple and cheap.*
+   - *Weakness:* a client can send the full limit at 12:00:59 and again at 12:01:00. That is twice the limit in two seconds.
 
-*Example:* `B = 10`, `r = 5/sec`. A client can send 10 requests at once, then must wait for tokens to refill at 5 per second.
+2. **Sliding window log.** Store the timestamp of every request. Count the ones in the last minute.
+   - *Solves:* the boundary problem. The window moves with time, so there is no reset point to exploit.
+   - *Weakness:* it stores every timestamp, so memory grows with traffic.
 
-**2. Leaky bucket**
-- Requests join a queue. The queue drains at a constant rate, like water leaking from a hole.
-- The output is perfectly smooth, but requests wait in the queue, which adds latency. If the queue is full, new requests are dropped.
+3. **Sliding window counter.** Keep two counts, this window and the last one, and estimate the last minute from both.
+   - *Solves:* the memory problem. It uses two numbers per client and is nearly as accurate as the log.
+   - *Weakness:* it can reject a short burst that the average would allow.
 
-*Use it when:* a downstream system must receive a steady rate, such as a payment gateway that accepts a fixed number of calls per second.
+4. **Token bucket.** A bucket holds tokens that refill at a steady rate. Each request takes one token.
+   - *Solves:* the burst problem. A client that has been quiet can send a short burst up to the bucket size, while the long-run average stays capped.
+   - *Weakness:* the output is still bursty, so a slow downstream system can be overwhelmed.
 
-**3. Fixed window counter**
-- Count requests in fixed windows, such as one counter per minute (`12:00:00–12:00:59`).
-- Reset the counter when the window ends.
-- Very simple and cheap. Weakness: a client can send the full limit at `12:00:59` and again at `12:01:00`. That is double the limit across the boundary.
+5. **Leaky bucket.** Requests join a queue that drains at a fixed rate.
+   - *Solves:* bursty output. The downstream system receives a smooth, constant rate.
+   - *Weakness:* requests wait in the queue, which adds delay, and requests are dropped when the queue is full.
 
-**4. Sliding window log**
-- Store the timestamp of every request in the last window. Count how many fall inside the window now.
-- Exact and free of the boundary problem. Weakness: memory grows with the request rate, since every timestamp is stored.
+**Which one to use**
 
-**5. Sliding window counter**
-- Keep counts for the current and previous fixed windows. Estimate the rolling count as:
-  `estimate = previous_count × (portion of previous window still inside the rolling window) + current_count`
-- Almost as accurate as the log, with the memory of a fixed counter. A common compromise in production.
+- **Token bucket** for most APIs.
+- **Leaky bucket** when the downstream system needs a steady rate.
+- **Sliding window counter** for simple per-user limits, such as login attempts.
 
-#### Quick comparison
+**Across many servers:** keep the counters in Redis. For the token bucket, use a Lua script so the check and the update happen as one atomic step.
 
-| Algorithm | Allows bursts? | Smooth output? | Memory | Boundary problem? |
-|---|---|---|---|---|
-| Token bucket | Yes, up to bucket size | No | Very low | No |
-| Leaky bucket | No (queued) | Yes | Low (queue) | No |
-| Fixed window | Yes, double at the boundary | No | Very low | Yes |
-| Sliding window log | No | No | High | No |
-| Sliding window counter | Little | No | Low | Minimal |
+**DCP example:** each sector gets a token bucket on the upload API. One large batch cannot block the other sectors.
 
-#### Making it work across many servers
+**Banking example:** 5 failed logins per 15 minutes per account, counted with a sliding window counter. The hard daily transfer cap is enforced in the database.
 
-A limiter on one server is not enough if the client's requests land on several. Keep the counters in a shared store, usually Redis:
+**Interview answer (about 20 seconds):**
 
-- `INCR` plus `EXPIRE` gives a simple fixed-window counter.
-- A token bucket needs a read-modify-write step, so run it as a **Lua script** in Redis. That makes the check and the update one atomic operation.
-- Expect a small delay between servers, so limits are approximate. For money-related limits, enforce the hard cap in the database as well.
+> "I'd start with a token bucket. It allows short bursts and caps the average rate. The counters sit in Redis, updated atomically with a Lua script. If the downstream system needs a smooth rate, I'd switch to a leaky bucket."
 
-**DCP example:** each tenant (sector) gets a token bucket on the document upload API, for example `B = 50` and `r = 10/sec`. A large sector can upload a batch quickly, but cannot starve the other sectors. The limiter runs at the API gateway, with the counters in Redis. A client that gets `429` receives `Retry-After`, and the upload client waits and retries.
-
-**Banking example:** limit failed login attempts per account with a fixed or sliding window, such as 5 failures per 15 minutes, then lock the account for a while. Limit transfer requests per customer per day with a hard counter in the database, because a slightly loose count in Redis would be a control failure.
-
-**Interview answer (about 30 seconds):**
-
-> "I'd use a token bucket for most APIs: it allows short bursts up to the bucket size and caps the long-run rate. The counters live in Redis, with a Lua script so each check is atomic. Limits are per tenant or per API key, applied at the gateway, and rejected requests get a 429 with Retry-After. For login attempts I'd use a sliding window, and for a hard financial cap I'd enforce it in the database, because a shared Redis counter is approximate."
-
-**Likely follow-ups**
-
-- **"Why not a fixed window?"** It is simple, but a client can double its rate at the window boundary. A sliding window counter fixes that at almost no extra cost.
-- **"Token bucket or leaky bucket?"** Token bucket when bursts are fine. Leaky bucket when the downstream system needs a smooth, constant rate.
-- **"Where do you put the limiter?"** Gateway first, to protect the whole platform. Add per-service limits too, so one service cannot overload another.
-
-*Memory trick:* "**Bucket for bursts, leak for smoothness**": the token bucket lets a burst through, the leaky bucket spreads it out.
+*Memory trick:* "**Each one fixes the last one's problem**": fixed window → sliding log → sliding counter → token bucket → leaky bucket.
 
 ---
 
