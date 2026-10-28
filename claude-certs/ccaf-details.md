@@ -8,6 +8,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
 - [1.3 Why spawning a subagent is a tool call](#13-why-spawning-a-subagent-is-a-tool-call)
+- [1.3 How a subagent knows which tools it has](#13-how-a-subagent-knows-which-tools-it-has)
 
 ---
 
@@ -215,3 +216,46 @@ So from the coordinator's point of view, a whole subagent run looks exactly like
 
 - [Subagents in the SDK - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/subagents): "Claude invokes subagents through the Agent tool"; the `tools` field, "If omitted, inherits every tool available to subagents"
 - [Create custom subagents - Claude Code docs](https://code.claude.com/docs/en/sub-agents): each subagent runs in its own context window with a custom system prompt, specific tool access and independent permissions
+
+---
+
+## 1.3 How a subagent knows which tools it has
+
+Back to [1.3 Spawning subagents and passing context](ccaf.md#13-spawning-subagents-and-passing-context).
+
+**The doubt:** "If the orchestrator doesn't share the tool list, how does the subagent (Riya) know which tools she can use?"
+
+**The short answer:** the **harness** (your code, the Agent SDK or Claude Code) tells her, not the orchestrator. Every time Riya's loop calls the Claude API, the harness includes her tool list in the request's `tools` parameter, built from **her definition**, which **you, the developer**, wrote in advance.
+
+**Analogy:** when Riya joins the company, **IT sets up her laptop** based on her job role: search portal, reports app, spreadsheet. Her manager never lists the apps. When she gets a task, she just opens the laptop and sees what's installed.
+
+| Office | Agent system |
+|---|---|
+| HR writes the job role | **You (developer)** write the subagent definition: `description`, `prompt`, `tools`, `model` |
+| IT installs the apps on her laptop | **The harness** sends her tool schemas (name, description, input format) with every API call she makes |
+| Manager gives her a task | **The coordinator** calls the Task tool with only `subagent_type` and the task `prompt` |
+| Riya uses the apps she sees | **The subagent** (Claude) reads the tool descriptions in its request and picks what it needs |
+
+**Who shares what:**
+
+| Who | Shares | With whom |
+|---|---|---|
+| Developer | The subagent definitions (written once, in code or `.claude/agents/` files) | The harness |
+| Harness | The Task tool, whose description lists the available subagent types and their `description`s | The coordinator |
+| Coordinator (Claude) | The chosen `subagent_type` + a task `prompt` (goal, facts, prior findings) | The subagent |
+| Harness | That subagent's own tool schemas, on every API call in its loop | The subagent |
+
+**So the orchestrator never handles tools for the subagent.** It only decides *which* subagent to start and *what* to tell it. That's also why the subagent's `description` matters so much: it is the only thing the coordinator sees when deciding which subagent to use (1.3).
+
+**Remember from 1.1:** Claude has no memory between API calls. "Knowing its tools" just means the tool schemas are included in each request the harness sends. This is the same mechanism as for any single agent; a subagent is no different.
+
+**For the exam:**
+
+- A subagent's tools are fixed in its definition and delivered by the harness, not passed by the coordinator.
+- The coordinator passes only the task prompt, so all context the subagent needs must be written into that prompt.
+- The coordinator chooses subagents by reading their `description`s.
+
+**References:**
+
+- [Subagents in the SDK - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/subagents): the `AgentDefinition` fields (`description`, `prompt`, `tools`, `model`)
+- [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): tools are sent in the `tools` parameter of each API request
