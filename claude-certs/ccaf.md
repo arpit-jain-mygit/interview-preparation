@@ -54,8 +54,8 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
 ### 1.1 The agentic loop
 
 - **Chatbot vs. agent:** a chatbot answers once. An agent runs a loop: it calls tools, reads the results and keeps going until the job is done.
-- **Four steps, repeated:** Perceive → Reason → Act (call a tool) → Observe (read the result).
-- **`stop_reason` drives the loop:**
+- **Four steps, repeated:** Perceive → Reason → Act (call a tool) → Observe (read the result). ([explained simply](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words))
+- **`stop_reason` drives the loop:** ([all `stop_reason` values](ccaf-details.md#11-all-stop_reason-values))
   - `tool_use` means run the tool, send the result back and loop again.
   - `end_turn` means Claude is done, so stop.
 - **Send results back** as a `tool_result` added to the conversation. If you skip this, Claude never sees what the tool found.
@@ -65,7 +65,6 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
   - ignoring `stop_reason`
   - no end condition, so the loop never stops
   - not sending tool results back
-- **More detail:** [the four steps in simple words, where the agent fits, and where `stop_reason` fits](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words) and [all `stop_reason` values](ccaf-details.md#11-all-stop_reason-values)
 
 ### 1.2 Coordinator-subagent pattern
 
@@ -75,13 +74,11 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
 - **The coordinator's four jobs:** Route, Manage errors, Select which subagents to run, Synthesize the results. It manages; it doesn't do the work itself.
 - **Sequential vs. parallel:** if parts depend on each other, run them in sequence (research → analyze → write). If they're independent, run them in parallel, which is faster.
 - **Iterative refinement:** delegate → synthesize → check quality → re-delegate if the result falls short.
-- **Narrow-decomposition trap:** the pieces must add up to the whole question. Example: "creative industries" split into only a visual-arts subagent misses music, film and design.
-- **More detail:** [the narrow-decomposition trap explained](ccaf-details.md#12-the-narrow-decomposition-trap)
+- **Narrow-decomposition trap:** the pieces must add up to the whole question. Example: "creative industries" split into only a visual-arts subagent misses music, film and design. ([explained simply](ccaf-details.md#12-the-narrow-decomposition-trap))
 
 ### 1.3 Spawning subagents and passing context
 
-- **Task tool:** the coordinator spawns a subagent with a tool call. The subagent runs its own loop in its own isolated context.
-- **More detail:** [why spawning a subagent is a tool call, and why not share all tools](ccaf-details.md#13-why-spawning-a-subagent-is-a-tool-call) and [how a subagent knows which tools it has](ccaf-details.md#13-how-a-subagent-knows-which-tools-it-has)
+- **Task tool:** the coordinator spawns a subagent with a tool call. The subagent runs its own loop in its own isolated context. ([why it is a tool call](ccaf-details.md#13-why-spawning-a-subagent-is-a-tool-call), [how a subagent knows its tools](ccaf-details.md#13-how-a-subagent-knows-which-tools-it-has))
 - **An agent definition has four parts:** `description` (tells the coordinator *when* to use it, so write it clearly), `prompt` (how it behaves), `tools` (what it can use) and `model` (optional; a cheaper model works for simple subagents).
 - **Scope tools tightly:** give each subagent only the tools its job needs. A research agent gets search, not the refund tool.
 - **Parallelism:** several Task calls in one turn run the subagents in parallel.
