@@ -53,7 +53,7 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
 
 ### 1.1 The agentic loop
 
-- **Chatbot vs. agent:** a chatbot answers once. An agent runs a loop: it calls tools, reads the results and keeps going until the job is done.
+- **Chatbot vs. agent:** a chatbot answers once. An agent runs a loop: it calls tools, reads the results and keeps going until the job is done. ([tool vs. agent](ccaf-details.md#11-tool-vs-agent))
 - **Four steps, repeated:** Perceive → Reason → Act (call a tool) → Observe (read the result). ([explained simply](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words))
 - **`stop_reason` drives the loop:** ([all `stop_reason` values](ccaf-details.md#11-all-stop_reason-values))
   - `tool_use` means run the tool, send the result back and loop again.

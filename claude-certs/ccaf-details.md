@@ -6,6 +6,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
+- [1.1 Tool vs. agent](#11-tool-vs-agent)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
 - [1.2 The coordinator picks subagents at runtime](#12-the-coordinator-picks-subagents-at-runtime)
 - [1.3 Why spawning a subagent is a tool call](#13-why-spawning-a-subagent-is-a-tool-call)
@@ -306,3 +307,39 @@ Because it's a model decision, the same question can sometimes take a different 
 **For the exam:** the coordinator dynamically selects subagents based on the request. It is not a fixed routing script.
 
 **Reference:** [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents), "orchestrator-workers" workflow: subtasks aren't pre-defined but determined by the orchestrator based on the specific input.
+
+---
+
+## 1.1 Tool vs. agent
+
+Back to [1.1 The agentic loop](ccaf.md#11-the-agentic-loop).
+
+**In one line:** a **tool** does one fixed job when asked. An **agent** decides what to do, uses tools to do it, and keeps going until the job is done.
+
+**Analogy:** a calculator is a tool: press the same buttons, get the same answer, every time. An accountant is an agent: they decide which calculations to run, look at the results, and decide what to do next. The accountant *uses* the calculator.
+
+| | Tool | Agent |
+|---|---|---|
+| What it is | A function: code with inputs and an output (an API call, a database query, a file read) | A model + system prompt + its own tools, running the agentic loop |
+| Thinks? | No. Same input gives the same output | Yes. It decides what to do next based on what it has seen |
+| Steps | One call, one result | Many turns, until it decides it's done (`end_turn`) |
+| Who runs it | Your code (the harness), when the model asks | The harness runs its loop; the model drives it |
+| Has tools? | No | Yes, a scoped set |
+| Has context? | No memory, no conversation | Its own conversation (context window) |
+| Example | `look_up_order(order_id)`, `issue_refund(...)` | an order agent, a refund agent, Claude Code itself |
+
+**Where they meet: a subagent looks like a tool from outside.** A coordinator's model can only call tools, so starting a subagent is done through a tool (the Task / Agent tool in Claude's Agent SDK). From the coordinator's side it is one tool call and one tool result. Inside, a whole agent runs its own loop with its own tools. So "the coordinator called a tool" can mean "it started an agent". That's the usual source of confusion.
+
+**A simple test:** does it make decisions? If it always does the same thing for the same input, it's a tool. If a model chooses its next step, it's an agent.
+
+**Good code structure:** keep plain tools and agent definitions in separate places (for example `tools.py` vs. `subagents.py` / `orchestrator.py`), with the "start a subagent" wrapper living next to the agent that uses it. The practice app [agentic-ai-hello-world](https://github.com/arpit-jain-mygit/agentic-ai-hello-world) is laid out this way.
+
+**For the exam:**
+
+- Tools are how an agent *acts*; the loop is what makes it an *agent* (agent = model + tools + loop).
+- Spawning a subagent is a tool call (Task tool); the subagent itself is an agent with isolated context and scoped tools.
+
+**References:**
+
+- [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents): agents as LLMs using tools based on environmental feedback in a loop
+- [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): what a tool is and how Claude calls it
