@@ -76,6 +76,7 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
 - **Sequential vs. parallel:** if parts depend on each other, run them in sequence (research → analyze → write). If they're independent, run them in parallel, which is faster.
 - **Iterative refinement:** delegate → synthesize → check quality → re-delegate if the result falls short.
 - **Narrow-decomposition trap:** the pieces must add up to the whole question. Example: "creative industries" split into only a visual-arts subagent misses music, film and design.
+- **More detail:** [the narrow-decomposition trap explained](ccaf-details.md#12-the-narrow-decomposition-trap)
 
 ### 1.3 Spawning subagents and passing context
 

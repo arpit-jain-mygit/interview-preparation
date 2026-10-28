@@ -6,6 +6,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
+- [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
 
 ---
 
@@ -116,3 +117,47 @@ Every Messages API response carries a `stop_reason` that says why Claude stopped
 - **Retrying an empty response unchanged doesn't work.** Claude has already decided it's done. Add a new user message such as "Please continue" instead.
 
 **Reference:** [Handling stop reasons - Claude docs](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)
+
+---
+
+## 1.2 The narrow-decomposition trap
+
+Back to [1.2 Coordinator-subagent pattern](ccaf.md#12-coordinator-subagent-pattern).
+
+**In one line:** when the coordinator splits a big question into subtasks, the subtasks together must cover the *whole* question. If they cover only part of it, the final answer quietly answers a smaller question.
+
+**Simple analogy:** you ask a friend to "plan our family holiday". They book flights and nothing else. Every flight detail is perfect, but there's no hotel, no food plan and no activities. Nothing failed; the job was just cut too small at the start.
+
+**The course example, step by step:**
+
+1. User asks: "Research the impact of AI on the **creative industries**."
+2. The coordinator decomposes it into a single subagent: "Research AI in **visual arts**."
+3. That subagent does excellent work on visual arts.
+4. The coordinator synthesizes and returns a polished report.
+5. The report says nothing about music, film, writing, design or gaming, so most of the question was never answered.
+
+```
+Asked:      creative industries = visual arts + music + film + writing + design + gaming
+Delegated:                        visual arts
+Missing:                                        music + film + writing + design + gaming
+```
+
+**Why it's a trap:**
+
+- **It fails silently.** Every subagent succeeds, there are no errors, and the report looks confident and complete.
+- **The fault is in the coordinator, not the subagents.** Each subagent did exactly what it was asked. The gap was created at the decomposition step, before any work started. (Exam questions often offer "improve the subagents' prompts" or "add more tools" as wrong answers; the right fix is in how the coordinator splits the task.)
+
+**How to avoid it:**
+
+| Fix | What it means |
+|---|---|
+| List the full scope first | Before delegating, have the coordinator list every part the question covers (all the creative industries), then assign subtasks from that list. |
+| Coverage check | Ask "do these subtasks add up to the original question?" before spawning subagents. |
+| Clear boundaries per subagent | Give each subagent an objective, output format and explicit scope, so there are no gaps and no overlaps. |
+| Check after synthesis | In the refinement step, compare the combined result against the original question and re-delegate anything missing. |
+
+**The opposite mistake:** vague, overlapping subtasks, where several subagents research the same thing and waste effort. Good decomposition avoids both **gaps** (too narrow) and **duplicates** (unclear boundaries).
+
+**For the exam:** if the final report is good but incomplete and every subagent succeeded, the root cause is the coordinator's decomposition being too narrow.
+
+**Reference:** [How we built our multi-agent research system - Anthropic](https://www.anthropic.com/research/multi-agent-research-system), section "Teach the orchestrator how to delegate": each subagent needs an objective, output format, tool guidance and clear task boundaries, or agents "duplicate work, leave gaps, or fail to find necessary information."
