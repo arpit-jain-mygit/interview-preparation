@@ -7,6 +7,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
+- [1.2 The coordinator picks subagents at runtime](#12-the-coordinator-picks-subagents-at-runtime)
 - [1.3 Why spawning a subagent is a tool call](#13-why-spawning-a-subagent-is-a-tool-call)
 - [1.3 How a subagent knows which tools it has](#13-how-a-subagent-knows-which-tools-it-has)
 
@@ -259,3 +260,49 @@ Back to [1.3 Spawning subagents and passing context](ccaf.md#13-spawning-subagen
 
 - [Subagents in the SDK - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/subagents): the `AgentDefinition` fields (`description`, `prompt`, `tools`, `model`)
 - [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): tools are sent in the `tools` parameter of each API request
+
+---
+
+## 1.2 The coordinator picks subagents at runtime
+
+Back to [1.2 Coordinator-subagent pattern](ccaf.md#12-coordinator-subagent-pattern).
+
+**The doubt:** "Does the orchestrator also decide at runtime which agent to call?"
+
+**Yes.** The coordinator is an agent, so it runs the same loop as any agent (1.1). Its "tools" are the spawn tools, one per subagent, and its model reads their **descriptions** and decides, for each request:
+
+- **which** subagents to call (one, several or none),
+- in **what order**,
+- **how many times** (it can call one again if the answer falls short, which is iterative refinement),
+- and **what task text** to give each one.
+
+Your code never says "call the order agent first". This is the coordinator's **Select** and **Route** jobs, done by the model, not by if/else code (model-driven vs. hardcoded, 1.1).
+
+**What is fixed vs. decided at runtime:**
+
+| Fixed in advance (by you, the developer) | Decided at runtime (by the coordinator's model) |
+|---|---|
+| Which subagents exist | Which of them to call for this request |
+| Each subagent's `description`, prompt and tools | The order of the calls |
+| The coordinator's system prompt | How many times to call each one |
+| | The task text passed to each subagent |
+| | When to stop and give the final answer |
+
+**Example with an orchestrator, an order agent and a refund agent** (from the [agentic-ai-hello-world](https://github.com/arpit-jain-mygit/agentic-ai-hello-world) practice app):
+
+| User asks | The coordinator will likely call |
+|---|---|
+| "Where is my order 9931?" | order agent only |
+| "Can I get a refund for 9931?" | refund agent (maybe the order agent first, to get the price) |
+| "9931 arrived broken. Where is it and can I get a refund?" | both |
+| "Hi, what are your opening hours?" | neither; it answers directly |
+
+Because it's a model decision, the same question can sometimes take a different path on a different run.
+
+**Why the `description` matters:** it is the only thing the coordinator sees about each subagent when choosing. A vague or overlapping description leads to the wrong subagent or no subagent, just like the wrong-tool problem in 2.1.
+
+**When you *don't* want the model to choose:** if the steps are fixed and known in advance, use a simple pipeline (prompt chaining) instead of an orchestrator (1.6). If one step must always happen, force it with a hook or `tool_choice` rather than hoping the coordinator picks it (1.5, 2.3).
+
+**For the exam:** the coordinator dynamically selects subagents based on the request. It is not a fixed routing script.
+
+**Reference:** [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents), "orchestrator-workers" workflow: subtasks aren't pre-defined but determined by the orchestrator based on the specific input.
