@@ -81,6 +81,7 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
 ### 1.3 Spawning subagents and passing context
 
 - **Task tool:** the coordinator spawns a subagent with a tool call. The subagent runs its own loop in its own isolated context.
+- **More detail:** [why spawning a subagent is a tool call, and why not share all tools](ccaf-details.md#13-why-spawning-a-subagent-is-a-tool-call)
 - **An agent definition has four parts:** `description` (tells the coordinator *when* to use it, so write it clearly), `prompt` (how it behaves), `tools` (what it can use) and `model` (optional; a cheaper model works for simple subagents).
 - **Scope tools tightly:** give each subagent only the tools its job needs. A research agent gets search, not the refund tool.
 - **Parallelism:** several Task calls in one turn run the subagents in parallel.

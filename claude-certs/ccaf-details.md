@@ -7,6 +7,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
+- [1.3 Why spawning a subagent is a tool call](#13-why-spawning-a-subagent-is-a-tool-call)
 
 ---
 
@@ -161,3 +162,56 @@ Missing:                                        music + film + writing + design 
 **For the exam:** if the final report is good but incomplete and every subagent succeeded, the root cause is the coordinator's decomposition being too narrow.
 
 **Reference:** [How we built our multi-agent research system - Anthropic](https://www.anthropic.com/research/multi-agent-research-system), section "Teach the orchestrator how to delegate": each subagent needs an objective, output format, tool guidance and clear task boundaries, or agents "duplicate work, leave gaps, or fail to find necessary information."
+
+---
+
+## 1.3 Why spawning a subagent is a tool call
+
+Back to [1.3 Spawning subagents and passing context](ccaf.md#13-spawning-subagents-and-passing-context).
+
+**The doubt:** "Tools are called by an agent when needed, and the orchestrator shares the tool descriptions with the agent. So why does the coordinator spawn a subagent *with a tool call*? Shouldn't it just share all the tool info with the agent?"
+
+**The short answer:** your first assumption is right. Tools are called by an agent when it needs them. The key is that **the coordinator is itself an agent**, and "spawn a subagent" is just **one of its tools**. There are two separate levels:
+
+| Level | Who | Its tools | What its tool calls do |
+|---|---|---|---|
+| Coordinator | An agent running its own loop | Usually few: mainly the **Task tool** (spawn a subagent), maybe a few others | Calling Task starts a whole new agent |
+| Subagent | Another agent, with its own loop and context | Its own working tools: search, read, refund lookup, ... | Calling them does the actual work |
+
+**Simple analogy:** a manager (coordinator) and team members (subagents).
+
+- The manager's "tool" for getting work done is **assigning a task** to someone: "Riya, research music industry trends and send me the top 3 findings."
+- Riya has her own tools (search engine, reports, spreadsheets) and decides for herself how to use them.
+- The manager doesn't hand Riya a list of every tool in the company each time. Riya's job role already defines which tools she has.
+
+**How spawning works in the loop:**
+
+1. Coordinator runs its loop and reasons: "I need music research done."
+2. It replies with `tool_use` for the **Task** tool, with input like `{ subagent_type: "researcher", prompt: "Research AI in the music industry. Return the top 3 findings with sources." }`.
+3. The harness (Agent SDK / Claude Code) executes that tool call by **starting a new agent**: fresh, isolated context, the subagent's own system prompt and tools.
+4. The subagent runs its own Perceive → Reason → Act → Observe loop, calling *its* tools as needed.
+5. When it finishes, its final answer comes back to the coordinator as the **`tool_result`** of the Task call.
+6. The coordinator observes that result and continues its own loop.
+
+So from the coordinator's point of view, a whole subagent run looks exactly like one tool call and one tool result.
+
+**Why not just "share all the tools" with the subagent?**
+
+- **The orchestrator doesn't pass tools at runtime.** A subagent's tools are fixed in its **definition** (the `tools` field), written by you, the developer. At spawn time the coordinator passes only the **task** (the prompt). Everything else the subagent needs must be in that prompt, because it inherits no conversation history (see 1.3).
+- **You *can* give it everything.** If you leave out the `tools` field, the subagent inherits every tool available to subagents. It's allowed; it's just usually not the best design.
+- **Fewer tools = better choices.** A subagent with 5 relevant tools picks the right one more reliably than one with 60 (see 2.3).
+- **Safety (least privilege).** A research subagent shouldn't be able to issue refunds or delete files. Giving it only search tools makes that impossible, not just unlikely.
+- **Focus.** The whole point of a subagent is a small, clean context for one job. Loading it with unrelated tool descriptions works against that.
+
+**Name note:** the course calls it the **Task tool**. The current Claude Code and Agent SDK docs call the same thing the **Agent tool**. Same idea: a tool whose job is to start a subagent.
+
+**For the exam:**
+
+- Spawning a subagent = the coordinator calls the Task tool; the subagent's final answer comes back as the tool result.
+- Several Task calls in one turn = subagents run in parallel.
+- A subagent's tools come from its definition, scoped to its role; context comes only from the prompt passed at spawn time.
+
+**References:**
+
+- [Subagents in the SDK - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/subagents): "Claude invokes subagents through the Agent tool"; the `tools` field, "If omitted, inherits every tool available to subagents"
+- [Create custom subagents - Claude Code docs](https://code.claude.com/docs/en/sub-agents): each subagent runs in its own context window with a custom system prompt, specific tool access and independent permissions
