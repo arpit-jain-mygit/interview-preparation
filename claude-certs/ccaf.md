@@ -65,7 +65,7 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
   - ignoring `stop_reason`
   - no end condition, so the loop never stops
   - not sending tool results back
-- **More detail:** [the four steps in simple words, where the agent fits, and where `stop_reason` fits](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words)
+- **More detail:** [the four steps in simple words, where the agent fits, and where `stop_reason` fits](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words) and [all `stop_reason` values](ccaf-details.md#11-all-stop_reason-values)
 
 ### 1.2 Coordinator-subagent pattern
 

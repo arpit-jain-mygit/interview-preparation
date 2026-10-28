@@ -5,6 +5,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 ## Contents
 
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
+- [1.1 All stop_reason values](#11-all-stop_reason-values)
 
 ---
 
@@ -88,3 +89,30 @@ while True:
 - [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): the `tool_use` → `tool_result` round trip and `stop_reason`
 - [How the agent loop works - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/agent-loop): the same loop, run for you by the SDK
 - [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents): agents as an LLM using tools in a loop, based on feedback from its environment
+
+---
+
+## 1.1 All stop_reason values
+
+Back to [1.1 The agentic loop](ccaf.md#11-the-agentic-loop).
+
+Every Messages API response carries a `stop_reason` that says why Claude stopped. The course only covers the first two; the rest come from the Claude docs.
+
+| Value | What it means | What your loop should do |
+|---|---|---|
+| `end_turn` | Claude finished its answer naturally. The most common value. | Stop the loop and use the answer. |
+| `tool_use` | Claude wants to call one or more tools. | Run the tools, send back the `tool_result`s, and call the API again. |
+| `max_tokens` | The reply hit the `max_tokens` limit you set and was cut off. | Don't treat it as finished. Continue, or retry with a higher limit (always retry if the last block is a half-written `tool_use`). |
+| `stop_sequence` | Claude produced one of your custom `stop_sequences`. | Treat it as a deliberate stop at your marker and process the output. |
+| `pause_turn` | A server-side tool loop (such as web search) hit its iteration limit, 10 per request by default, before Claude finished. | Send the response back as-is so Claude can continue. |
+| `refusal` | Claude declined to respond for safety reasons. It arrives as a normal HTTP 200, not an error. | Don't retry blindly. Handle it as a refusal (rephrase, or tell the user). |
+| `model_context_window_exceeded` | Claude stopped because the conversation reached the model's context window limit. | Trim or compact the context (see Domain 5), then continue. |
+
+**For the exam:** the agentic loop only needs `tool_use` (keep going) and `end_turn` (stop). A robust loop should also handle `max_tokens` and `pause_turn` instead of treating them as "done".
+
+**Common pitfalls (from the docs):**
+
+- **Empty `end_turn` responses.** If you add a text block right after a `tool_result` in the same user message, Claude may learn the pattern "user always speaks after a tool" and end its turn with an empty reply. Send `tool_result`s on their own.
+- **Retrying an empty response unchanged doesn't work.** Claude has already decided it's done. Add a new user message such as "Please continue" instead.
+
+**Reference:** [Handling stop reasons - Claude docs](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)
