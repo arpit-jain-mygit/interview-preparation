@@ -75,14 +75,22 @@ Think of a support agent at a help desk handling "Where's my refund for order 99
 
 Then go back to step 1 with the new note. The agent repeats this until it has enough to answer, then replies and stops.
 
-**What each step looks like in the Claude API:**
+**What each step looks like in the Claude API, and where the agent fits:**
 
-| Step | What happens | Who does it |
-|---|---|---|
-| Perceive | Claude reads the whole `messages` list: the user's request plus every earlier `tool_result` | Claude |
-| Reason | Claude decides whether it needs a tool, and which one with which inputs | Claude |
-| Act | Claude replies with a `tool_use` block and `stop_reason: "tool_use"`; **your code** runs the tool | Claude asks, your code executes |
-| Observe | Your code appends the output as a `tool_result` and calls the API again | Your code sends it, Claude reads it |
+The agent is not one of the four steps. It is the whole system that runs all four: **agent = model (Claude) + tools + loop (your code or the Agent SDK)**, guided by the system prompt.
+
+| Step | What happens | Who does it | Agent part used |
+|---|---|---|---|
+| Perceive | Claude reads the whole `messages` list: the user's request plus every earlier `tool_result` | Claude | Model (the brain) |
+| Reason | Claude decides whether it needs a tool, and which one with which inputs | Claude | Model, guided by the system prompt |
+| Act | Claude replies with a `tool_use` block and `stop_reason: "tool_use"`; **your code** runs the tool | Claude asks, your code executes | Tools (the hands), run by the loop |
+| Observe | Your code appends the output as a `tool_result` and calls the API again | Your code sends it, Claude reads it | Loop (the harness) feeding the model |
+| **All four, repeated until `end_turn`** | The cycle continues until Claude has enough to answer | Model + loop together | **The agent** |
+
+- **Claude alone** is just a model: one request in, one reply out.
+- **Claude + tools + loop** is an agent: it keeps acting until the job is done.
+- **Agent SDK:** runs the loop and the tools for you; you supply instructions and tools.
+- **Claude Code:** a ready-made agent built the same way (Claude + Read/Edit/Bash/... + the loop).
 
 **Key details:**
 
