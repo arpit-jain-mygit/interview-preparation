@@ -64,6 +64,53 @@ Study notes from Ankit Mistry's Udemy course slides, one section per exam domain
   - no end condition, so the loop never stops
   - not sending tool results back
 
+#### The four steps, in simple words
+
+Think of a support agent at a help desk handling "Where's my refund for order 9931?":
+
+1. **Perceive:** read everything on the desk: the customer's question plus any notes gathered so far.
+2. **Reason:** decide what to do next: "I need to look up the order first."
+3. **Act:** do one thing: open the order system and search for 9931.
+4. **Observe:** read what came back: "No refund on file." This becomes a new note on the desk.
+
+Then go back to step 1 with the new note. The agent repeats this until it has enough to answer, then replies and stops.
+
+**What each step looks like in the Claude API:**
+
+| Step | What happens | Who does it |
+|---|---|---|
+| Perceive | Claude reads the whole `messages` list: the user's request plus every earlier `tool_result` | Claude |
+| Reason | Claude decides whether it needs a tool, and which one with which inputs | Claude |
+| Act | Claude replies with a `tool_use` block and `stop_reason: "tool_use"`; **your code** runs the tool | Claude asks, your code executes |
+| Observe | Your code appends the output as a `tool_result` and calls the API again | Your code sends it, Claude reads it |
+
+**Key details:**
+
+- **Claude never runs the tool itself.** It only asks for it. Your application (or the Agent SDK, which runs this loop for you) executes the tool and sends the result back.
+- **Claude has no memory between calls.** Each API call re-sends the full conversation, so Observe only works if you append the `tool_result` before calling again. This is why "not sending results back" breaks the loop.
+- **Each pass gives Claude new facts.** Its next decision is based on real tool output rather than a guess, which is why it can pick a different tool depending on what it just learned.
+- **The loop ends on `end_turn`.** That's when Claude has enough to answer. Add a safety cap (a maximum number of turns) so a confused agent can't loop forever.
+
+**The whole loop in pseudocode:**
+
+```python
+messages = [user_request]
+while True:
+    response = claude.messages.create(messages=messages, tools=tools)   # Perceive + Reason
+    messages.append(response)
+    if response.stop_reason == "end_turn":                              # done
+        break
+    results = [run_tool(block) for block in response.content
+               if block.type == "tool_use"]                              # Act
+    messages.append({"role": "user", "content": results})               # Observe (tool_result)
+```
+
+**References:**
+
+- [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): the `tool_use` → `tool_result` round trip and `stop_reason`
+- [How the agent loop works - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/agent-loop): the same loop, run for you by the SDK
+- [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents): agents as an LLM using tools in a loop, based on feedback from its environment
+
 ### 1.2 Coordinator-subagent pattern
 
 - **Why:** one agent doing research, analysis and writing gets a cluttered context and loses focus. Splitting the work across specialists keeps each one sharp.
