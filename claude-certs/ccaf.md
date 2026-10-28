@@ -92,6 +92,30 @@ The agent is not one of the four steps. It is the whole system that runs all fou
 - **Agent SDK:** runs the loop and the tools for you; you supply instructions and tools.
 - **Claude Code:** a ready-made agent built the same way (Claude + Read/Edit/Bash/... + the loop).
 
+**Where `stop_reason` fits:**
+
+`stop_reason` is not a step of its own. It is the **handoff signal between Reason and Act**: Claude sets it at the end of Reason, and your loop reads it to decide whether Act happens at all.
+
+```
+Perceive → Reason ──[stop_reason]──→ Act → Observe → (back to Perceive)
+                         │
+                         └── end_turn → stop, give the answer
+```
+
+| Step | What happens to `stop_reason` |
+|---|---|
+| **Reason** (Claude) | Claude finishes thinking and **sets** `stop_reason` in its response: `tool_use` if it wants a tool, `end_turn` if it's ready to answer |
+| **Between Reason and Act** (your loop) | Your code **reads** `stop_reason` and branches on it |
+| **Act** (your code) | Happens **only if** `stop_reason` was `tool_use`. Your code runs the tool. |
+
+- `stop_reason` is **produced by** Reason. It records Claude's decision.
+- It **decides whether** Act happens, but it isn't part of running the tool.
+- It's the **exit check** for the whole loop: `end_turn` skips Act and Observe, and the agent stops.
+- **For the exam:** Claude decides and your code obeys. `stop_reason` is how Claude's decision reaches your loop.
+- **Other values (from the Claude docs, not the course slides):**
+  - `max_tokens`: the reply hit the token limit and was cut off. It's not a finished answer, so handle it rather than treating it as done.
+  - `pause_turn`: a long-running server-side tool paused. Send the response back to let it continue.
+
 **Key details:**
 
 - **Claude never runs the tool itself.** It only asks for it. Your application (or the Agent SDK, which runs this loop for you) executes the tool and sends the result back.
