@@ -71,7 +71,7 @@ For deeper explanations of individual topics, see [Additional Details](ccaf-deta
 - **Why:** one agent doing research, analysis and writing gets a cluttered context and loses focus. Splitting the work across specialists keeps each one sharp.
 - **Hub-and-spoke:** subagents never talk to each other. Everything goes through the coordinator, which gives one place to see everything and handle errors.
 - **Isolated context is the benefit:** each subagent sees only its own task. Use the pattern for tasks with separable parts. Simple single-threaded jobs don't need a coordinator.
-- **The coordinator's four jobs:** Route, Manage errors, Select which subagents to run, Synthesize the results. It manages; it doesn't do the work itself. ([how it picks subagents at runtime](ccaf-details.md#12-the-coordinator-picks-subagents-at-runtime))
+- **The coordinator's four jobs:** Route, Manage errors, Select which subagents to run, Synthesize the results. It manages; it doesn't do the work itself. ([how it picks subagents at runtime](ccaf-details.md#12-the-coordinator-picks-subagents-at-runtime), [synthesize explained](ccaf-details.md#12-synthesize-combining-subagent-answers))
 - **Sequential vs. parallel:** if parts depend on each other, run them in sequence (research → analyze → write). If they're independent, run them in parallel, which is faster.
 - **Iterative refinement:** delegate → synthesize → check quality → re-delegate if the result falls short.
 - **Narrow-decomposition trap:** the pieces must add up to the whole question. Example: "creative industries" split into only a visual-arts subagent misses music, film and design. ([explained simply](ccaf-details.md#12-the-narrow-decomposition-trap))

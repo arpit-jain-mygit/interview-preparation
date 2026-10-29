@@ -9,6 +9,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 - [1.1 Tool vs. agent](#11-tool-vs-agent)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
 - [1.2 The coordinator picks subagents at runtime](#12-the-coordinator-picks-subagents-at-runtime)
+- [1.2 Synthesize: combining subagent answers](#12-synthesize-combining-subagent-answers)
 - [1.3 Why spawning a subagent is a tool call](#13-why-spawning-a-subagent-is-a-tool-call)
 - [1.3 How a subagent knows which tools it has](#13-how-a-subagent-knows-which-tools-it-has)
 
@@ -365,3 +366,43 @@ Claude's Task / Agent tool works the same way: the model asks for the Task tool,
 
 - [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents): agents as LLMs using tools based on environmental feedback in a loop
 - [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): what a tool is and how Claude calls it
+
+---
+
+## 1.2 Synthesize: combining subagent answers
+
+Back to [1.2 Coordinator-subagent pattern](ccaf.md#12-coordinator-subagent-pattern).
+
+**In one line:** no single subagent knows the whole answer. The coordinator takes their separate answers and **combines them into one reply**. "Synthesize" just means *combine into one*.
+
+**Example** (customer: "Order 9931 arrived broken. Where is it and can I get a refund?"):
+
+```
+Order agent   knows:  "delivered, $120"     (nothing about refunds)
+Refund agent  knows:  "refunded $120"       (nothing about delivery)
+                          │                       │
+                          └──── Coordinator ──────┘
+                                     │
+                    combines both into ONE reply
+                                     ↓
+"Your order 9931 was delivered. Since it arrived broken, I've refunded $120."
+```
+
+**Analogy:** a manager gets two status updates from the team ("parcel delivered", "refund done") and writes **one** clear email to the customer, instead of forwarding two separate messages.
+
+**Where it happens:** in the coordinator's last turn. Its LLM sees the whole conversation, including every subagent answer (each returned as a tool result), and replies with `end_turn` and the combined answer.
+
+**The coordinator's four jobs, simply:**
+
+| Job | Simple meaning | In the example |
+|---|---|---|
+| Select | Decide *which* helpers are needed | order agent + refund agent |
+| Route | Send each one its task | "Find status...", "Refund 9931, $120..." |
+| Manage errors | Handle it if a helper fails | (nothing failed) |
+| Synthesize | Combine their answers into one | the final reply |
+
+**Good synthesis:** it covers every part of the original question (see [the narrow-decomposition trap](#12-the-narrow-decomposition-trap)), keeps each fact as the subagent reported it, and says honestly if a part is missing (for example "refund status unavailable") instead of hiding the gap.
+
+**For the exam:** the coordinator *assembles* the final answer from subagent results; it doesn't do the subagents' work itself. If the coordinator finds the combined result falls short, it can send work back for another pass (iterative refinement).
+
+**Reference:** [How we built our multi-agent research system - Anthropic](https://www.anthropic.com/research/multi-agent-research-system): the lead agent synthesizes subagents' results and decides whether more research is needed.
