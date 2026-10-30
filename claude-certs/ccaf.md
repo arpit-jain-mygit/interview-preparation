@@ -100,7 +100,7 @@ The exam is built on six scenarios. Four are picked at random for each candidate
 ### 1.1 Design and implement agentic loops for autonomous task execution
 
 **Knowledge**
-- The loop: send a request to Claude, check `stop_reason` (`tool_use` vs `end_turn`), run the requested tools, return the results for the next iteration. ([what a turn is](ccaf-details.md#11-what-is-a-turn-in-the-loop)) ([the four steps, simply](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words))
+- The loop: send a request to Claude, check `stop_reason` (`tool_use` vs `end_turn`), run the requested tools, return the results for the next iteration. ([what a turn is](ccaf-details.md#11-what-is-a-turn-in-the-loop)) ([which steps repeat, and where](ccaf-details.md#11-which-prao-steps-repeat-and-where-two-loops)) ([the four steps, simply](ccaf-details.md#11-the-agentic-loop-the-four-steps-in-simple-words))
 - Tool results are appended to the conversation history so Claude can reason about the next action. ([all `stop_reason` values](ccaf-details.md#11-all-stop_reason-values))
 - Model-driven decisions (Claude picks the next tool from context) vs pre-configured decision trees or fixed tool sequences. ([tool vs. agent](ccaf-details.md#11-tool-vs-agent))
 

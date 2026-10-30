@@ -6,6 +6,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
 - [1.1 What is a turn in the loop?](#11-what-is-a-turn-in-the-loop)
+- [1.1 Which PRAO steps repeat, and where: two loops](#11-which-prao-steps-repeat-and-where-two-loops)
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
 - [1.1 Tool vs. agent](#11-tool-vs-agent)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
@@ -127,6 +128,34 @@ If a tool depended on another tool's result (for example, you need the order's p
 **Why `MAX_TURNS` exists.** It caps the number of round trips one agent can take. A normal agent finishes in a few turns. The cap stops a confused agent that keeps asking for tools and never answers. Hitting the cap is a failure to report, not a normal finish.
 
 **Reference:** [How the agent loop works - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/agent-loop) and [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): the loop sends each request with the full message history, and a tool result goes back to Claude in the next request.
+
+---
+
+## 1.1 Which PRAO steps repeat, and where: two loops
+
+Back to [1.1 Design and implement agentic loops](ccaf.md#11-design-and-implement-agentic-loops-for-autonomous-task-execution).
+
+The loop has two levels, one inside the other:
+
+- **Outer loop (once per turn):** Perceive, then Reason. Every turn runs both.
+- **Inner loop (once per tool request):** Act, then Observe. It runs once for each `tool_use` block in Claude's reply.
+
+| Step | Loop | How many times |
+|---|---|---|
+| Perceive | outer | once per turn |
+| Reason | outer | once per turn |
+| Act | inner | once per tool request |
+| Observe | inner | once per tool request |
+
+After the inner loop, all the tool results go back to Claude as one message. That message is part of the same turn.
+
+**Example from the order agent.** In turn 1, Claude asked for two tools. The inner loop ran twice, so Act and Observe each ran twice. In turn 2, Claude gave a final answer with no tool request, so the inner loop ran zero times.
+
+**Why it's split this way.** Reason decides whether there is anything to act on. If Claude asks for no tools, there is nothing for the inner loop to do, so the outer loop ends.
+
+**In the code:** [agents/agent_loop.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/agents/agent_loop.py) has the outer `for turn in range(...)` loop and the inner `for block in response.content` loop.
+
+**Reference:** [How the agent loop works - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/agent-loop), which describes the same cycle of model call, tool execution and result return.
 
 ---
 
