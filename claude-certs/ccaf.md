@@ -145,15 +145,15 @@ The exam is built on six scenarios. Four are picked at random for each candidate
 - Structured handoff protocols for mid-process escalation: customer details, root-cause analysis and recommended actions.
 
 **Skills**
-- Block downstream tool calls until prerequisites are done. Example: block `process_refund` until `get_customer` returns a verified customer ID.
+- Block downstream tool calls until prerequisites are done. Example: block `process_refund` until `get_customer` returns a verified customer ID. ([gate a refund](ccaf-details.md#14-gate-a-refund-behind-the-policy-check))
 - Split multi-concern requests into distinct items, investigate each (in parallel where possible), then synthesize one resolution.
-- Compile a structured handoff summary (customer ID, root cause, refund amount, recommended action) for a human agent who cannot see the transcript.
+- Compile a structured handoff summary (customer ID, root cause, refund amount, recommended action) for a human agent who cannot see the transcript. ([handoff summary](ccaf-details.md#14-handoff-summary-for-a-human-agent))
 
 ### 1.5 Apply Agent SDK hooks for tool call interception and data normalization
 
 **Knowledge**
-- PostToolUse hooks transform tool results before the model reads them.
-- Pre-execution hooks intercept outgoing tool calls to enforce rules, such as blocking refunds above a threshold.
+- PostToolUse hooks transform tool results before the model reads them. ([normalize results](ccaf-details.md#15-posttooluse-hook-normalize-results))
+- Pre-execution hooks intercept outgoing tool calls to enforce rules, such as blocking refunds above a threshold. ([block and redirect](ccaf-details.md#15-pre-execution-hook-block-and-redirect))
 - Hooks give deterministic guarantees. Prompt instructions give probabilistic compliance.
 
 **Skills**

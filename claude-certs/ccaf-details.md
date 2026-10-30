@@ -18,6 +18,10 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 - [1.3 How a subagent knows which tools it has](#13-how-a-subagent-knows-which-tools-it-has)
 - [1.3 Passing context to a subagent](#13-passing-context-to-a-subagent)
 - [1.3 Model per subagent (practice extra)](#13-model-per-subagent-practice-extra)
+- [1.4 Gate a refund behind the policy check](#14-gate-a-refund-behind-the-policy-check)
+- [1.4 Handoff summary for a human agent](#14-handoff-summary-for-a-human-agent)
+- [1.5 Pre-execution hook: block and redirect](#15-pre-execution-hook-block-and-redirect)
+- [1.5 PostToolUse hook: normalize results](#15-posttooluse-hook-normalize-results)
 
 ---
 
@@ -555,3 +559,96 @@ Back to [1.3 Configure subagent invocation, context passing, and spawning](ccaf.
 **In one line:** a simple subagent can name a cheaper model, while the coordinator and the reviewer keep the default.
 
 **What the practice code does:** `worker_agents.json` names `claude-haiku-5-5` for the order agent and `claude-opus-5-5` for the refund agent. The coordinator and the reviewer use the default model. `run_agent` takes a `model` argument, and `start_subagent` passes each agent's model through.
+
+---
+
+## 1.4 Gate a refund behind the policy check
+
+Back to [1.4 Implement multi-step workflows](ccaf.md#14-implement-multi-step-workflows-with-enforcement-and-handoff-patterns).
+
+**In one line:** a prompt that says "check the policy first" can be skipped. A gate in code cannot.
+
+**Why code, not a prompt:** the exam text says prompts alone have a non-zero failure rate. When a rule must hold every time, such as "no refund before the policy check", put it in code.
+
+**What the practice code does** ([tools/functions.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/tools/functions.py)):
+
+1. `check_refund_policy` adds the order to `ELIGIBLE_ORDERS` when the order is within the 30-day rule.
+2. `issue_refund` returns an error unless the order is in `ELIGIBLE_ORDERS`.
+
+So the refund agent can still call the tools in any order. The wrong order fails, and the error comes back to Claude as `is_error`.
+
+**Example:**
+
+```
+issue_refund(9931)                 -> blocked: check_refund_policy must say eligible first
+check_refund_policy(9931)          -> eligible: true
+issue_refund(9931)                 -> refunded
+```
+
+**Caveat:** `ELIGIBLE_ORDERS` lives in the running process. A real system would store it somewhere durable, such as a database, so a restart does not forget the check.
+
+**Reference:** [Intercept and control agent behavior with hooks - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/hooks): hooks run in code before a tool call, so a rule holds whatever the model says.
+
+---
+
+## 1.4 Handoff summary for a human agent
+
+Back to [1.4 Implement multi-step workflows](ccaf.md#14-implement-multi-step-workflows-with-enforcement-and-handoff-patterns).
+
+**In one line:** when a case goes to a human, the human should not have to read the whole chat to act.
+
+**What the summary holds:** the order ID, the customer's email, the item and price, the root cause, and the recommended action. The exam text lists customer ID, root cause, refund amount and recommended action. The practice app uses the customer email because that is the only customer ID in its data.
+
+**What the practice code does:** the `prepare_handoff` tool in [tools/functions.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/tools/functions.py) builds that summary from the order record. The refund agent calls it when the policy says no.
+
+**Example:**
+
+```
+Order 4471, Laptop stand, $40, sam@example.com
+Root cause:          not delivered yet
+Recommended action:  wait for delivery, then re-check the policy
+```
+
+---
+
+## 1.5 Pre-execution hook: block and redirect
+
+Back to [1.5 Apply Agent SDK hooks](ccaf.md#15-apply-agent-sdk-hooks-for-tool-call-interception-and-data-normalization).
+
+**In one line:** a pre-execution hook looks at a tool call before it runs. If the call breaks a rule, the hook stops it and sends the case somewhere else.
+
+**The rule in the practice app:** refunds above $100 are not allowed. The cap is low on purpose: the demo prices are $40 and $120, so a $500 cap would never trigger.
+
+**What the practice code does** ([tools/hooks.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/tools/hooks.py)): `pre_tool_hook` runs before each tool call. For `issue_refund` above the cap, it does not run the refund. It calls `prepare_handoff` and returns an error with the handoff summary. The loop in [agents/agent_loop.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/agents/agent_loop.py) checks the hook result before it runs the tool.
+
+**Example:**
+
+```
+issue_refund(9931, 120)   -> blocked: refund above $100 is not allowed; sent to a human agent
+issue_refund(9931, 50)    -> refunded
+```
+
+**Reference:** [Intercept and control agent behavior with hooks - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/hooks): a PreToolUse hook can block a tool call before it runs.
+
+---
+
+## 1.5 PostToolUse hook: normalize results
+
+Back to [1.5 Apply Agent SDK hooks](ccaf.md#15-apply-agent-sdk-hooks-for-tool-call-interception-and-data-normalization).
+
+**In one line:** a PostToolUse hook cleans up a tool's result before Claude reads it, so Claude sees one consistent format.
+
+**Why it matters:** tools from different systems often return dates, money and status codes in different shapes. If Claude has to make sense of each shape, its answers get less reliable. Fixing the shape in code means Claude always sees the same thing.
+
+**What the practice code does** ([tools/hooks.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/tools/hooks.py)): `post_tool_hook` changes the price from a number to text with a currency, so `120` becomes `"120.00 USD"`. The loop runs the hook after the tool and before the result goes back to Claude.
+
+**Example:**
+
+```
+Tool returns:   {"price": 120}
+Claude reads:   {"price": "120.00 USD"}
+```
+
+Real MCP tools would need more than this: Unix timestamps turned into ISO 8601 dates, and numeric status codes turned into words. The practice app has only the price rule, because its data is already consistent.
+
+**Reference:** [Intercept and control agent behavior with hooks - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/hooks): a PostToolUse hook runs after a tool call and can change its result.
