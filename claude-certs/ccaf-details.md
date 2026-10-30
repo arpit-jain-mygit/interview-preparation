@@ -17,7 +17,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 
 ## 1.1 The agentic loop: the four steps in simple words
 
-Back to [1.1 The agentic loop](ccaf.md#11-the-agentic-loop).
+Back to [1.1 Design and implement agentic loops](ccaf.md#11-design-and-implement-agentic-loops-for-autonomous-task-execution).
 
 Think of a support agent at a help desk handling "Where's my refund for order 9931?":
 
@@ -100,7 +100,7 @@ while True:
 
 ## 1.1 All stop_reason values
 
-Back to [1.1 The agentic loop](ccaf.md#11-the-agentic-loop).
+Back to [1.1 Design and implement agentic loops](ccaf.md#11-design-and-implement-agentic-loops-for-autonomous-task-execution).
 
 Every Messages API response carries a `stop_reason` that says why Claude stopped. The course only covers the first two; the rest come from the Claude docs.
 
@@ -127,7 +127,7 @@ Every Messages API response carries a `stop_reason` that says why Claude stopped
 
 ## 1.2 The narrow-decomposition trap
 
-Back to [1.2 Coordinator-subagent pattern](ccaf.md#12-coordinator-subagent-pattern).
+Back to [1.2 Orchestrate multi-agent systems](ccaf.md#12-orchestrate-multi-agent-systems-with-coordinator-subagent-patterns).
 
 **In one line:** when the coordinator splits a big question into subtasks, the subtasks together must cover the *whole* question. If they cover only part of it, the final answer quietly answers a smaller question.
 
@@ -171,7 +171,7 @@ Missing:                                        music + film + writing + design 
 
 ## 1.3 Why spawning a subagent is a tool call
 
-Back to [1.3 Spawning subagents and passing context](ccaf.md#13-spawning-subagents-and-passing-context).
+Back to [1.3 Configure subagent invocation](ccaf.md#13-configure-subagent-invocation-context-passing-and-spawning).
 
 **The doubt:** "Tools are called by an agent when needed, and the orchestrator shares the tool descriptions with the agent. So why does the coordinator spawn a subagent *with a tool call*? Shouldn't it just share all the tool info with the agent?"
 
@@ -224,7 +224,7 @@ So from the coordinator's point of view, a whole subagent run looks exactly like
 
 ## 1.3 How a subagent knows which tools it has
 
-Back to [1.3 Spawning subagents and passing context](ccaf.md#13-spawning-subagents-and-passing-context).
+Back to [1.3 Configure subagent invocation](ccaf.md#13-configure-subagent-invocation-context-passing-and-spawning).
 
 **The doubt:** "If the orchestrator doesn't share the tool list, how does the subagent (Riya) know which tools she can use?"
 
@@ -267,7 +267,7 @@ Back to [1.3 Spawning subagents and passing context](ccaf.md#13-spawning-subagen
 
 ## 1.2 The coordinator picks subagents at runtime
 
-Back to [1.2 Coordinator-subagent pattern](ccaf.md#12-coordinator-subagent-pattern).
+Back to [1.2 Orchestrate multi-agent systems](ccaf.md#12-orchestrate-multi-agent-systems-with-coordinator-subagent-patterns).
 
 **The doubt:** "Does the orchestrator also decide at runtime which agent to call?"
 
@@ -313,7 +313,7 @@ Because it's a model decision, the same question can sometimes take a different 
 
 ## 1.1 Tool vs. agent
 
-Back to [1.1 The agentic loop](ccaf.md#11-the-agentic-loop).
+Back to [1.1 Design and implement agentic loops](ccaf.md#11-design-and-implement-agentic-loops-for-autonomous-task-execution).
 
 **In one line:** a **tool** does one fixed job when asked. An **agent** decides what to do, uses tools to do it, and keeps going until the job is done.
 
@@ -371,7 +371,7 @@ Claude's Task / Agent tool works the same way: the model asks for the Task tool,
 
 ## 1.2 Synthesize: combining subagent answers
 
-Back to [1.2 Coordinator-subagent pattern](ccaf.md#12-coordinator-subagent-pattern).
+Back to [1.2 Orchestrate multi-agent systems](ccaf.md#12-orchestrate-multi-agent-systems-with-coordinator-subagent-patterns).
 
 **In one line:** no single subagent knows the whole answer. The coordinator takes their separate answers and **combines them into one reply**. "Synthesize" just means *combine into one*.
 
