@@ -5,6 +5,7 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 ## Contents
 
 - [1.1 The agentic loop: the four steps in simple words](#11-the-agentic-loop-the-four-steps-in-simple-words)
+- [1.1 What is a turn in the loop?](#11-what-is-a-turn-in-the-loop)
 - [1.1 All stop_reason values](#11-all-stop_reason-values)
 - [1.1 Tool vs. agent](#11-tool-vs-agent)
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
@@ -95,6 +96,34 @@ while True:
 - [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): the `tool_use` → `tool_result` round trip and `stop_reason`
 - [How the agent loop works - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/agent-loop): the same loop, run for you by the SDK
 - [Building effective agents - Anthropic](https://www.anthropic.com/research/building-effective-agents): agents as an LLM using tools in a loop, based on feedback from its environment
+
+---
+
+## 1.1 What is a turn in the loop?
+
+Back to [1.1 Design and implement agentic loops](ccaf.md#11-design-and-implement-agentic-loops-for-autonomous-task-execution).
+
+A **turn** is one round trip to Claude:
+
+1. The loop sends the whole conversation so far, plus the tool list, to Claude.
+2. Claude replies, and the reply is one of two things:
+   - **Tool requests** (`stop_reason` = `tool_use`): our code runs the tools and adds the results to the conversation. That starts the next turn.
+   - **A final answer** (`stop_reason` = `end_turn`): the loop stops.
+
+One turn is one reply from Claude. It is not one tool call. Claude can ask for several tools in one reply, and they all run in that turn.
+
+**Example from the practice app.** The order agent was asked where order 9931 is:
+
+- **Turn 1:** Claude asked for `look_up_order` and `track_shipment` in one reply. Our code ran both, one after the other, and added both results to the conversation.
+- **Turn 2:** Claude read both results and wrote the answer. `stop_reason` was `end_turn`, so the loop stopped.
+
+**Why it took two turns, not one.** It's tempting to think Claude could request both tools and then answer in the same reply. It can't. Claude has to see the tool results before it can write an answer that depends on them, and it only sees them in the next request. So every reply that asks for tools is followed by another turn, and the answer always comes in a turn of its own.
+
+If a tool depended on another tool's result (for example, you need the order's price before you can check a refund), Claude would need a new turn after each step.
+
+**Why `MAX_TURNS` exists.** It caps the number of round trips one agent can take. A normal agent finishes in a few turns. The cap stops a confused agent that keeps asking for tools and never answers. Hitting the cap is a failure to report, not a normal finish.
+
+**Reference:** [How the agent loop works - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/agent-loop) and [How tool use works - Claude docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview): the loop sends each request with the full message history, and a tool result goes back to Claude in the next request.
 
 ---
 
