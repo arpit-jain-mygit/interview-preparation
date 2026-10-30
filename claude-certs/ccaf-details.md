@@ -33,13 +33,16 @@ Then go back to step 1 with the new note. The agent repeats this until it has en
 
 The agent is not one of the four steps. It is the whole system that runs all four: **agent = model (Claude) + tools + loop (your code or the Agent SDK)**, guided by the system prompt.
 
-| Step | What happens | Who does it | Agent part used |
-|---|---|---|---|
-| Perceive | Claude reads the whole `messages` list: the user's request plus every earlier `tool_result` | Claude | Model (the brain) |
-| Reason | Claude decides whether it needs a tool, and which one with which inputs | Claude | Model, guided by the system prompt |
-| Act | Claude replies with a `tool_use` block and `stop_reason: "tool_use"`; **your code** runs the tool | Claude asks, your code executes | Tools (the hands), run by the loop |
-| Observe | Your code appends the output as a `tool_result` and calls the API again | Your code sends it, Claude reads it | Loop (the harness) feeding the model |
-| **All four, repeated until `end_turn`** | The cycle continues until Claude has enough to answer | Model + loop together | **The agent** |
+| Step | What happens | Who does it (in our practice app) |
+|---|---|---|
+| **Perceive** | Claude reads the whole `messages` list, the system prompt and the tool list | **Claude** reads. **`run_agent()`** in `agents/agent_loop.py` sends it with `client.messages.create(...)`. |
+| **Reason** | Claude decides: answer now, or request one or more tools with their inputs. It sets `stop_reason` to say which. | **Claude**, guided by the system prompt (the coordinator's prompt in `agents/orchestrator.py`, or a worker's `prompt` in `agents/worker_agents.json`) and the tool descriptions. |
+| **Act** | The loop reads each `tool_use` block and calls the function in `tools[block.name]` | **`run_agent()`** runs it. For a plain tool, the function is in `tools/functions.py`, for example `look_up_order`. For a delegation tool (`ask_order_agent`, `ask_refund_agent`), the function is in `agents/orchestrator.py` and starts a whole worker agent by calling `run_agent()` again. |
+| **Observe** | The result is wrapped as a `tool_result` and appended to `messages` | **`run_agent()`** records it. Claude sees it on the next Perceive. For a delegation tool, the worker's final answer is the result. |
+| **Stop check** | Whether to run Act at all | **Claude** sets `stop_reason`, and **`run_agent()`** reads it. `end_turn` ends the loop. |
+
+So Claude decides and reads, our code sends, runs and records. The **agent** is the whole arrangement: Claude + its tools + `run_agent()` (+ the coordinator, when there is one).
+
 
 - **Claude alone** is just a model: one request in, one reply out.
 - **Claude + tools + loop** is an agent: it keeps acting until the job is done.
