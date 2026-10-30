@@ -12,8 +12,12 @@ Deeper explanations that support the main notes in [ccaf.md](ccaf.md). Each sect
 - [1.2 The narrow-decomposition trap](#12-the-narrow-decomposition-trap)
 - [1.2 The coordinator picks subagents at runtime](#12-the-coordinator-picks-subagents-at-runtime)
 - [1.2 Synthesize: combining subagent answers](#12-synthesize-combining-subagent-answers)
+- [1.2 Manage errors when a subagent fails](#12-manage-errors-when-a-subagent-fails)
+- [1.2 Iterative refinement: check, then re-delegate](#12-iterative-refinement-check-then-re-delegate)
 - [1.3 Why spawning a subagent is a tool call](#13-why-spawning-a-subagent-is-a-tool-call)
 - [1.3 How a subagent knows which tools it has](#13-how-a-subagent-knows-which-tools-it-has)
+- [1.3 Passing context to a subagent](#13-passing-context-to-a-subagent)
+- [1.3 Model per subagent (practice extra)](#13-model-per-subagent-practice-extra)
 
 ---
 
@@ -467,3 +471,87 @@ Refund agent  knows:  "refunded $120"       (nothing about delivery)
 **For the exam:** the coordinator *assembles* the final answer from subagent results; it doesn't do the subagents' work itself. If the coordinator finds the combined result falls short, it can send work back for another pass (iterative refinement).
 
 **Reference:** [How we built our multi-agent research system - Anthropic](https://www.anthropic.com/research/multi-agent-research-system): the lead agent synthesizes subagents' results and decides whether more research is needed.
+
+## 1.2 Manage errors when a subagent fails
+
+Back to [1.2 Orchestrate multi-agent systems](ccaf.md#12-orchestrate-multi-agent-systems-with-coordinator-subagent-patterns).
+
+**In one line:** the coordinator is the only place that sees every subagent, so it is also the only place that can decide what to do when one fails.
+
+**Why it matters:** if a subagent fails and the coordinator never hears about it, the customer gets a confident answer built on nothing. In hub-and-spoke, every failure must come back to the hub as a message, not as an exception that stops the whole run.
+
+**What the practice code does** ([agents/orchestrator.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/agents/orchestrator.py)):
+
+1. A tool that fails returns `{"error": ...}` with `is_error: true` on its tool result, so Claude knows the call failed and can try another way.
+2. A subagent that fails returns `{"error": "refund_agent failed: ..."}` to the coordinator instead of crashing it.
+3. The coordinator's prompt says what to do with that: retry once with a clearer task, or tell the customer which part could not be checked.
+
+**Example:**
+
+```
+Refund agent  -> error: "refund_agent failed: overloaded"
+Coordinator   -> retries once with a clearer task
+              -> still fails: tells the customer "I could not check the refund, please try again"
+```
+
+**Reference:** [Handle tool calls - Claude API docs](https://docs.claude.com/en/docs/agents-and-tools/tool-use/implement-tool-use): a tool result can be marked as an error with `is_error`.
+
+---
+
+## 1.2 Iterative refinement: check, then re-delegate
+
+Back to [1.2 Orchestrate multi-agent systems](ccaf.md#12-orchestrate-multi-agent-systems-with-coordinator-subagent-patterns).
+
+**In one line:** after the coordinator writes its answer, a second check looks for gaps. If it finds one, the coordinator delegates again instead of stopping.
+
+**The loop:** delegate, then synthesize, then check, then re-delegate if the answer falls short. Repeat until the check passes.
+
+**What the practice code does** ([agents/orchestrator.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/agents/orchestrator.py)): `run_orchestrator` calls a reviewer agent that has no tools. The reviewer replies `PASS` or `FAIL: <gap>`. On `FAIL`, the coordinator runs again with its previous answer and the gap, and it delegates again. `MAX_REFINEMENTS = 2` is a safety limit, so a bad answer cannot loop forever.
+
+**Why a cap:** the exam text says to repeat "until coverage is sufficient". A real system still needs a stop, or cost and waiting time grow without limit. Two rounds is a choice for this app, not a rule from the exam.
+
+**Example:**
+
+```
+Round 0: coordinator answers "delivered, $120"               reviewer: FAIL: no refund decision
+Round 1: coordinator delegates to the refund agent, answers  reviewer: PASS
+```
+
+**Reference:** [Building effective agents - Anthropic](https://www.anthropic.com/engineering/building-effective-agents): the evaluator-optimizer workflow, where one model checks another's output and feeds back what to fix.
+
+---
+
+## 1.3 Passing context to a subagent
+
+Back to [1.3 Configure subagent invocation, context passing, and spawning](ccaf.md#13-configure-subagent-invocation-context-passing-and-spawning).
+
+**In one line:** the prompt is the only handoff. A subagent starts with nothing, so every fact it needs must be in the task text.
+
+**What the practice code does** ([agents/orchestrator.py](https://github.com/arpit-jain-mygit/agentic-ai-hello-world/blob/main/agents/orchestrator.py)):
+
+- `start_subagent` sends the subagent only the `task` string. It never sends the coordinator's messages.
+- `HANDOFF_HINT` is added to each delegation tool's description: "Pass a complete task: the subagent knows nothing else." This tells the coordinator to write a full task.
+
+**What is still weak:** nothing checks the task. A short task such as "check the refund" still goes through. The exam text asks for complete prior findings in a structured format, and the code does not enforce that yet.
+
+**Example:**
+
+```
+Vague:    "check the refund"
+Complete: "Order 9931, Headphones, $120, delivered 3 days ago. The customer says it arrived broken.
+           Check the refund policy and say eligible yes or no, with the rule used."
+```
+
+**Reference:** [Subagents in the SDK - Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/subagents): each subagent runs in its own context window, and the parent passes it the task in the prompt.
+
+---
+
+## 1.3 Model per subagent (practice extra)
+
+Back to [1.3 Configure subagent invocation, context passing, and spawning](ccaf.md#13-configure-subagent-invocation-context-passing-and-spawning).
+
+**Not in the 1.3 text:** the current exam text lists the description, system prompt and tools for an agent definition. The practice app also gives each agent an optional `model`. That is a cost choice, not an exam requirement.
+
+**In one line:** a simple subagent can name a cheaper model, while the coordinator and the reviewer keep the default.
+
+**What the practice code does:** `worker_agents.json` names `claude-haiku-5-5` for the order agent and `claude-opus-5-5` for the refund agent. The coordinator and the reviewer use the default model. `run_agent` takes a `model` argument, and `start_subagent` passes each agent's model through.

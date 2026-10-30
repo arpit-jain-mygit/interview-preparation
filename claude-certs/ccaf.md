@@ -112,7 +112,7 @@ The exam is built on six scenarios. Four are picked at random for each candidate
 ### 1.2 Orchestrate multi-agent systems with coordinator-subagent patterns
 
 **Knowledge**
-- Hub-and-spoke: the coordinator manages all communication between subagents, error handling and routing.
+- Hub-and-spoke: the coordinator manages all communication between subagents, error handling and routing. ([manage errors](ccaf-details.md#12-manage-errors-when-a-subagent-fails))
 - Subagents run in isolated context and do not inherit the coordinator's history.
 - The coordinator decomposes the task, delegates, aggregates results and decides which subagents to call based on query complexity.
 - Risk: overly narrow decomposition leaves broad topics incompletely covered. ([narrow-decomposition trap](ccaf-details.md#12-the-narrow-decomposition-trap))
@@ -120,7 +120,7 @@ The exam is built on six scenarios. Four are picked at random for each candidate
 **Skills**
 - Design a coordinator that analyzes the query and selects subagents, instead of always running the full pipeline. ([the coordinator picks subagents at runtime](ccaf-details.md#12-the-coordinator-picks-subagents-at-runtime))
 - Partition research scope so subagents do not duplicate work (distinct subtopics or source types).
-- Run iterative refinement: the coordinator evaluates synthesis output for gaps, re-delegates with targeted queries, and repeats until coverage is sufficient. ([synthesize](ccaf-details.md#12-synthesize-combining-subagent-answers))
+- Run iterative refinement: the coordinator evaluates synthesis output for gaps, re-delegates with targeted queries, and repeats until coverage is sufficient. ([synthesize](ccaf-details.md#12-synthesize-combining-subagent-answers), [iterative refinement](ccaf-details.md#12-iterative-refinement-check-then-re-delegate))
 - Route all subagent communication through the coordinator for observability and consistent error handling.
 
 ### 1.3 Configure subagent invocation, context passing, and spawning
@@ -132,7 +132,7 @@ The exam is built on six scenarios. Four are picked at random for each candidate
 - Fork-based session management explores divergent approaches from a shared baseline.
 
 **Skills**
-- Put complete prior findings (for example, search results) directly into the next subagent's prompt.
+- Put complete prior findings (for example, search results) directly into the next subagent's prompt. ([passing context](ccaf-details.md#13-passing-context-to-a-subagent))
 - Use structured formats that separate content from metadata (source URLs, document names, page numbers) so attribution survives.
 - Spawn parallel subagents by emitting several `Task` calls in one coordinator response.
 - Write coordinator prompts that state goals and quality criteria, not step-by-step procedures.
