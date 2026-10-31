@@ -1640,6 +1640,102 @@ Source: the `aws-serverless` branch of `arpit-jain-mygit/stocks-platform` (`infr
 
 **Why this matters in an interview:** each service does one job. The project uses managed services where possible, so there are no servers to patch. Costs stay low because Lambda and Fargate charge only for use.
 
+#### Architecture (high level)
+
+Non-AWS services are shown in their own group. The architecture is also drawn in the Mermaid diagram below.
+
+```mermaid
+flowchart LR
+  user["User browser"]
+  subgraph AWS
+    cf["CloudFront"]
+    s3fe["S3 frontend site"]
+    apigw["API Gateway"]
+    lambda["Lambda FastAPI API"]
+    ecs["ECS Fargate worker"]
+    s3up["S3 uploads and cache"]
+    ddb["DynamoDB jobs"]
+    ssm["SSM secrets"]
+    cw["CloudWatch and SNS alerts"]
+  end
+  subgraph NonAWS["Non-AWS"]
+    sb["Supabase Postgres"]
+    qd["Qdrant Cloud"]
+    gem["Gemini API"]
+    gha["GitHub Actions"]
+  end
+  user --> cf
+  cf -->|"site files"| s3fe
+  cf -->|"/api"| apigw
+  apigw --> lambda
+  lambda --> ddb
+  lambda --> s3up
+  lambda -->|"RunTask"| ecs
+  lambda --> sb
+  lambda --> qd
+  lambda --> gem
+  ecs --> s3up
+  ecs --> ddb
+  ecs --> sb
+  ecs --> qd
+  ssm -.->|"secrets"| lambda
+  ssm -.->|"secrets"| ecs
+  cw --> lambda
+  gha -.->|"deploys via OIDC"| lambda
+```
+
+#### End-to-end flow (order of operations)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant CF as CloudFront
+  participant AG as API Gateway
+  participant L as Lambda API
+  participant S3 as S3
+  participant D as DynamoDB
+  participant W as Fargate worker
+  participant Q as Qdrant Cloud
+  participant SB as Supabase
+  participant G as Gemini API
+  B->>CF: GET site
+  CF->>S3: fetch Angular files
+  S3-->>B: app
+  B->>CF: POST /api/uploads
+  CF->>AG: forward
+  AG->>L: create presigned link
+  L-->>B: upload_url and upload_key
+  B->>S3: PUT file using presigned link
+  B->>AG: POST /ingest with upload_key
+  AG->>L: ingest
+  L->>S3: check size and type
+  L->>SB: duplicate check
+  L->>Q: duplicate check
+  L->>D: create job queued
+  L->>W: RunTask with job_id and upload_key
+  L-->>B: queued and job_id
+  W->>D: status running
+  W->>S3: read PDF
+  W->>W: OCR, chunk and embed
+  W->>Q: store vectors
+  W->>SB: store metadata
+  W->>D: status complete
+  B->>CF: GET /api/jobs/id
+  CF->>AG: forward
+  AG->>L: read job
+  L->>D: get job
+  L-->>B: status
+  B->>CF: POST /api/ask
+  CF->>AG: forward
+  AG->>L: ask
+  L->>Q: search chunks
+  L->>G: generate answer
+  L-->>B: answer with citations
+```
+
+**Order in short:** the site loads first, then the upload goes to S3 on a presigned link, then `/ingest` queues a job and starts a Fargate worker. The worker stores vectors in Qdrant and metadata in Supabase, and the job is marked complete. Questions then search Qdrant and call Gemini for the answer.
+
 ⚠ *Confirm the current status in [docs/AWS.md](https://github.com/arpit-jain-mygit/stocks-platform/blob/aws-serverless/docs/AWS.md), because the phases change as the project moves forward.*
 
 ---
