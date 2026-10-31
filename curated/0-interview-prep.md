@@ -1653,10 +1653,17 @@ flowchart LR
     apigw["API Gateway"]
     lambda["Lambda FastAPI API"]
     ecs["ECS Fargate worker"]
+    ecr["ECR worker image"]
+    cb["CodeBuild image build"]
     s3up["S3 uploads and cache"]
     ddb["DynamoDB jobs"]
     ssm["SSM secrets"]
-    cw["CloudWatch and SNS alerts"]
+    iam["IAM roles and OIDC"]
+    vpc["VPC subnets and security group"]
+    eb["EventBridge rules"]
+    cw["CloudWatch logs and alarms"]
+    sns["SNS email alerts"]
+    budget["AWS Budgets"]
   end
   subgraph NonAWS["Non-AWS"]
     sb["Supabase Postgres"]
@@ -1678,10 +1685,20 @@ flowchart LR
   ecs --> ddb
   ecs --> sb
   ecs --> qd
+  ecs -.->|"runs in"| vpc
+  ecr -.->|"image pull"| ecs
+  cb -->|"push image"| ecr
   ssm -.->|"secrets"| lambda
   ssm -.->|"secrets"| ecs
-  cw --> lambda
-  gha -.->|"deploys via OIDC"| lambda
+  iam -.->|"permissions"| lambda
+  iam -.->|"permissions"| ecs
+  lambda -.->|"logs"| cw
+  ecs -.->|"logs"| cw
+  cw -->|"alarms"| sns
+  ecs -.->|"stopped or never started"| eb
+  eb -->|"alert"| sns
+  budget -->|"80 and 100 percent"| sns
+  gha -.->|"deploys via OIDC"| iam
 ```
 
 #### End-to-end flow (order of operations)
