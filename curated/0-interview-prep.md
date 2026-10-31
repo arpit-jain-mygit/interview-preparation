@@ -1627,6 +1627,7 @@ Source: the `aws-serverless` branch of `arpit-jain-mygit/stocks-platform` (`infr
 | **DynamoDB** | A managed NoSQL database with key-value items. You pay per request, not for idle capacity. | The `stocks-insights-jobs` table stores ingestion job status. A TTL field deletes records after 30 days. A second table locks Terraform runs. |
 | **ECS on Fargate** | Runs containers without you managing the servers under them. You set CPU and memory per task. | Runs the ingestion worker (`python -m ingest.worker`) for each upload. The task starts, processes the file, and exits. |
 | **ECR** | Private registry where Docker images are stored. | Holds the worker container image. |
+| **VPC subnets and security group** | A private network in AWS. Subnets split it into address ranges, and a security group is a firewall for the resources inside it. | The ECS worker task runs in these subnets. Its security group controls which traffic the task can send and receive. |
 | **CodeBuild** | A managed build machine in the cloud. | Builds the worker image and pushes it to ECR, so nothing is built on the laptop. |
 | **SSM Parameter Store** | Stores settings and secrets. SecureString values are encrypted. | Holds six secrets, such as the Gemini and Qdrant keys. The app reads them at startup when `SECRETS_FROM_SSM=true`. |
 | **IAM** | Controls who or what may do what in AWS. | Each Lambda and ECS task gets its own role with only the permissions it needs. |
