@@ -18,6 +18,7 @@
 16. [Microservices: When, Pitfalls, Culture, Patterns](#16-microservices-when-pitfalls-culture-patterns)
 17. [Conflict Scenarios for Behavioral Questions](#17-conflict-scenarios-for-behavioral-questions)
 18. [AWS: Likely Questions and DCP-Mapped Concepts](#18-aws-likely-questions-and-dcp-mapped-concepts)
+    - [AWS services used in stocks-platform (aws-serverless), explained simply](#aws-services-used-in-stocks-platform-aws-serverless-explained-simply)
 19. [Behavioral Q&A Index](#19-behavioral-qa-index)
 20. [System Design Reference](#20-system-design-reference)
 21. [Spring Framework Reference](#21-spring-framework-reference)
@@ -1607,6 +1608,40 @@ The upload path depends on file size, because API Gateway limits request payload
 - The exact upload threshold used in production.
 - The PostgreSQL and MongoDB replication and failover setup, since both were self-managed.
 - How much CloudWatch was used beyond AWS resource logs.
+---
+
+### AWS services used in stocks-platform (aws-serverless), explained simply
+
+Source: the `aws-serverless` branch of `arpit-jain-mygit/stocks-platform` (`infra/*.tf`, `docs/AWS.md`, `backend/utils/*.py`). This is a personal project, not DCP. All of it is created by Terraform, which is a tool, not an AWS service.
+
+**The story in one breath:** the browser loads the site from **CloudFront**, which serves it from **S3**. API calls go through **CloudFront** to **API Gateway** to **Lambda**. Uploads go straight to **S3** using a temporary link. A background **ECS Fargate** worker reads the file, and job status lives in **DynamoDB**. Secrets come from **SSM**, and **CloudWatch**, **EventBridge** and **SNS** raise alerts.
+
+| Service | Simple meaning | How stocks-platform uses it |
+|---|---|---|
+| **Lambda** | Runs your code only when a request arrives. No servers to manage, and you pay per request. | Runs the FastAPI backend through Mangum. Settings: arm64, Python 3.14, 2048 MB memory, 60-second timeout. |
+| **API Gateway (HTTP API)** | The front door that receives web requests and passes them to Lambda. | Receives `/api` calls from CloudFront and the direct `/ingest` call. It has a 10 MB payload limit, which is why big files skip it. |
+| **CloudFront** | A CDN: it keeps copies of content at edge locations near users, so pages load fast. | Serves the Angular site from S3 and forwards `/api/*` to API Gateway. It adds the `X-API-Key` header and uses Origin Access Control, so only CloudFront can read the bucket. |
+| **CloudFront Function** | A tiny JavaScript function that runs at the edge on each request. | Routes requests: allows only the listed GET and POST paths, removes `/api` before forwarding, and returns 404 for everything else. |
+| **S3** | Object storage: files stored in buckets, like folders in the cloud. | Three buckets: the frontend site, uploads (auto-deleted after 30 days) and the cache for page and vector data. The Terraform state file is also kept here. Encryption is AES256. |
+| **Presigned URL** (an S3 feature) | A temporary link that lets someone upload straight to S3 without holding AWS keys. | `POST /uploads` returns one, so the PDF goes to S3 directly and never passes through API Gateway. |
+| **DynamoDB** | A managed NoSQL database with key-value items. You pay per request, not for idle capacity. | The `stocks-insights-jobs` table stores ingestion job status. A TTL field deletes records after 30 days. A second table locks Terraform runs. |
+| **ECS on Fargate** | Runs containers without you managing the servers under them. You set CPU and memory per task. | Runs the ingestion worker (`python -m ingest.worker`) for each upload. The task starts, processes the file, and exits. |
+| **ECR** | Private registry where Docker images are stored. | Holds the worker container image. |
+| **CodeBuild** | A managed build machine in the cloud. | Builds the worker image and pushes it to ECR, so nothing is built on the laptop. |
+| **SSM Parameter Store** | Stores settings and secrets. SecureString values are encrypted. | Holds six secrets, such as the Gemini and Qdrant keys. The app reads them at startup when `SECRETS_FROM_SSM=true`. |
+| **IAM** | Controls who or what may do what in AWS. | Each Lambda and ECS task gets its own role with only the permissions it needs. |
+| **IAM OIDC provider** | Lets GitHub Actions get a temporary AWS login, so no access keys are stored in GitHub. | The deploy role trusts only this repo's `main` and `aws-serverless` branches. |
+| **CloudWatch** | Logs, metrics and alarms in one place. | Log groups keep 30 days of logs. Alarms watch Lambda errors and throttles and API 5xx errors. |
+| **SNS** | A notification service that sends messages to subscribers, such as an email address. | The alert topic emails the owner when an alarm fires. |
+| **EventBridge** | Watches for events and triggers an action when a rule matches. | Two rules catch a worker task that crashes or never starts, then send the alert to SNS. |
+| **AWS Budgets** | Warns you when spending gets close to a limit. | A $20-a-month budget that emails at 80% and 100%. |
+
+**Not used yet, or planned:** Step Functions (skipped in favour of a direct worker), and Route 53, ACM and WAF (planned for the domain and security phases). KMS is not used directly, because S3 encryption uses AWS-managed keys.
+
+**Why this matters in an interview:** each service does one job. The project uses managed services where possible, so there are no servers to patch. Costs stay low because Lambda and Fargate charge only for use.
+
+⚠ *Confirm the current status in [docs/AWS.md](https://github.com/arpit-jain-mygit/stocks-platform/blob/aws-serverless/docs/AWS.md), because the phases change as the project moves forward.*
+
 ---
 
 ## 19. Behavioral Q&A Index
