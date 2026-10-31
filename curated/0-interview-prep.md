@@ -1632,6 +1632,7 @@ Source: the `aws-serverless` branch of `arpit-jain-mygit/stocks-platform` (`infr
 | **SSM Parameter Store** | Stores settings and secrets. SecureString values are encrypted. | Holds six secrets, such as the Gemini and Qdrant keys. The app reads them at startup when `SECRETS_FROM_SSM=true`. |
 | **IAM** | Controls who or what may do what in AWS. | Each Lambda and ECS task gets its own role with only the permissions it needs. |
 | **IAM OIDC provider** | Lets GitHub Actions get a temporary AWS login, so no access keys are stored in GitHub. | The deploy role trusts only this repo's `main` and `aws-serverless` branches. |
+| **GitHub Actions** (not AWS) | GitHub's automation service. It runs a workflow when code is pushed, such as tests, then deploys. | The `backend.yml` workflow runs the tests, deploys the Lambda zip, and starts the CodeBuild job for the worker image. It logs in to AWS through the OIDC role. |
 | **CloudWatch** | Logs, metrics and alarms in one place. | Log groups keep 30 days of logs. Alarms watch Lambda errors and throttles and API 5xx errors. |
 | **SNS** | A notification service that sends messages to subscribers, such as an email address. | The alert topic emails the owner when an alarm fires. |
 | **EventBridge** | Watches for events and triggers an action when a rule matches. | Two rules catch a worker task that crashes or never starts, then send the alert to SNS. |
@@ -1700,6 +1701,8 @@ flowchart LR
   eb -->|"alert"| sns
   budget -->|"80 and 100 percent"| sns
   gha -.->|"deploys via OIDC"| iam
+  gha -.->|"deploys Lambda zip"| lambda
+  gha -.->|"starts image build"| cb
 ```
 
 #### End-to-end flow (order of operations)
